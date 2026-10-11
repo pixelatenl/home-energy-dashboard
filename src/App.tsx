@@ -35,7 +35,7 @@ function App() {
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b">
-        <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-4">
+        <div className="flex items-center justify-between px-6 py-4">
           <div>
             <h1 className="text-xl font-semibold">Home Energy Dashboard</h1>
             <p className="text-sm text-muted-foreground">
@@ -46,7 +46,7 @@ function App() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-5xl space-y-6 px-6 py-8">
+      <main className="space-y-6 px-6 py-8">
         <div className="grid gap-4 sm:grid-cols-3">
           {consumption.map((item) => (
             <Card key={item.period}>
