@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useState, type ComponentType, type MouseEvent } from "react"
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ComponentType,
+  type MouseEvent,
+  type TouchEvent,
+} from "react"
 import AIContextBox from "@/components/AIContextBox"
 import {
   Cloud,
@@ -95,6 +103,19 @@ function weekdayName(date: string): string {
   })
 }
 
+// Rounds a positive value up to a readable one-or-two significant digit
+// number for the Wh axis: 1173 -> 1500, 620 -> 750, 340 -> 400.
+function niceCeil(value: number): number {
+  if (value <= 0) {
+    return 1
+  }
+  const magnitude = 10 ** Math.floor(Math.log10(value))
+  const normalized = value / magnitude
+  const steps = [1, 1.5, 2, 2.5, 3, 4, 5, 7.5, 10]
+  const step = steps.find((s) => normalized <= s + 1e-9) ?? 10
+  return step * magnitude
+}
+
 // Color swatches matching the chart elements in HourlyChart.
 function ChartLegend() {
   return (
@@ -117,7 +138,7 @@ function ChartLegend() {
         Cloud cover
       </span>
       <span className="flex items-center gap-1.5">
-        <span className="size-3 rounded-sm bg-[#f59e0b]/80" />
+        <span className="size-3 rounded-sm bg-[#fbbf24]" />
         PV estimate (Wh)
       </span>
     </div>
@@ -149,9 +170,13 @@ function ChartTooltip({ hour, leftPercent }: { hour: WeatherHour; leftPercent: n
 }
 
 // Hourly strip: temperature curve over cloud-cover shading, with a PV
-// estimate bar per hour. Hovering a slot shows a tooltip with its values.
+// estimate bar per hour. Hovering (desktop) or tapping (mobile) a slot
+// shows a tooltip with its values.
 function HourlyChart({ hours }: { hours: WeatherHour[] }) {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
+  // Suppresses the synthetic mouse events browsers fire after a touch, so
+  // the tap toggle is not immediately undone.
+  const lastTouchAt = useRef(0)
   // Ticks once a minute so the "Now" marker stays in place.
   const [nowTick, setNowTick] = useState(() => Date.now())
   useEffect(() => {
@@ -166,19 +191,40 @@ function HourlyChart({ hours }: { hours: WeatherHour[] }) {
   const slot = width / hours.length
   const temperatures = hours.map((hour) => hour.temperature)
   const minTemp = Math.min(...temperatures)
-  const tempSpan = Math.max(Math.max(...temperatures) - minTemp, 1)
+  const maxTemp = Math.max(...temperatures)
   const maxPv = Math.max(...hours.map((hour) => hour.estimated_pv_wh), 1)
   const x = (index: number) => (index + 0.5) * slot
-  const yTemp = (temperature: number) =>
-    topBand + 8 + (1 - (temperature - minTemp) / tempSpan) * 66
+  // Temperature axis domain: a low floor (0 degrees, or daily minimum
+  // minus 8 when temperatures are near or below zero, so the line is
+  // never pinned to the bottom of the chart) and a ceiling slightly
+  // above the daily maximum.
+  const tempFloor = minTemp < 1 ? minTemp - 8 : 0
+  const tempCeil = Math.max(maxTemp + 2, tempFloor + 1)
+  // Shared plot band for both series: the Wh maximum sits at the same
+  // height as the temperature maximum, and both scales use the same
+  // number of steps (three), so their tick positions and the dashed
+  // gridlines coincide - one gridline set serves both axes.
+  const bandTop = 34
   const pvBase = height - 10
-  const pvMaxHeight = 42
+  const bandRange = pvBase - bandTop
+  const yTemp = (temperature: number) =>
+    bandTop +
+    (1 - (temperature - tempFloor) / (tempCeil - tempFloor)) * bandRange
+  const pvMaxWh = niceCeil(maxPv)
+  const pvY = (value: number) => pvBase - (value / pvMaxWh) * bandRange
+  const pvTicks = [
+    { value: pvMaxWh, label: pvMaxWh },
+    { value: pvMaxWh / 2, label: pvMaxWh / 2 },
+    { value: 0, label: 0 },
+  ]
+  // Gridlines at the shared step positions; they carry both axes' ticks.
+  const gridlines = [bandTop, bandTop + bandRange / 2, pvBase]
   const points = hours
     .map((hour, index) => `${x(index)},${yTemp(hour.temperature)}`)
     .join(" ")
-  // Temperature scale ticks: data min, mid and max, positioned to match
-  // the curve band.
-  const ticks = [minTemp + tempSpan, minTemp + tempSpan / 2, minTemp]
+  // Temperature scale ticks: the domain ceiling, midpoint and floor,
+  // positioned to match the curve band.
+  const ticks = [tempCeil, (tempFloor + tempCeil) / 2, tempFloor]
   // "Now" marker: drawn only when the charted day is the current
   // Europe/Amsterdam day and the local time is inside the shown window.
   const now = amsterdamNow(nowTick)
@@ -195,14 +241,35 @@ function HourlyChart({ hours }: { hours: WeatherHour[] }) {
   const nowX =
     ((now.fraction - firstHour) / Math.max(hours.length, 1)) * width
 
-  const handleMouseMove = (event: MouseEvent<HTMLDivElement>) => {
-    const rect = event.currentTarget.getBoundingClientRect()
+  const indexFromClientX = (clientX: number, element: HTMLElement) => {
+    const rect = element.getBoundingClientRect()
     const index = Math.floor(
-      ((event.clientX - rect.left) / rect.width) * hours.length
+      ((clientX - rect.left) / rect.width) * hours.length
     )
-    setHoveredIndex(
-      index >= 0 && index < hours.length ? index : null
-    )
+    return index >= 0 && index < hours.length ? index : null
+  }
+
+  const handleMouseMove = (event: MouseEvent<HTMLDivElement>) => {
+    if (Date.now() - lastTouchAt.current < 500) {
+      return // synthetic mouse event after a touch
+    }
+    setHoveredIndex(indexFromClientX(event.clientX, event.currentTarget))
+  }
+
+  // Tap to inspect an hour; tapping the same hour again dismisses the
+  // tooltip. touchstart only, so scrolling past the chart stays smooth.
+  const handleTouchStart = (event: TouchEvent<HTMLDivElement>) => {
+    const touch = event.touches[0]
+    if (!touch) {
+      return
+    }
+    lastTouchAt.current = Date.now()
+    const index = indexFromClientX(touch.clientX, event.currentTarget)
+    if (index !== null && index === hoveredIndex) {
+      setHoveredIndex(null)
+      return
+    }
+    setHoveredIndex(index)
   }
 
   // Horizontal anchor for the tooltip, clamped so it stays inside the chart.
@@ -231,6 +298,7 @@ function HourlyChart({ hours }: { hours: WeatherHour[] }) {
           className="relative h-36 w-full"
           onMouseMove={handleMouseMove}
           onMouseLeave={() => setHoveredIndex(null)}
+          onTouchStart={handleTouchStart}
         >
           <svg
             viewBox={`0 0 ${width} ${height}`}
@@ -240,7 +308,8 @@ function HourlyChart({ hours }: { hours: WeatherHour[] }) {
             aria-label="Hourly temperature, cloud cover and PV estimate"
           >
             {hours.map((hour, index) => {
-              const pvHeight = (hour.estimated_pv_wh / maxPv) * pvMaxHeight
+              const pvHeight =
+                (hour.estimated_pv_wh / pvMaxWh) * bandRange
               return (
                 <g key={hour.hour}>
                   <rect
@@ -257,19 +326,20 @@ function HourlyChart({ hours }: { hours: WeatherHour[] }) {
                     width={slot * 0.6}
                     height={pvHeight}
                     rx={2}
-                    fill="#f59e0b"
-                    opacity={0.8}
+                    fill="#fbbf24"
                   />
                 </g>
               )
             })}
-            {ticks.map((tick) => (
+            {/* One gridline set, at the shared step positions of both
+                the temperature (left) and Wh (right) scales. */}
+            {gridlines.map((y) => (
               <line
-                key={tick}
+                key={y}
                 x1={0}
                 x2={width}
-                y1={yTemp(tick)}
-                y2={yTemp(tick)}
+                y1={y}
+                y2={y}
                 stroke="currentColor"
                 strokeOpacity={0.2}
                 strokeWidth={1}
@@ -324,10 +394,26 @@ function HourlyChart({ hours }: { hours: WeatherHour[] }) {
             />
           )}
         </div>
+        {/* Right axis: PV estimate scale in Wh, visually quiet - three
+            ticks (0, half, max) plus a small unit label. */}
+        <div className="relative h-36 w-8 shrink-0">
+          <span className="absolute left-0 top-0 text-[10px] text-muted-foreground">
+            Wh
+          </span>
+          {pvTicks.map((tick) => (
+            <span
+              key={tick.value}
+              className="absolute left-0 -translate-y-1/2 text-xs text-muted-foreground tabular-nums"
+              style={{ top: `${(pvY(tick.value) / height) * 100}%` }}
+            >
+              {tick.label}
+            </span>
+          ))}
+        </div>
       </div>
-      <div className="ml-10 mt-1 flex items-center justify-between text-xs text-muted-foreground tabular-nums">
+      <div className="ml-10 mr-8 mt-1 flex items-center justify-between text-xs text-muted-foreground tabular-nums">
         <span className="flex items-center gap-1">
-          <Sunrise className="size-3" aria-hidden="true" />
+          <Sunrise className="size-4" aria-hidden="true" />
           {hours[0]?.hour.slice(11, 13)}
         </span>
         {hours
@@ -342,7 +428,7 @@ function HourlyChart({ hours }: { hours: WeatherHour[] }) {
           ))}
         <span className="flex items-center gap-1">
           {hours[hours.length - 1]?.hour.slice(11, 13)}
-          <Sunset className="size-3" aria-hidden="true" />
+          <Sunset className="size-4" aria-hidden="true" />
         </span>
       </div>
       <ChartLegend />
@@ -376,9 +462,11 @@ function DayCard({
       type="button"
       onClick={() => onSelect(day.date)}
       aria-pressed={selected}
-      className={`flex w-full flex-col items-center gap-1.5 rounded-xl border p-3 text-center transition-colors hover:bg-muted/50 ${DAY_CARD_HEIGHT} ${
-        selected ? "border-primary ring-2 ring-ring/50" : "border-border"
-      }`}
+      className={`flex w-full flex-col items-center gap-1.5 rounded-xl border p-3 text-center transition-colors ${
+        selected
+          ? "border-transparent bg-muted/60 shadow-sm"
+          : "border-transparent hover:bg-muted/50"
+      } ${DAY_CARD_HEIGHT}`}
     >
       <span className="text-sm font-medium">{isToday ? "Today" : weekdayName(day.date)}</span>
       <Icon className="size-6" />
