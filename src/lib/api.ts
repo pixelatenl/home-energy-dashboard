@@ -135,6 +135,40 @@ export function fetchSummary(): Promise<SummaryData> {
   return getJson<SummaryData>("/api/summary")
 }
 
+// GET /api/appliances: smart plug disaggregation (domain = 'plug' only).
+export type ApplianceRange = "today" | "week" | "month" | "year"
+
+export interface Appliance {
+  appliance: string
+  kwh: number | null
+  cost_eur: number | null
+  power_w: number | null
+  power_ts: string | null
+}
+
+export interface ApplianceHour {
+  hour: string
+  appliance: string
+  kwh: number
+}
+
+export interface ApplianceSummary {
+  range: ApplianceRange
+  from: string
+  appliances: Appliance[]
+  hourly: ApplianceHour[]
+  totals: {
+    plug_kwh: number
+    plug_cost: number
+  }
+}
+
+export function fetchAppliances(
+  range: ApplianceRange
+): Promise<ApplianceSummary> {
+  return getJson<ApplianceSummary>(withParams("/api/appliances", { range }))
+}
+
 export type InsightActionType =
   | "appliance"
   | "battery"

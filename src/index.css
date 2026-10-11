@@ -130,3 +130,20 @@
     @apply font-sans;
     }
 }
+
+/* Live energy flow: dashes march along each path in the direction the
+   path is drawn (its flow direction). The offset step equals the dash
+   period of the flow lines (10 + 14 = 24) for a seamless loop; each
+   line sets its own animation-duration inline, scaled with power. */
+@keyframes flow-dash {
+  to {
+    stroke-dashoffset: -24;
+  }
+}
+
+.flow-dash {
+  animation-name: flow-dash;
+  animation-duration: 4s;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}

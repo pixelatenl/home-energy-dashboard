@@ -1,4 +1,5 @@
 import { Zap } from "lucide-react"
+import houseUrl from "@/house.png"
 import {
   Card,
   CardContent,
@@ -7,74 +8,83 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import {
-  ARROW_TRIM,
-  DIAGRAM_HEIGHT,
   DIAGRAM_WIDTH,
+  DIAGRAM_HEIGHT,
+  HOME_LABEL,
+  HOUSE_IMAGE,
   NODE_RADIUS,
   buildFlowDiagram,
   type FlowData,
   type FlowEdge,
   type FlowNode,
-  type Point,
 } from "@/lib/flowDiagram"
 import { useSummary } from "@/lib/useSummary"
 
 // --- Render pass over the diagram data (see src/lib/flowDiagram.ts) ---
-// A future illustrated house view replaces this pass without touching the
-// data logic.
+// The home node is the house illustration from src/house.png, embedded
+// inside the SVG so the flow lines share its coordinate space; solar,
+// grid and battery stay circular nodes around it, connected by animated
+// dashed lines.
 
-function FlowArrow({
-  from,
-  to,
-  shift,
-  color,
-}: {
-  from: Point
-  to: Point
-  shift: number
-  color: string
-}) {
-  const dx = to.x - from.x
-  const dy = to.y - from.y
-  const length = Math.hypot(dx, dy)
-  const ux = dx / length
-  const uy = dy / length
-  // Perpendicular shift so opposite arrows on the same segment are drawn
-  // as parallel lines.
-  const px = -uy * shift
-  const py = ux * shift
-  const start = {
-    x: from.x + px + ux * ARROW_TRIM,
-    y: from.y + py + uy * ARROW_TRIM,
+// Line weight grows with power: 2 px at the flow threshold up to 8 px at
+// high power; the sqrt scaling keeps midrange values readable.
+const FLOW_THRESHOLD_W = 25
+const FLOW_WIDTH_MAX_W = 4000
+
+function flowWidth(value: number): number {
+  const t = Math.min(Math.max(value / FLOW_WIDTH_MAX_W, 0), 1)
+  return 2 + 6 * Math.sqrt(t)
+}
+
+// Dash cycle length in seconds: near-still at the threshold, about one
+// second at high power.
+function flowDuration(value: number): number {
+  const seconds = 12 * Math.sqrt(FLOW_THRESHOLD_W / value)
+  return Math.min(12, Math.max(1, seconds))
+}
+
+// One flow line. Active flows are dashed and animated: the dashes travel
+// along the path in the direction it is drawn - every flow direction is
+// its own path, so a reversed flow (battery discharging, grid export)
+// simply travels its own line the other way. Line weight and dash speed
+// scale with power. Zero or unknown flows render as faint static lines.
+function FlowLine({ edge }: { edge: FlowEdge }) {
+  if (!edge.active || edge.value === null) {
+    return (
+      <path
+        d={edge.path}
+        fill="none"
+        stroke={edge.color}
+        strokeWidth={2}
+        opacity={0.25}
+      />
+    )
   }
-  const tip = {
-    x: to.x + px - ux * ARROW_TRIM,
-    y: to.y + py - uy * ARROW_TRIM,
-  }
-  const lineEnd = { x: tip.x - ux * 12, y: tip.y - uy * 12 }
-  const left = {
-    x: tip.x - ux * 13 - uy * 6,
-    y: tip.y - uy * 13 + ux * 6,
-  }
-  const right = {
-    x: tip.x - ux * 13 + uy * 6,
-    y: tip.y - uy * 13 - ux * 6,
-  }
+  const value = edge.value
   return (
-    <g>
-      <line
-        x1={start.x}
-        y1={start.y}
-        x2={lineEnd.x}
-        y2={lineEnd.y}
-        stroke={color}
-        strokeWidth={2.5}
-      />
-      <polygon
-        points={`${tip.x},${tip.y} ${left.x},${left.y} ${right.x},${right.y}`}
-        fill={color}
-      />
-    </g>
+    <path
+      d={edge.path}
+      fill="none"
+      stroke={edge.color}
+      strokeWidth={flowWidth(value)}
+      strokeDasharray="10 14"
+      className="flow-dash"
+      style={{ animationDuration: `${flowDuration(value).toFixed(2)}s` }}
+    />
+  )
+}
+
+// The house illustration, embedded as the reference image for the home
+// node, drawn behind the flow lines.
+function HouseImage() {
+  return (
+    <image
+      href={houseUrl}
+      x={HOUSE_IMAGE.x}
+      y={HOUSE_IMAGE.y}
+      width={HOUSE_IMAGE.width}
+      height={HOUSE_IMAGE.height}
+    />
   )
 }
 
@@ -122,8 +132,26 @@ function FlowNodeView({ node }: { node: FlowNode }) {
   )
 }
 
+// The home node: the house illustration with its consumption figure in a
+// pill below the drawing.
+function HomeLabel({ node }: { node: FlowNode }) {
+  return (
+    <div
+      className="absolute -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded-full border border-border/70 bg-card px-2.5 py-1 font-semibold leading-none tabular-nums shadow-sm"
+      style={{
+        left: `${(HOME_LABEL.x / DIAGRAM_WIDTH) * 100}%`,
+        top: `${(HOME_LABEL.y / DIAGRAM_HEIGHT) * 100}%`,
+        fontSize: "max(0.8rem, 2.2cqw)",
+      }}
+    >
+      <span className="mr-1 font-medium opacity-70">{node.name}</span>
+      {node.figure}
+    </div>
+  )
+}
+
 // An edge value chip: the watt figure in a pill with the page card
-// background so the number reads clearly against the arrow.
+// background so the number reads clearly against the flow line.
 function FlowEdgeChip({ edge }: { edge: FlowEdge }) {
   return (
     <div
@@ -135,13 +163,14 @@ function FlowEdgeChip({ edge }: { edge: FlowEdge }) {
         padding: "0.2cqw 0.7cqw",
       }}
     >
-      {edge.value} W
+      {edge.value === null ? "\u2014" : `${edge.value} W`}
     </div>
   )
 }
 
-// Renders the diagram data: arrows in SVG, nodes and value chips as
-// overlays, in an aspect-locked box that fills the widget width.
+// Renders the diagram data: the house and flow lines in SVG, nodes and
+// value chips as overlays, in an aspect-locked box that fills the widget
+// width. Chips only appear on active flows.
 function FlowDiagram({ data }: { data: FlowData }) {
   return (
     <div
@@ -158,19 +187,14 @@ function FlowDiagram({ data }: { data: FlowData }) {
         role="img"
         aria-label="Live energy flow diagram"
       >
+        <HouseImage />
         {data.edges.map((edge) => (
-          <FlowArrow
-            key={edge.key}
-            from={edge.from}
-            to={edge.to}
-            shift={edge.shift}
-            color={edge.color}
-          />
+          <FlowLine key={edge.key} edge={edge} />
         ))}
         {!data.hasFlow && (
           <text
             x={DIAGRAM_WIDTH / 2}
-            y={DIAGRAM_HEIGHT / 2 + 6}
+            y={580}
             fontSize="12"
             textAnchor="middle"
             fill="currentColor"
@@ -180,26 +204,33 @@ function FlowDiagram({ data }: { data: FlowData }) {
           </text>
         )}
       </svg>
-      {data.edges.map((edge) => (
-        <FlowEdgeChip key={edge.key} edge={edge} />
-      ))}
-      {data.nodes.map((node) => (
-        <FlowNodeView key={node.key} node={node} />
-      ))}
+      {data.edges
+        .filter((edge) => edge.active)
+        .map((edge) => (
+          <FlowEdgeChip key={edge.key} edge={edge} />
+        ))}
+      {data.nodes.map((node) =>
+        node.key === "home" ? (
+          <HomeLabel key={node.key} node={node} />
+        ) : (
+          <FlowNodeView key={node.key} node={node} />
+        )
+      )}
     </div>
   )
 }
 
 // The live energy flow widget: the flow snapshot from /api/summary drawn
-// as four nodes (Sun, Home, Grid in a row, Battery below Home) with
-// arrow value chips at the stat card value size.
+// around the house illustration - Solar top left, Battery bottom left,
+// Grid bottom right - with orthogonal animated dashed flow lines and
+// value chips at the stat card value size.
 function LiveEnergyFlow() {
   const { summary, status } = useSummary()
 
   if (status === "loading") {
     return (
       <div
-        className="min-h-72 animate-pulse rounded-lg bg-muted"
+        className="min-h-[480px] animate-pulse rounded-lg bg-muted"
         aria-hidden="true"
       />
     )
@@ -213,7 +244,7 @@ function LiveEnergyFlow() {
           Live energy flow
         </CardTitle>
         <CardDescription>
-          Power between sun, home, grid and battery
+          Power between solar, home, grid and battery
         </CardDescription>
       </CardHeader>
       <CardContent className="flex justify-center">

@@ -1,18 +1,34 @@
 import { useCallback, useEffect, useState } from "react"
+import ApplianceUsageToday from "@/components/ApplianceUsageToday"
 import BatteryPanel from "@/components/BatteryPanel"
 import DebugPage from "@/components/DebugPage"
 import LiveEnergyFlow from "@/components/LiveEnergyFlow"
 import PricesWidget from "@/components/PricesWidget"
 import StatsHeader from "@/components/StatsHeader"
 import SummaryInsight from "@/components/SummaryInsight"
+import UsagePage from "@/components/UsagePage"
 import WeatherForecast from "@/components/WeatherForecast"
 import { RefreshCw } from "lucide-react"
 import { fetchDailyInsight, type DailyInsight } from "@/lib/api"
 import { greetingFor } from "@/lib/time"
 import { Button } from "@/components/ui/button"
 
+type View = "dashboard" | "debug" | "usage"
+
+// Hash-based view switch, mirroring the existing #debug page: no router,
+// just the URL hash.
+function viewFromHash(): View {
+  if (window.location.hash === "#debug") {
+    return "debug"
+  }
+  if (window.location.hash === "#usage") {
+    return "usage"
+  }
+  return "dashboard"
+}
+
 function App() {
-  const [debug, setDebug] = useState(() => window.location.hash === "#debug")
+  const [view, setView] = useState<View>(() => viewFromHash())
   // Ticks once a minute so the greeting follows the local time of day.
   const [nowTick, setNowTick] = useState(() => Date.now())
   const [insight, setInsight] = useState<DailyInsight | null>(null)
@@ -41,7 +57,7 @@ function App() {
   }, [loadInsight])
 
   useEffect(() => {
-    const onHashChange = () => setDebug(window.location.hash === "#debug")
+    const onHashChange = () => setView(viewFromHash())
     window.addEventListener("hashchange", onHashChange)
     return () => window.removeEventListener("hashchange", onHashChange)
   }, [])
@@ -51,8 +67,12 @@ function App() {
     return () => clearInterval(id)
   }, [])
 
-  if (debug) {
+  if (view === "debug") {
     return <DebugPage />
+  }
+
+  if (view === "usage") {
+    return <UsagePage />
   }
 
   return (
@@ -92,7 +112,15 @@ function App() {
             <Button
               variant="outline"
               onClick={() => {
-                window.location.hash = "#debug"
+                window.location.hash = "usage"
+              }}
+            >
+              Usage
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => {
+                window.location.hash = "debug"
               }}
             >
               API debug
@@ -108,11 +136,13 @@ function App() {
         </div>
 
         <div className="grid gap-6 lg:grid-cols-2">
-          <BatteryPanel />
           <LiveEnergyFlow />
-          <WeatherForecast />
           <PricesWidget />
+          <WeatherForecast />
+          <BatteryPanel />
         </div>
+
+        <ApplianceUsageToday />
       </main>
     </div>
   )

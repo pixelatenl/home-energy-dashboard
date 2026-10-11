@@ -248,9 +248,19 @@ function PriceBars({
           />
         )}
       </div>
-      <div className="mt-1 flex justify-between text-xs text-muted-foreground tabular-nums">
+      <div className="relative mt-1 h-4 text-xs text-muted-foreground tabular-nums">
         {[0, 3, 6, 9, 12, 15, 18, 21].map((hour) => (
-          <span key={hour}>{String(hour).padStart(2, "0")}</span>
+          <span
+            key={hour}
+            className={
+              hour === 0
+                ? "absolute top-0"
+                : "absolute top-0 -translate-x-1/2"
+            }
+            style={{ left: `${(hour / 24) * 100}%` }}
+          >
+            {String(hour).padStart(2, "0")}
+          </span>
         ))}
       </div>
     </div>
@@ -428,7 +438,9 @@ function PricesWidget() {
               </div>
             </div>
 
-            <div>
+            {/* Same muted strip background as the battery and forecast
+                charts. */}
+            <div className="rounded-xl bg-muted/30 p-4">
               <PriceBars
                 hours={todayHours}
                 average={summary.today.average}
@@ -444,7 +456,7 @@ function PricesWidget() {
               )}
             </div>
 
-            <div className="rounded-xl border p-4">
+            <div className="rounded-xl bg-muted/30 p-4">
               <div className="flex items-center justify-between">
                 <span className="text-sm font-medium">Tomorrow</span>
                 {summary.tomorrow.available && tomorrowHours.length > 0 && (
@@ -465,7 +477,7 @@ function PricesWidget() {
                     scale={sharedScale}
                   />
                 ) : (
-                  <div className="flex h-16 items-center justify-center rounded-lg bg-muted/50 text-sm text-muted-foreground">
+                  <div className="flex h-16 items-center justify-center rounded-lg bg-card text-sm text-muted-foreground">
                     Tomorrow&rsquo;s prices are published around 18:00
                   </div>
                 )}

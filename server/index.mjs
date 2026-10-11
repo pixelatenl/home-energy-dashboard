@@ -22,6 +22,9 @@ import {
 } from "./weather.mjs";
 import { dailyForecast } from "./solar.mjs";
 import {
+  applianceHourly,
+  applianceLatestPower,
+  applianceTotals,
   currentMeasurements,
   dailyTotals,
   getDebugTimeData,
@@ -30,7 +33,11 @@ import {
   hourlyTotals,
   listEntities,
 } from "./queries.mjs";
-import { localDateKey, resolvedTimezone } from "./time.mjs";
+import {
+  localDateKey,
+  localDayStartUtcMs,
+  resolvedTimezone,
+} from "./time.mjs";
 
 // Dedicated port for the API server, distinct from the Vite dev server
 // (5173) so the two never race for the same port regardless of start order.
@@ -233,6 +240,97 @@ app.get(
   "/api/summary",
   asyncHandler(async (_req, res) => {
     res.json({ ...(await getSummary()), server_version: SERVER_VERSION });
+  })
+);
+
+// Appliance disaggregation ranges: today starts at local midnight; the
+// longer ranges are rolling windows back from now.
+const APPLIANCE_RANGES = new Set(["today", "week", "month", "year"]);
+const APPLIANCE_RANGE_DAYS = { week: 7, month: 30, year: 365 };
+
+// Strips the trailing sensor-kind word from an entity name so the energy
+// and power sensors of one plug map to the same appliance
+// ("Dishwasher energy" / "Dishwasher power" -> "Dishwasher").
+const applianceName = (raw) =>
+  raw.replace(/\s+(energy|power)$/i, "").trim();
+
+app.get(
+  "/api/appliances",
+  asyncHandler(async (req, res) => {
+    const range = req.query.range ?? "today";
+    if (typeof range !== "string" || !APPLIANCE_RANGES.has(range)) {
+      return res.status(400).json({
+        error: "range must be one of today, week, month, year",
+      });
+    }
+    const nowMs = Date.now();
+    const fromMs =
+      range === "today"
+        ? localDayStartUtcMs(localDateKey(new Date()))
+        : nowMs - APPLIANCE_RANGE_DAYS[range] * 24 * 60 * 60 * 1000;
+    const [totalsRows, powerRows, hourlyRows] = await Promise.all([
+      applianceTotals(fromMs),
+      applianceLatestPower(),
+      // The hourly breakdown exists only for the today view.
+      range === "today" ? applianceHourly(fromMs) : Promise.resolve([]),
+    ]);
+    // One entry per appliance, from the energy totals, with the latest
+    // power sample attached by normalized name; a plug that has power
+    // samples but no energy deltas yet still appears with null kWh.
+    const appliances = new Map();
+    for (const row of totalsRows) {
+      const name = applianceName(row.appliance);
+      appliances.set(name, {
+        appliance: name,
+        kwh: Math.round(Number(row.kwh) * 100) / 100,
+        cost_eur:
+          row.cost_eur === null
+            ? null
+            : Math.round(Number(row.cost_eur) * 100) / 100,
+        power_w: null,
+        power_ts: null,
+      });
+    }
+    for (const row of powerRows) {
+      const name = applianceName(row.appliance);
+      const entry =
+        appliances.get(name) ?? {
+          appliance: name,
+          kwh: null,
+          cost_eur: null,
+          power_w: null,
+          power_ts: null,
+        };
+      entry.power_w = Math.round(Number(row.power_w));
+      entry.power_ts = row.power_ts.toISOString();
+      appliances.set(name, entry);
+    }
+    let plugKwh = 0;
+    let plugCost = 0;
+    for (const entry of appliances.values()) {
+      if (entry.kwh !== null) {
+        plugKwh += entry.kwh;
+      }
+      if (entry.cost_eur !== null) {
+        plugCost += entry.cost_eur;
+      }
+    }
+    res.json({
+      range,
+      from: new Date(fromMs).toISOString(),
+      appliances: [...appliances.values()].sort((a, b) =>
+        a.appliance.localeCompare(b.appliance)
+      ),
+      hourly: hourlyRows.map((row) => ({
+        hour: row.hour.toISOString(),
+        appliance: applianceName(row.appliance),
+        kwh: Math.round(Number(row.kwh) * 1000) / 1000,
+      })),
+      totals: {
+        plug_kwh: Math.round(plugKwh * 100) / 100,
+        plug_cost: Math.round(plugCost * 100) / 100,
+      },
+    });
   })
 );
 

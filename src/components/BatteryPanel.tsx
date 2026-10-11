@@ -106,7 +106,7 @@ function FlowTooltip({
 // Dot chips matching the chart elements in FlowChart.
 function FlowLegend() {
   return (
-    <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+    <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
       <span className="flex items-center gap-1.5">
         <span
           className="size-3 rounded-full"
@@ -135,7 +135,9 @@ function FlowLegend() {
 // Combined chart for one day: charging kWh as green bars upward from the
 // zero line, discharge kWh as amber bars downward, and the SOC series as a
 // line on a secondary 0-100 percent axis. Hovering a slot shows a tooltip
-// with that hour's flow and SOC.
+// with that hour's flow and SOC. Rendered in the same muted strip
+// background and height as the 5 day forecast's hourly chart, so the
+// charts and AI insights align across the two cards.
 function FlowChart({
   flow,
   socSeries,
@@ -192,7 +194,9 @@ function FlowChart({
       : null
 
   return (
-    <div>
+    // Same strip background and height as the 5 day forecast's hourly
+    // chart, so the two cards' charts and AI insights align.
+    <div className="rounded-xl bg-muted/30 p-4 h-64">
       <div
         className="relative"
         onMouseMove={handleMouseMove}
@@ -201,7 +205,7 @@ function FlowChart({
         <svg
           viewBox={`0 0 ${width} ${height}`}
           preserveAspectRatio="none"
-          className="h-36 w-full"
+          className="h-44 w-full"
           role="img"
           aria-label="Hourly battery charge and discharge with state of charge"
         >
@@ -277,13 +281,19 @@ function FlowChart({
           />
         )}
       </div>
-      <div className="mt-1 flex items-center justify-between text-xs text-muted-foreground tabular-nums">
-        <span className="flex items-center gap-1">
+      <div className="relative mt-1 h-4 text-xs text-muted-foreground tabular-nums">
+        <span className="absolute top-0 flex items-center gap-1">
           <Clock className="size-3" aria-hidden="true" />
           00
         </span>
         {[3, 6, 9, 12, 15, 18, 21].map((hour) => (
-          <span key={hour}>{String(hour).padStart(2, "0")}</span>
+          <span
+            key={hour}
+            className="absolute top-0 -translate-x-1/2"
+            style={{ left: `${(hour / 24) * 100}%` }}
+          >
+            {String(hour).padStart(2, "0")}
+          </span>
         ))}
       </div>
       <FlowLegend />
@@ -325,7 +335,7 @@ function BatteryPanel() {
       : state === "discharging" && powerW !== null
         ? `Discharging ${powerW} W`
         : "Idle"
-  const caption = `${soc === null ? "\u2014" : soc}% - ${statePowerText}`
+  const caption = `Status: ${statePowerText}`
   const estimateText = summary.battery_full_in_min
     ? `Full in about ${formatMinutes(summary.battery_full_in_min)}`
     : summary.battery_empty_in_min
@@ -351,14 +361,16 @@ function BatteryPanel() {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-[13rem_12rem_1fr]">
+        {/* Min height matches the 5 day forecast's day selector row, so
+            the charts and the AI insights align across the two cards. */}
+        <div className="grid min-h-48 items-start gap-6 md:grid-cols-[13rem_1fr]">
           <div className="space-y-3">
             <BatteryGauge soc={soc} color={color} />
             <p
               className="text-sm font-medium tabular-nums"
               style={{ color }}
             >
-              {caption}
+              {caption}{" "}
             </p>
             {estimateText && (
               <p className="text-xs text-muted-foreground tabular-nums">
@@ -381,25 +393,25 @@ function BatteryPanel() {
             </p>
             <div className="mt-3 space-y-1">
               <p className="text-xs text-muted-foreground tabular-nums">
-                This week {formatKwh(summary.week.battery_charged_kwh)} in /{" "}
-                {formatKwh(summary.week.battery_discharged_kwh)} out
+                This week {formatKwh(summary.week.battery_charged_kwh)} in
+                / {formatKwh(summary.week.battery_discharged_kwh)} out
               </p>
               <p className="text-xs text-muted-foreground tabular-nums">
-                This month {formatKwh(summary.month.battery_charged_kwh)} in /{" "}
-                {formatKwh(summary.month.battery_discharged_kwh)} out
+                This month {formatKwh(summary.month.battery_charged_kwh)}{" "}
+                in / {formatKwh(summary.month.battery_discharged_kwh)} out
               </p>
             </div>
           </div>
+        </div>
 
-          <div>
-            {hasChartData ? (
-              <FlowChart flow={flow} socSeries={socSeries} />
-            ) : (
-              <div className="flex h-36 items-center justify-center rounded-lg bg-muted/50 text-sm text-muted-foreground">
-                No battery data for today yet
-              </div>
-            )}
-          </div>
+        <div>
+          {hasChartData ? (
+            <FlowChart flow={flow} socSeries={socSeries} />
+          ) : (
+            <div className="flex h-64 items-center justify-center rounded-xl bg-muted/30 text-sm text-muted-foreground">
+              No battery data for today yet
+            </div>
+          )}
         </div>
 
         <AIContextBox {...batteryContext} />

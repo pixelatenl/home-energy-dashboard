@@ -24,6 +24,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
   Card,
+  CardAction,
   CardContent,
   CardDescription,
   CardHeader,
@@ -451,7 +452,10 @@ function DayCard({
   const Icon = WEATHER_ICONS[day.weather_code] ?? Cloud
   const isToday = day.date === todayInAmsterdam()
   // Cumulative actual production so far against the full-day forecast;
-  // the share is capped at 100 percent. Hidden before any production today.
+  // the share is capped at 100 percent. Hidden before any production
+  // today. Today shows a compact actual/estimate notation on one line so
+  // its card keeps the same height as the other day cards (the full
+  // sentence is in the hover tooltip).
   const actual = isToday ? (day.actual_today_kwh ?? null) : null
   const share =
     actual !== null && day.estimated_kwh > 0
@@ -474,21 +478,25 @@ function DayCard({
         {Math.round(day.temp_max)} / {Math.round(day.temp_min)} &deg;C
       </span>
       <ScoreRing score={day.solar_score} />
-      <span className="text-xs text-muted-foreground tabular-nums">
-        {day.estimated_kwh} kWh
+      <span
+        className="whitespace-nowrap text-xs text-muted-foreground tabular-nums"
+        title={
+          actual !== null
+            ? `${actual.toFixed(1)} kWh so far (${share}%) of the ${day.estimated_kwh} kWh estimated`
+            : undefined
+        }
+      >
+        {actual !== null
+          ? `${actual.toFixed(1)}/${day.estimated_kwh} kWh`
+          : `${day.estimated_kwh} kWh`}
       </span>
       {actual !== null && (
-        <>
-          <span className="text-xs text-muted-foreground tabular-nums">
-            {actual.toFixed(1)} kWh so far ({share}%)
-          </span>
-          <span className="h-1 w-full overflow-hidden rounded-full bg-muted">
-            <span
-              className="block h-full rounded-full bg-[#f59e0b]"
-              style={{ width: `${share}%` }}
-            />
-          </span>
-        </>
+        <span className="h-1 w-full overflow-hidden rounded-full bg-muted">
+          <span
+            className="block h-full rounded-full bg-[#f59e0b]"
+            style={{ width: `${share}%` }}
+          />
+        </span>
       )}
     </button>
   )
@@ -620,17 +628,15 @@ function WeatherForecast() {
   return (
     <Card>
       <CardHeader>
-        <div className="flex items-center justify-between gap-4">
-          <div>
-            <CardTitle className="flex items-center gap-2">
-              <Sun className="size-5" aria-hidden="true" />
-              5 day solar forecast
-            </CardTitle>
-            <CardDescription>
-              Solar score and estimated PV yield for the coming days
-            </CardDescription>
-          </div>
-          {hourly && selectedDate && (
+        <CardTitle className="flex items-center gap-2">
+          <Sun className="size-5" aria-hidden="true" />
+          5 day solar forecast
+        </CardTitle>
+        <CardDescription>
+          Solar score and estimated PV yield for the coming days
+        </CardDescription>
+        {hourly && selectedDate && (
+          <CardAction>
             <Badge variant="outline" className="tabular-nums">
               PV{" "}
               {(
@@ -641,8 +647,8 @@ function WeatherForecast() {
               ).toFixed(1)}{" "}
               kWh estimated
             </Badge>
-          )}
-        </div>
+          </CardAction>
+        )}
       </CardHeader>
       <CardContent className="space-y-4">
         {dailyStatus === "error" && (

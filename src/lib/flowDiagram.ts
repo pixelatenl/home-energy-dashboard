@@ -14,25 +14,91 @@ export const NEUTRAL_COLOR = "#94a3b8"
 // Diagram geometry in design units. The diagram box is aspect-locked and
 // scales with the widget width; overlays position by percentage so the
 // geometry here is resolution independent.
-export const DIAGRAM_WIDTH = 780
-export const DIAGRAM_HEIGHT = 350
+export const DIAGRAM_WIDTH = 900
+export const DIAGRAM_HEIGHT = 680
 export const NODE_RADIUS = 58
-export const ARROW_TRIM = NODE_RADIUS + 8
 
 export interface Point {
   x: number
   y: number
 }
 
-// Node centers: Sun left, Home center, Grid right, Battery below Home.
+// Node centers: Solar top left, Battery bottom left, Home (the house
+// illustration) in the middle, Grid bottom right. Grid sits low so its
+// line to the battery runs beneath the house instead of through it.
 export const FLOW_POSITIONS: Record<
   "sun" | "home" | "battery" | "grid",
   Point
 > = {
-  sun: { x: 85, y: 95 },
-  home: { x: 390, y: 95 },
-  grid: { x: 695, y: 95 },
-  battery: { x: 390, y: 270 },
+  sun: { x: 85, y: 130 },
+  home: { x: 450, y: 300 },
+  grid: { x: 830, y: 600 },
+  battery: { x: 85, y: 600 },
+}
+
+// The house illustration (src/house.png), embedded inside the diagram SVG
+// so the flows share its coordinate space. The square canvas of the
+// source image maps onto this box.
+export const HOUSE_IMAGE = {
+  x: 250,
+  y: 100,
+  width: 400,
+  height: 400,
+}
+// Where the home value pill sits: below the illustration.
+export const HOME_LABEL: Point = { x: 450, y: 548 }
+
+// Fixed flow anchors: points on the node circles' rims and on the house
+// illustration. The orthogonal routes are built from these exact
+// coordinates, so every corner is exactly 90 degrees.
+const ANCHORS = {
+  solarRight: { x: 143, y: 130 },
+  solarBottom: { x: 85, y: 188 },
+  batteryTop: { x: 85, y: 542 },
+  batteryRight: { x: 143, y: 600 },
+  gridTop: { x: 830, y: 542 },
+  gridLeft: { x: 772, y: 600 },
+  gridUpperLeft: { x: 789, y: 559 },
+  houseRoof: { x: 380, y: 175 },
+  houseWallLeft: { x: 340, y: 350 },
+  houseWallRightUpper: { x: 620, y: 320 },
+  houseWallRightLower: { x: 620, y: 400 },
+}
+
+// Orthogonal flow routes: fixed waypoint lists where consecutive points
+// share their x or y coordinate, so every segment is horizontal or
+// vertical and every corner is exactly 90 degrees.
+const ROUTES = {
+  // Solar feeds the roof: right from the node, then down onto the roof.
+  solar_to_home: [
+    ANCHORS.solarRight,
+    { x: 380, y: ANCHORS.solarRight.y },
+    ANCHORS.houseRoof,
+  ],
+  // Solar can charge the battery straight down the left side.
+  solar_to_battery: [ANCHORS.solarBottom, ANCHORS.batteryTop],
+  // Grid import: up from the grid node, then left into the house.
+  grid_to_home: [
+    ANCHORS.gridTop,
+    { x: ANCHORS.gridTop.x, y: ANCHORS.houseWallRightUpper.y },
+    ANCHORS.houseWallRightUpper,
+  ],
+  // Grid export: out of the house, down, then right into the grid node.
+  home_to_grid: [
+    ANCHORS.houseWallRightLower,
+    { x: 710, y: ANCHORS.houseWallRightLower.y },
+    { x: 710, y: ANCHORS.gridUpperLeft.y },
+    ANCHORS.gridUpperLeft,
+  ],
+  // Grid share of the battery charging runs beneath the house.
+  grid_to_battery: [ANCHORS.gridLeft, ANCHORS.batteryRight],
+  // The battery feeds the house: up from the node, then right into the
+  // wall.
+  battery_to_home: [
+    ANCHORS.batteryRight,
+    { x: ANCHORS.batteryRight.x, y: ANCHORS.houseWallLeft.y },
+    ANCHORS.houseWallLeft,
+  ],
 }
 
 export type IconComponent = ComponentType<{
@@ -41,7 +107,7 @@ export type IconComponent = ComponentType<{
 }>
 
 // A diagram node: position, caption and live figure. Pure data; the render
-// pass turns it into a circle, a future illustrated house view can do more.
+// pass turns it into a circle, or the house illustration for the home.
 export interface FlowNode {
   key: string
   x: number
@@ -54,17 +120,48 @@ export interface FlowNode {
   borderColor?: string
 }
 
-// A diagram edge: an arrow between two nodes with its watt value and the
-// position of its value chip. The shift moves the line perpendicular to
-// its axis so opposite arrows on the same segment do not overlap.
+// A diagram flow: an SVG path made exclusively of straight segments with
+// corners at exactly 45 or 90 degrees, its total length (for dash
+// sizing), the live watt value, whether the flow is strong enough to
+// animate (above the 25 W threshold) and the position of its value chip.
+// Zero and unknown (null) flows render as faint static lines.
 export interface FlowEdge {
   key: string
-  from: Point
-  to: Point
-  shift: number
-  value: number
+  path: string
+  length: number
+  value: number | null
+  active: boolean
   color: string
   chip: Point
+}
+
+// SVG path data for a polyline through the points, plus its total length.
+function polyline(points: Point[]): { path: string; length: number } {
+  let length = 0
+  let previous = points[0]
+  const parts = [`M ${previous.x} ${previous.y}`]
+  for (const point of points.slice(1)) {
+    parts.push(`L ${point.x} ${point.y}`)
+    length += Math.hypot(point.x - previous.x, point.y - previous.y)
+    previous = point
+  }
+  return { path: parts.join(" "), length }
+}
+
+// The midpoint of a route's longest segment, where its value chip sits
+// on its own straight run.
+function longestSegmentMidpoint(points: Point[]): Point {
+  let best = { x: 0, y: 0, length: -1 }
+  for (let i = 1; i < points.length; i++) {
+    const from = points[i - 1]
+    const to = points[i]
+    // Segments are axis-aligned, so the Manhattan length is exact.
+    const length = Math.abs(to.x - from.x) + Math.abs(to.y - from.y)
+    if (length > best.length) {
+      best = { x: (from.x + to.x) / 2, y: (from.y + to.y) / 2, length }
+    }
+  }
+  return { x: best.x, y: best.y }
 }
 
 export interface FlowData {
@@ -76,11 +173,11 @@ export interface FlowData {
 const isShown = (value: number | null): value is number =>
   value !== null && value > 25
 
-// Data logic: turns the flow snapshot into nodes and edges. The arrow
-// mappings are strict so nothing is double-counted and every arrow hides
-// below 25 W. The Home figure is the sum of the visible incoming arrows,
-// so the diagram always balances visually regardless of the individual
-// series' refresh moments.
+// Data logic: turns the flow snapshot into nodes and flows. The flow
+// mappings are strict so nothing is double-counted; a flow at or below
+// 25 W (or unknown) renders as a faint static line. The Home figure is
+// the sum of the active incoming flows, so the diagram always balances
+// visually regardless of the individual series' refresh moments.
 export function buildFlowDiagram(summary: SummaryData | null): FlowData {
   const flow = summary?.flow
   const solarToBattery = flow?.battery_solar_in_w ?? null
@@ -103,74 +200,53 @@ export function buildFlowDiagram(summary: SummaryData | null): FlowData {
   const batteryToHome = flow?.battery_discharge_w ?? null
 
   const edges: FlowEdge[] = []
-  if (isShown(solarToHome)) {
+  // Adds a flow from its fixed orthogonal route; every connection always
+  // renders, as an animated dash line above the 25 W threshold and as a
+  // faint static line at or near zero.
+  const addFlow = (
+    key: string,
+    route: Point[],
+    value: number | null,
+    color: string
+  ) => {
+    const { path, length } = polyline(route)
     edges.push({
-      key: "solar_to_home",
-      from: FLOW_POSITIONS.sun,
-      to: FLOW_POSITIONS.home,
-      shift: 0,
-      value: solarToHome,
-      color: SOLAR_COLOR,
-      chip: { x: 237.5, y: 95 },
+      key,
+      path,
+      length,
+      value,
+      active: isShown(value),
+      color,
+      chip: longestSegmentMidpoint(route),
     })
   }
-  if (isShown(solarToBattery)) {
-    edges.push({
-      key: "solar_to_battery",
-      from: FLOW_POSITIONS.sun,
-      to: FLOW_POSITIONS.battery,
-      shift: 0,
-      value: solarToBattery,
-      color: SOLAR_COLOR,
-      chip: { x: 237.5, y: 182.5 },
-    })
-  }
-  if (isShown(gridToHome)) {
-    edges.push({
-      key: "grid_to_home",
-      from: FLOW_POSITIONS.grid,
-      to: FLOW_POSITIONS.home,
-      // Drawn below the axis so it stays clear of the export arrow.
-      shift: 32,
-      value: gridToHome,
-      color: GRID_IMPORT_COLOR,
-      chip: { x: 542.5, y: 127 },
-    })
-  }
-  if (isShown(homeToGrid)) {
-    edges.push({
-      key: "home_to_grid",
-      from: FLOW_POSITIONS.home,
-      to: FLOW_POSITIONS.grid,
-      // Drawn above the axis so it stays clear of the import arrow.
-      shift: -26,
-      value: homeToGrid,
-      color: GRID_EXPORT_COLOR,
-      chip: { x: 542.5, y: 69 },
-    })
-  }
-  if (isShown(gridToBattery)) {
-    edges.push({
-      key: "grid_to_battery",
-      from: FLOW_POSITIONS.grid,
-      to: FLOW_POSITIONS.battery,
-      shift: 0,
-      value: gridToBattery,
-      color: CHARGING_COLOR,
-      chip: { x: 542.5, y: 182.5 },
-    })
-  }
-  if (isShown(batteryToHome)) {
-    edges.push({
-      key: "battery_to_home",
-      from: FLOW_POSITIONS.battery,
-      to: FLOW_POSITIONS.home,
-      shift: 0,
-      value: batteryToHome,
-      color: DISCHARGING_COLOR,
-      chip: { x: 390, y: 182 },
-    })
-  }
+  // Solar feeds the roof and, in parallel, can charge the battery
+  // straight down the left side.
+  addFlow("solar_to_home", ROUTES.solar_to_home, solarToHome, SOLAR_COLOR)
+  addFlow(
+    "solar_to_battery",
+    ROUTES.solar_to_battery,
+    solarToBattery,
+    SOLAR_COLOR
+  )
+  // Import arrives at the upper right of the house, export leaves from
+  // the lower right; the two orthogonal routes never cross.
+  addFlow("grid_to_home", ROUTES.grid_to_home, gridToHome, GRID_IMPORT_COLOR)
+  addFlow("home_to_grid", ROUTES.home_to_grid, homeToGrid, GRID_EXPORT_COLOR)
+  // Grid share of the battery charging runs beneath the house.
+  addFlow(
+    "grid_to_battery",
+    ROUTES.grid_to_battery,
+    gridToBattery,
+    CHARGING_COLOR
+  )
+  // The battery feeds the house from the lower left.
+  addFlow(
+    "battery_to_home",
+    ROUTES.battery_to_home,
+    batteryToHome,
+    DISCHARGING_COLOR
+  )
 
   // Balance rule: Home shows the sum of the visible incoming arrows, so
   // node and arrow figures can never contradict each other.
@@ -207,7 +283,7 @@ export function buildFlowDiagram(summary: SummaryData | null): FlowData {
     {
       key: "sun",
       ...FLOW_POSITIONS.sun,
-      name: "Sun",
+      name: "Solar",
       figure: flow?.pv_w != null ? `${flow.pv_w} W` : "\u2014",
       icon: Sun,
       iconColor: SOLAR_COLOR,
@@ -241,5 +317,5 @@ export function buildFlowDiagram(summary: SummaryData | null): FlowData {
     },
   ]
 
-  return { nodes, edges, hasFlow: edges.length > 0 }
+  return { nodes, edges, hasFlow: edges.some((edge) => edge.active) }
 }

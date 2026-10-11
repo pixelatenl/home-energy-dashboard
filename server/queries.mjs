@@ -666,3 +666,67 @@ export async function getSummary() {
   summaryCache = { fetchedAt: Date.now(), data };
   return data;
 }
+
+// --- Appliance disaggregation (smart plugs) ---
+
+// Appliances are the smart plugs the ingest pipeline tags with
+// domain = 'plug': per plug one energy counter (is_counter = true, kWh in
+// energy_delta) and one power sensor (is_counter = false, W in
+// measurement). Only the plug domain is ever queried here; other domains
+// must not appear in appliance results.
+
+// Appliance energy totals since a start timestamp, grouped by entity
+// name, with the cost at the hourly dynamic price. Hours without a price
+// row count toward kWh but not toward cost (the LEFT JOIN nulls the
+// product, which sum skips).
+export async function applianceTotals(startMs) {
+  const { rows } = await pool.query(
+    `SELECT e.name AS appliance,
+            sum(d.delta_kwh) AS kwh,
+            sum(d.delta_kwh * p.price_eur) AS cost_eur
+       FROM energy_delta d
+       JOIN entity e ON e.id = d.entity_id
+       LEFT JOIN price p ON p.ts = date_trunc('hour', d.ts)
+      WHERE e.is_counter = true
+        AND e.domain = 'plug'
+        AND d.ts >= $1::timestamptz
+      GROUP BY e.name
+      ORDER BY e.name`,
+    [new Date(startMs)]
+  );
+  return rows;
+}
+
+// Hourly kWh per appliance since a start timestamp, for the today view.
+export async function applianceHourly(startMs) {
+  const { rows } = await pool.query(
+    `SELECT date_trunc('hour', d.ts) AS hour,
+            e.name AS appliance,
+            sum(d.delta_kwh) AS kwh
+       FROM energy_delta d
+       JOIN entity e ON e.id = d.entity_id
+      WHERE e.is_counter = true
+        AND e.domain = 'plug'
+        AND d.ts >= $1::timestamptz
+      GROUP BY date_trunc('hour', d.ts), e.name
+      ORDER BY date_trunc('hour', d.ts), e.name`,
+    [new Date(startMs)]
+  );
+  return rows;
+}
+
+// Latest power sample per appliance from the plug power sensors.
+export async function applianceLatestPower() {
+  const { rows } = await pool.query(
+    `SELECT DISTINCT ON (e.name)
+            e.name AS appliance,
+            m.value AS power_w,
+            m.ts AS power_ts
+       FROM measurement m
+       JOIN entity e ON e.id = m.entity_id
+      WHERE e.domain = 'plug'
+        AND e.is_counter = false
+      ORDER BY e.name, m.ts DESC`
+  );
+  return rows;
+}

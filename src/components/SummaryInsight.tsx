@@ -31,7 +31,7 @@ const TYPE_ICONS: Record<InsightActionType, typeof Zap> = {
 const FIGURE_PATTERN =
   /(€\s?\d[\d.,]*(?:\s?EUR\/kWh)?|EUR\s?\d[\d.,]*(?:\s?EUR\/kWh)?|\d[\d.,]*\s?(?:kWh|EUR\/kWh|kWp|kW|Wh|W|%))/g
 
-// Renders the summary paragraph with its key figures as chips.
+// Renders the summary paragraph with its key figures in bold.
 function SummaryText({ text }: { text: string }) {
   const nodes: ReactNode[] = []
   let last = 0
@@ -41,10 +41,7 @@ function SummaryText({ text }: { text: string }) {
       nodes.push(text.slice(last, start))
     }
     nodes.push(
-      <span
-        key={start}
-        className="mx-0.5 inline-block rounded-full bg-white/70 px-1.5 py-0.5 text-xs font-semibold leading-normal tabular-nums dark:bg-white/10"
-      >
+      <span key={start} className="font-semibold tabular-nums">
         {match[0].trim()}
       </span>
     )
