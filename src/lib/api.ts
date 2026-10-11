@@ -104,6 +104,15 @@ export interface BatterySocPoint {
   soc_pct: number
 }
 
+export interface FlowSnapshot {
+  pv_w: number | null
+  grid_import_w: number | null
+  grid_export_w: number | null
+  battery_solar_in_w: number | null
+  battery_charge_w: number | null
+  battery_discharge_w: number | null
+}
+
 export interface SummaryData {
   today: RangeMetrics
   week: RangeMetrics
@@ -117,6 +126,9 @@ export interface SummaryData {
   battery_flow_hourly: BatteryFlowHour[]
   battery_soc_series: BatterySocPoint[]
   server_version: string
+  flow: FlowSnapshot
+  battery_full_in_min?: number
+  battery_empty_in_min?: number
 }
 
 export function fetchSummary(): Promise<SummaryData> {
@@ -134,31 +146,38 @@ export interface DailyInsight {
   summary: string | null
   actions: InsightAction[]
   generated_at: string | null
+  as_of: string | null
+  stale: boolean
   error: string | null
 }
 
-let dailyInsightCache: { fetchedAt: number; promise: Promise<DailyInsight> } | null =
-  null
+let dailyInsightInFlight: Promise<DailyInsight> | null = null
 
-// Fetches the daily AI insight at most once every 30 minutes. The promise
-// itself is cached, so concurrent consumers (header and summary box) share
-// one request; failures reset the cache so a remount can retry.
-export function fetchDailyInsight(): Promise<DailyInsight> {
-  if (
-    dailyInsightCache &&
-    Date.now() - dailyInsightCache.fetchedAt < CONTEXT_CACHE_MS
-  ) {
-    return dailyInsightCache.promise
+// Fetches the daily AI insight. There is no long-lived client cache:
+// refreshes ride the 5-minute panel cycle, and concurrent callers share
+// one in-flight request. With force, a fresh request is made that asks the
+// server to regenerate once regardless of the context signature.
+export function fetchDailyInsight(force = false): Promise<DailyInsight> {
+  if (!force && dailyInsightInFlight) {
+    return dailyInsightInFlight
   }
-  const promise = getJson<DailyInsight>("/api/insight/daily").catch(
+  const promise = getJson<DailyInsight>(
+    withParams("/api/insight/daily", force ? { force: "1" } : {})
+  ).then(
+    (value) => {
+      if (dailyInsightInFlight === promise) {
+        dailyInsightInFlight = null
+      }
+      return value
+    },
     (error) => {
-      if (dailyInsightCache?.promise === promise) {
-        dailyInsightCache = null
+      if (dailyInsightInFlight === promise) {
+        dailyInsightInFlight = null
       }
       throw error
     }
   )
-  dailyInsightCache = { fetchedAt: Date.now(), promise }
+  dailyInsightInFlight = promise
   return promise
 }
 
@@ -171,6 +190,9 @@ export interface WeatherDay {
   estimated_kwh: number
   sunrise: string
   sunset: string
+  // Present on today's row only: actual PV production so far, null before
+  // any production today.
+  actual_today_kwh?: number | null
 }
 
 export interface WeatherHour {

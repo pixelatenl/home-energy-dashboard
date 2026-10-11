@@ -136,6 +136,25 @@ const BATTERY_MEASUREMENT_ENTITIES = {
     "sensor.anker_solix_solarbank_max_ac_009_battery_discharging_power",
 };
 
+// Instantaneous power sensors for the live energy flow diagram.
+const FLOW_MEASUREMENT_ENTITIES = {
+  pvPower: "sensor.zonneplan_one_optimized_last_measured_value",
+  gridImportPower: "sensor.connect_energiemeter_electricity_consumption",
+  gridExportPower: "sensor.connect_energiemeter_electricity_production",
+  batterySolarInPower:
+    "sensor.anker_solix_solarbank_max_ac_009_battery_solar_power",
+};
+
+// Live flow fields and the entity role backing each.
+const FLOW_FIELDS = {
+  pv_w: "pvPower",
+  grid_import_w: "gridImportPower",
+  grid_export_w: "gridExportPower",
+  battery_solar_in_w: "batterySolarInPower",
+  battery_charge_w: "batteryChargingPower",
+  battery_discharge_w: "batteryDischargingPower",
+};
+
 // Roles backed by energy_delta rows.
 const COUNTER_ROLES = [
   "import",
@@ -145,7 +164,11 @@ const COUNTER_ROLES = [
   "batteryDischarging",
 ];
 
-const ROLE_NAMES = { ...COUNTER_ENTITIES, ...BATTERY_MEASUREMENT_ENTITIES };
+const ROLE_NAMES = {
+  ...COUNTER_ENTITIES,
+  ...BATTERY_MEASUREMENT_ENTITIES,
+  ...FLOW_MEASUREMENT_ENTITIES,
+};
 
 let entityMapCache = null; // { fetchedAt, map }
 const ENTITY_MAP_TTL_MS = 10 * 60 * 1000;
@@ -283,6 +306,64 @@ export async function getRangeMetrics(startMs, endMs) {
   return metrics;
 }
 
+// --- Solar forecast accuracy and persistence ---
+
+// Actual PV production so far today, from the same aggregation the summary
+// uses for its pv-today figure: the PV energy counter's energy_delta sum
+// within the local-day window. Null before any production today.
+export async function getPvTodayKwh() {
+  const map = await resolveEntityMap();
+  if (map.pv === null) {
+    return null;
+  }
+  const startMs = localDayStartUtcMs(localDateKey(new Date()));
+  const { rows } = await pool.query(
+    `SELECT sum(delta_kwh) AS kwh
+       FROM energy_delta
+      WHERE entity_id = $1
+        AND ts >= $2::timestamptz
+        AND ts < $3::timestamptz`,
+    [map.pv, new Date(startMs), new Date()]
+  );
+  const kwh = rows[0]?.kwh;
+  return kwh === null || kwh === undefined ? null : round2(kwh);
+}
+
+// The solar_forecast_daily table accumulates one forecast value per date so
+// the future solar page can compare forecasts against actual yields;
+// actual production for any date is already recoverable from energy_delta.
+// Created on first use.
+let solarForecastTableReady = null;
+function ensureSolarForecastTable() {
+  if (solarForecastTableReady === null) {
+    solarForecastTableReady = pool
+      .query(
+        `CREATE TABLE IF NOT EXISTS solar_forecast_daily (
+           date date PRIMARY KEY,
+           forecast_kwh double precision NOT NULL,
+           created_at timestamptz NOT NULL DEFAULT now(),
+           updated_at timestamptz NOT NULL DEFAULT now()
+         )`
+      )
+      .then(() => {});
+  }
+  return solarForecastTableReady;
+}
+
+// One row per date, append-only per date with an updated_at column: the
+// forecast value is refreshed whenever it changes, never deleted.
+export async function upsertSolarForecastDaily(dateKey, forecastKwh) {
+  await ensureSolarForecastTable();
+  await pool.query(
+    `INSERT INTO solar_forecast_daily (date, forecast_kwh)
+     VALUES ($1, $2)
+     ON CONFLICT (date) DO UPDATE
+       SET forecast_kwh = EXCLUDED.forecast_kwh,
+           updated_at = now()`,
+    [dateKey, forecastKwh]
+  );
+}
+
 // Battery snapshot: the latest SOC percent, the net power (latest charging
 // power minus latest discharging power, valid only while both rows are
 // less than an hour old), the age of the most recent power row, today's
@@ -399,6 +480,44 @@ async function getBatterySnapshot(map, startMs, endMs) {
   return snapshot;
 }
 
+// Live energy flow: the latest value of each power series in the
+// measurement table, only while its most recent row is less than one hour
+// old; otherwise null.
+async function getFlowSnapshot(map) {
+  const flow = {
+    pv_w: null,
+    grid_import_w: null,
+    grid_export_w: null,
+    battery_solar_in_w: null,
+    battery_charge_w: null,
+    battery_discharge_w: null,
+  };
+  const roleByField = Object.fromEntries(
+    Object.entries(FLOW_FIELDS).map(([field, role]) => [field, map[role]])
+  );
+  const ids = Object.values(roleByField).filter(
+    (id) => Number.isFinite(id) && id !== null
+  );
+  if (ids.length === 0) {
+    return flow;
+  }
+  const { rows } = await pool.query(
+    `SELECT DISTINCT ON (entity_id) entity_id, ts, value
+       FROM measurement
+      WHERE entity_id = ANY($1::smallint[])
+      ORDER BY entity_id, ts DESC`,
+    [ids]
+  );
+  const latest = new Map(rows.map((row) => [row.entity_id, row]));
+  const isFresh = (row) =>
+    row !== undefined && Date.now() - row.ts.getTime() <= 60 * 60 * 1000;
+  for (const [field, id] of Object.entries(roleByField)) {
+    const row = id !== null ? latest.get(id) : undefined;
+    flow[field] = row !== undefined && isFresh(row) ? Math.round(row.value) : null;
+  }
+  return flow;
+}
+
 // Battery state from net power with a 25 W deadband. Stale or absent power
 // readings read as idle (the sensors stop updating around zero load);
 // 'unavailable' when the battery entities have no data.
@@ -432,12 +551,13 @@ export async function getSummary() {
   const endMs = now.getTime();
   const todayKey = localDateKey(now);
   const todayStartMs = localDayStartUtcMs(todayKey);
-  const [today, week, month, dataEntities, battery] = await Promise.all([
+  const [today, week, month, dataEntities, battery, flow] = await Promise.all([
     getRangeMetrics(todayStartMs, endMs),
     getRangeMetrics(localDayStartUtcMs(mondayDateKey(now)), endMs),
     getRangeMetrics(localDayStartUtcMs(`${todayKey.slice(0, 7)}-01`), endMs),
     counterEntitiesWithData(counterIds),
     getBatterySnapshot(map, todayStartMs, endMs),
+    getFlowSnapshot(map),
   ]);
   const batteryAvailable =
     map.batteryCharging !== null &&
@@ -456,7 +576,31 @@ export async function getSummary() {
     battery_state: batteryStateFromPower(batteryAvailable, battery.powerW),
     battery_flow_hourly: battery.flowHourly,
     battery_soc_series: battery.socSeries,
+    flow,
   };
+  // Capacity-based estimates, only when the capacity is configured and the
+  // battery is charging or discharging above the 25 W deadband; rounded to
+  // the nearest 5 minutes.
+  const capacityKwh = Number.parseFloat(
+    process.env.BATTERY_CAPACITY_KWH ?? ""
+  );
+  const capacitySet = Number.isFinite(capacityKwh) && capacityKwh > 0;
+  if (capacitySet && battery.socPct !== null && battery.powerW !== null) {
+    if (battery.powerW > 25) {
+      const minutes =
+        (((100 - battery.socPct) / 100) * capacityKwh * 60) /
+        (battery.powerW / 1000);
+      data.battery_full_in_min = Math.round(minutes / 5) * 5;
+    } else if (battery.powerW < -25) {
+      const minutes =
+        ((battery.socPct / 100) * capacityKwh * 60) /
+        (-battery.powerW / 1000);
+      data.battery_empty_in_min = Math.round(minutes / 5) * 5;
+    }
+  }
+  // Timestamp of this summary cache fill; the AI insight reports it as
+  // the moment its text is based on.
+  data.summary_as_of = new Date().toISOString();
   summaryCache = { fetchedAt: Date.now(), data };
   return data;
 }

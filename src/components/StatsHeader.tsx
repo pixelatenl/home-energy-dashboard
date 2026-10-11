@@ -1,12 +1,11 @@
-import { useCallback, useEffect, useState } from "react"
-import BatteryCard from "@/components/BatteryCard"
+import { Info } from "lucide-react"
 import {
   Card,
   CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
-import { fetchSummary, type SummaryData } from "@/lib/api"
+import { useSummary } from "@/lib/useSummary"
 
 function formatKwh(value: number | null): string {
   return value === null ? "\u2014" : `${value.toFixed(1)} kWh`
@@ -16,110 +15,130 @@ function formatEur(value: number | null): string {
   return value === null ? "\u2014" : `\u20ac${value.toFixed(2)}`
 }
 
+// Corner info tooltip: shows on hover, keyboard focus and tap.
+function InfoTooltip({ text }: { text: string }) {
+  return (
+    <button
+      type="button"
+      aria-label={text}
+      className="group relative rounded-full text-muted-foreground outline-none"
+    >
+      <Info className="size-3.5" aria-hidden="true" />
+      <span
+        aria-hidden="true"
+        className="pointer-events-none absolute right-0 top-full z-20 mt-1 w-56 rounded-lg border bg-popover p-2 text-left text-xs leading-relaxed text-popover-foreground opacity-0 shadow-md transition-opacity group-hover:opacity-100 group-focus:opacity-100"
+      >
+        {text}
+      </span>
+    </button>
+  )
+}
+
 interface MetricSpec {
   label: string
+  tooltip: string
   hint?: string
   today: string
   week: string
   month: string
 }
 
-// The four headline metric cards: today's value large, this week and this
-// month smaller beneath. Missing data shows a dash.
+const PLACEHOLDER = "\u2014"
+
+// The four headline metric cards in a 2x2 grid: today's value large, this
+// week and this month smaller beneath. Missing data shows a dash. The
+// battery lives in the live energy flow widget and the battery panel.
 function StatsHeader() {
-  const [summary, setSummary] = useState<SummaryData | null>(null)
-  const [status, setStatus] = useState<"loading" | "ok" | "error">("loading")
-
-  const load = useCallback(async () => {
-    try {
-      const data = await fetchSummary()
-      setSummary(data)
-      setStatus("ok")
-    } catch {
-      setStatus("error")
-    }
-  }, [])
-
-  useEffect(() => {
-    // eslint-disable-next-line react/set-state-in-effect
-    void load()
-  }, [load])
-
-  // Keep the stats current while the page stays open; the server caches
-  // the summary for 5 minutes, so this matches its refresh cadence.
-  useEffect(() => {
-    const id = setInterval(() => void load(), 5 * 60_000)
-    return () => clearInterval(id)
-  }, [load])
+  const { summary, status } = useSummary()
 
   const metrics: MetricSpec[] = summary
     ? [
         {
-          label: "Net usage",
+          label: "From grid",
+          tooltip: "Electricity imported from the grid",
           today: formatKwh(summary.today.import_kwh),
           week: formatKwh(summary.week.import_kwh),
           month: formatKwh(summary.month.import_kwh),
         },
         {
-          label: "Total usage",
+          label: "Home usage",
+          tooltip:
+            "Household consumption: from grid + direct solar use - export - energy stored in the battery",
           hint: summary.pv_available ? undefined : "excl. solar",
           today: formatKwh(summary.today.total_usage_kwh),
           week: formatKwh(summary.week.total_usage_kwh),
           month: formatKwh(summary.month.total_usage_kwh),
         },
         {
-          label: "Back delivery",
+          label: "To grid",
+          tooltip: "Electricity exported back to the grid",
           today: formatKwh(summary.today.export_kwh),
           week: formatKwh(summary.week.export_kwh),
           month: formatKwh(summary.month.export_kwh),
         },
         {
           label: "Energy cost",
+          tooltip:
+            "Cost of imported electricity at hourly dynamic prices",
           today: formatEur(summary.today.cost_eur),
           week: formatEur(summary.week.cost_eur),
           month: formatEur(summary.month.cost_eur),
         },
       ]
     : [
-        { label: "Net usage", today: "\u2014", week: "\u2014", month: "\u2014" },
-        { label: "Total usage", today: "\u2014", week: "\u2014", month: "\u2014" },
         {
-          label: "Back delivery",
-          today: "\u2014",
-          week: "\u2014",
-          month: "\u2014",
+          label: "From grid",
+          tooltip: "Electricity imported from the grid",
+          today: PLACEHOLDER,
+          week: PLACEHOLDER,
+          month: PLACEHOLDER,
         },
-        { label: "Energy cost", today: "\u2014", week: "\u2014", month: "\u2014" },
+        {
+          label: "Home usage",
+          tooltip:
+            "Household consumption: from grid + direct solar use - export - energy stored in the battery",
+          today: PLACEHOLDER,
+          week: PLACEHOLDER,
+          month: PLACEHOLDER,
+        },
+        {
+          label: "To grid",
+          tooltip: "Electricity exported back to the grid",
+          today: PLACEHOLDER,
+          week: PLACEHOLDER,
+          month: PLACEHOLDER,
+        },
+        {
+          label: "Energy cost",
+          tooltip: "Cost of imported electricity at hourly dynamic prices",
+          today: PLACEHOLDER,
+          week: PLACEHOLDER,
+          month: PLACEHOLDER,
+        },
       ]
 
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-      {status === "loading" ? (
-        <>
-          {metrics.map((metric) => (
+      {status === "loading"
+        ? metrics.map((metric) => (
             <div
               key={metric.label}
               className="min-h-32 animate-pulse rounded-lg bg-muted"
               aria-hidden="true"
             />
-          ))}
-          <div
-            key="battery"
-            className="min-h-32 animate-pulse rounded-lg bg-muted"
-            aria-hidden="true"
-          />
-        </>
-      ) : (
-        <>
-          {metrics.map((metric) => (
-            <Card key={metric.label} className="min-h-32">
+          ))
+        : metrics.map((metric) => (
+            <Card key={metric.label} className="relative min-h-32">
+              <div className="absolute right-3 top-3">
+                <InfoTooltip text={metric.tooltip} />
+              </div>
               <CardHeader>
                 <CardDescription>
                   {metric.label}
                   {metric.hint && (
                     <span
                       className="italic"
-                      title="No PV entity found; total usage is grid import only"
+                      title="No PV entity found; home usage is grid import only"
                     >
                       {" "}
                       ({metric.hint})
@@ -135,9 +154,6 @@ function StatsHeader() {
               </CardHeader>
             </Card>
           ))}
-          {summary && <BatteryCard summary={summary} />}
-        </>
-      )}
     </div>
   )
 }

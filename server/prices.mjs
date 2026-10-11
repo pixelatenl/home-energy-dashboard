@@ -221,11 +221,15 @@ export async function getCheapestBlock(size) {
 // come from the cached merged curve.
 export async function getPriceContextData() {
   const summary = await getPriceSummary(HORIZON_DAYS);
-  const { entries, todayKey, currentKey } = await loadCurve(HORIZON_DAYS);
+  const { entries, todayKey, tomorrowKey, currentKey } =
+    await loadCurve(HORIZON_DAYS);
   const currentEntry =
     entries.find((entry) => entry.key === currentKey) ?? null;
   const todayEntries = entries.filter(
     (entry) => entry.key.slice(0, 10) === todayKey
+  );
+  const tomorrowEntries = entries.filter(
+    (entry) => entry.key.slice(0, 10) === tomorrowKey
   );
   let peak = null;
   for (const entry of todayEntries) {
@@ -233,6 +237,12 @@ export async function getPriceContextData() {
       peak = { hour: Number(entry.key.slice(11, 13)), price: entry.price };
     }
   }
+  // Highest price among the remaining hours, for the AI context signature.
+  const remainingEntries = entries.filter((entry) => entry.key >= currentKey);
+  const remainingMaxPrice =
+    remainingEntries.length > 0
+      ? Math.max(...remainingEntries.map((entry) => entry.price))
+      : null;
   return {
     priceData: {
       current_price: currentEntry ? currentEntry.price : null,
@@ -250,5 +260,12 @@ export async function getPriceContextData() {
       },
     },
     cheapestBlock: summary.cheapest_block,
+    // Per-day cheapest windows and the remaining peak, for the AI insight
+    // context signature.
+    cheapestByDay: {
+      today: cheapestFromEntries(todayEntries, currentKey, 3),
+      tomorrow: cheapestFromEntries(tomorrowEntries, currentKey, 3),
+    },
+    remainingMaxPrice,
   };
 }

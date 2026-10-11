@@ -16,9 +16,9 @@ import {
 } from "./prices.mjs";
 import {
   WeatherUpstreamError,
-  weatherDaily,
   weatherHourly,
 } from "./weather.mjs";
+import { dailyForecast } from "./solar.mjs";
 import {
   currentMeasurements,
   dailyTotals,
@@ -189,7 +189,7 @@ app.get(
     // weather data is unavailable rather than failing the request.
     let solarDaily = null;
     try {
-      const daily = await weatherDaily(5);
+      const daily = await dailyForecast(5);
       const todayKey = localDateKey(new Date());
       const todayEntry = daily.find((day) => day.date === todayKey) ?? null;
       const hourlyResult = await weatherHourly(todayKey);
@@ -220,12 +220,14 @@ app.get(
 
 app.get(
   "/api/insight/daily",
-  asyncHandler(async (_req, res) => {
+  asyncHandler(async (req, res) => {
+    // force regenerates once regardless of the context signature.
+    const force = req.query.force === "1" || req.query.force === "true";
     const summary = await getSummary();
     // Optional sources; omitted from the context when unavailable.
     let daily = null;
     try {
-      daily = await weatherDaily(5);
+      daily = await dailyForecast(5);
     } catch {
       daily = null;
     }
@@ -235,12 +237,16 @@ app.get(
     } catch {
       priceParts = null;
     }
-    const result = await getSummaryInsight(summary, daily, priceParts);
+    const result = await getSummaryInsight(summary, daily, priceParts, {
+      force,
+    });
     res.json({
       one_liner: result.oneLiner,
       summary: result.summary,
       actions: result.actions,
       generated_at: result.generatedAt,
+      as_of: result.asOf,
+      stale: result.stale,
       error: result.error,
     });
   })
@@ -250,15 +256,21 @@ app.get(
   "/api/battery/context",
   asyncHandler(async (_req, res) => {
     const summary = await getSummary();
-    // Optional solar forecast; omitted when the weather data is
-    // unavailable rather than failing the request.
+    // Optional solar forecast and price context; omitted when the source
+    // is unavailable rather than failing the request.
     let daily = null;
     try {
-      daily = await weatherDaily(5);
+      daily = await dailyForecast(5);
     } catch {
       daily = null;
     }
-    const result = await getBatteryContext(summary, daily);
+    let priceParts = null;
+    try {
+      priceParts = await getPriceContextData();
+    } catch {
+      priceParts = null;
+    }
+    const result = await getBatteryContext(summary, daily, priceParts);
     res.json({
       text: result.text,
       generated_at: result.generatedAt,
@@ -284,7 +296,7 @@ app.get(
       }
       days = parsed;
     }
-    res.json(await weatherDaily(days));
+    res.json(await dailyForecast(days));
   })
 );
 
@@ -311,7 +323,7 @@ app.get(
 app.get(
   "/api/weather/context",
   asyncHandler(async (_req, res) => {
-    const daily = await weatherDaily(5);
+    const daily = await dailyForecast(5);
     const hourlyResult =
       (await weatherHourly(localDateKey(new Date()))) ??
       { current: null, hours: [] };

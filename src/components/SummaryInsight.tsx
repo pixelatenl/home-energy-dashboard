@@ -1,40 +1,20 @@
-import { useEffect, useState } from "react"
-import { fetchDailyInsight, type InsightAction } from "@/lib/api"
 import { Sparkles } from "lucide-react"
+import type { DailyInsight } from "@/lib/api"
 
-interface InsightState {
-  summary: string | null
-  actions: InsightAction[]
-  loading: boolean
-}
-
-// Daily AI insight at the top of the page: the summary text followed by up
+// Daily AI summary at the top of the page: the summary text followed by up
 // to three recommended actions with their time window in bold. Uses the
 // same box styling as the widget AI insight boxes; renders nothing when no
-// summary is available.
-function SummaryInsight() {
-  const [state, setState] = useState<InsightState>({
-    summary: null,
-    actions: [],
-    loading: true,
-  })
-
-  useEffect(() => {
-    // eslint-disable-next-line react/set-state-in-effect
-    void fetchDailyInsight()
-      .then((value) =>
-        setState({
-          summary: value.summary,
-          actions: value.actions ?? [],
-          loading: false,
-        })
-      )
-      .catch(() =>
-        setState({ summary: null, actions: [], loading: false })
-      )
-  }, [])
-
-  if (state.loading) {
+// summary is available. The data is owned by App, which refreshes it on
+// the 5-minute panel cycle; the as_of stamp and force-refresh control live
+// in the page header.
+function SummaryInsight({
+  insight,
+  loading,
+}: {
+  insight: DailyInsight | null
+  loading: boolean
+}) {
+  if (loading) {
     return (
       <div
         className="h-full min-h-36 animate-pulse rounded-xl border border-sky-200/80 bg-sky-100/70 dark:border-sky-900 dark:bg-sky-950/40"
@@ -43,7 +23,7 @@ function SummaryInsight() {
     )
   }
 
-  if (!state.summary) {
+  if (!insight?.summary) {
     return null
   }
 
@@ -53,10 +33,15 @@ function SummaryInsight() {
         <Sparkles className="size-3.5" aria-hidden="true" />
         AI summary
       </span>
-      <p className="mt-2 text-sm leading-relaxed">{state.summary}</p>
-      {state.actions.length > 0 && (
+      <p className="mt-2 text-sm leading-relaxed">{insight.summary}</p>
+      {insight.stale && (
+        <p className="mt-2 text-xs text-muted-foreground">
+          Live updates paused (daily AI limit reached); the insight may lag
+        </p>
+      )}
+      {insight.actions.length > 0 && (
         <ul className="mt-3 space-y-1.5">
-          {state.actions.map((action, index) => (
+          {insight.actions.map((action, index) => (
             <li key={index} className="text-sm leading-relaxed">
               <span className="font-semibold tabular-nums">
                 {action.window}
@@ -64,7 +49,10 @@ function SummaryInsight() {
               {" \u2014 "}
               {action.text}
               {action.reason && (
-                <span className="text-muted-foreground"> ({action.reason})</span>
+                <span className="text-muted-foreground">
+                  {" "}
+                  ({action.reason})
+                </span>
               )}
             </li>
           ))}

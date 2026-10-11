@@ -363,6 +363,14 @@ function DayCard({
   onSelect: (date: string) => void
 }) {
   const Icon = WEATHER_ICONS[day.weather_code] ?? Cloud
+  const isToday = day.date === todayInAmsterdam()
+  // Cumulative actual production so far against the full-day forecast;
+  // the share is capped at 100 percent. Hidden before any production today.
+  const actual = isToday ? (day.actual_today_kwh ?? null) : null
+  const share =
+    actual !== null && day.estimated_kwh > 0
+      ? Math.min(100, Math.round((actual / day.estimated_kwh) * 100))
+      : 0
   return (
     <button
       type="button"
@@ -372,9 +380,7 @@ function DayCard({
         selected ? "border-primary ring-2 ring-ring/50" : "border-border"
       }`}
     >
-      <span className="text-sm font-medium">
-        {day.date === todayInAmsterdam() ? "Today" : weekdayName(day.date)}
-      </span>
+      <span className="text-sm font-medium">{isToday ? "Today" : weekdayName(day.date)}</span>
       <Icon className="size-6" />
       <span className="text-xs text-muted-foreground tabular-nums">
         {Math.round(day.temp_max)} / {Math.round(day.temp_min)} &deg;C
@@ -383,6 +389,19 @@ function DayCard({
       <span className="text-xs text-muted-foreground tabular-nums">
         {day.estimated_kwh} kWh
       </span>
+      {actual !== null && (
+        <>
+          <span className="text-xs text-muted-foreground tabular-nums">
+            {actual.toFixed(1)} kWh so far ({share}%)
+          </span>
+          <span className="h-1 w-full overflow-hidden rounded-full bg-muted">
+            <span
+              className="block h-full rounded-full bg-[#f59e0b]"
+              style={{ width: `${share}%` }}
+            />
+          </span>
+        </>
+      )}
     </button>
   )
 }

@@ -1,12 +1,6 @@
-import {
-  useCallback,
-  useEffect,
-  useState,
-  type MouseEvent,
-} from "react"
+import { useState, type MouseEvent } from "react"
 import AIContextBox from "@/components/AIContextBox"
 import { BatteryCharging, Clock } from "lucide-react"
-import { Badge } from "@/components/ui/badge"
 import {
   Card,
   CardContent,
@@ -16,19 +10,60 @@ import {
 } from "@/components/ui/card"
 import {
   fetchBatteryContext,
-  fetchSummary,
   type BatteryFlowHour,
   type BatterySocPoint,
-  type SummaryData,
 } from "@/lib/api"
 import { useAiContext } from "@/lib/useAiContext"
+import { useSummary } from "@/lib/useSummary"
 import { localHourFractionOf, localHourOf } from "@/lib/time"
 
 const CHARGING_COLOR = "hsl(140 70% 45%)"
 const DISCHARGING_COLOR = "#f59e0b"
+const NEUTRAL_COLOR = "#94a3b8"
+// The SOC line uses the violet accent.
+const SOC_COLOR = "#8b5cf6"
 
 function formatKwh(value: number | null): string {
   return value === null ? "\u2014" : `${value.toFixed(1)} kWh`
+}
+
+function formatMinutes(minutes: number): string {
+  if (minutes < 60) {
+    return `${minutes} min`
+  }
+  const hours = Math.floor(minutes / 60)
+  const rest = minutes % 60
+  return rest > 0 ? `${hours} h ${rest} min` : `${hours} h`
+}
+
+// Horizontal battery shape: a rounded-rectangle outline with a terminal
+// nub on the right, the inner fill width equal to the state of charge and
+// the percentage inside; outline and fill are colored by state.
+function BatteryGauge({ soc, color }: { soc: number | null; color: string }) {
+  const pct = Math.min(Math.max(soc ?? 0, 0), 100)
+  return (
+    <div className="flex items-center">
+      <div
+        className="relative flex h-14 w-28 items-center overflow-hidden rounded-lg border-2 p-1"
+        style={{ borderColor: color }}
+        role="img"
+        aria-label={`Battery at ${soc ?? "unknown"} percent`}
+      >
+        <div
+          className="h-full rounded-[4px] transition-[width]"
+          style={{ width: `${pct}%`, backgroundColor: color }}
+        />
+        <span className="absolute inset-0 flex items-center justify-center text-lg font-semibold tabular-nums text-foreground">
+          {soc === null ? "\u2014" : `${soc}%`}
+        </span>
+      </div>
+      <div
+        className="ml-0.5 h-5 w-1.5 rounded-r-sm border-2 border-l-0"
+        style={{ borderColor: color }}
+        aria-hidden="true"
+      />
+    </div>
+  )
 }
 
 // Floating tooltip shown while hovering an hour slot of the chart.
@@ -68,36 +103,30 @@ function FlowTooltip({
   )
 }
 
-// Color swatches matching the chart elements in FlowChart.
+// Dot chips matching the chart elements in FlowChart.
 function FlowLegend() {
   return (
     <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
       <span className="flex items-center gap-1.5">
         <span
-          className="size-3 rounded-sm"
+          className="size-3 rounded-full"
           style={{ backgroundColor: CHARGING_COLOR, opacity: 0.8 }}
         />
-        Charged kWh (up)
+        Charged kWh
       </span>
       <span className="flex items-center gap-1.5">
         <span
-          className="size-3 rounded-sm"
+          className="size-3 rounded-full"
           style={{ backgroundColor: DISCHARGING_COLOR, opacity: 0.8 }}
         />
-        Discharged kWh (down)
+        Discharged kWh
       </span>
       <span className="flex items-center gap-1.5">
-        <svg width="16" height="8" aria-hidden="true">
-          <line
-            x1="1"
-            y1="4"
-            x2="15"
-            y2="4"
-            stroke="currentColor"
-            strokeWidth={2}
-          />
-        </svg>
-        State of charge (%)
+        <span
+          className="size-3 rounded-full"
+          style={{ backgroundColor: SOC_COLOR, opacity: 0.8 }}
+        />
+        State of charge
       </span>
     </div>
   )
@@ -153,6 +182,14 @@ function FlowChart({
         `${(localHourFractionOf(point.ts) / 24) * width},${socY(point.soc_pct)}`
     )
     .join(" ")
+  // Subtle accent fill under the SOC line, closed at the chart bottom.
+  const socAreaPoints =
+    socSeries.length > 1
+      ? `${(localHourFractionOf(socSeries[0].ts) / 24) * width},${bottom} ${socPoints} ${
+          (localHourFractionOf(socSeries[socSeries.length - 1].ts) / 24) *
+          width
+        },${bottom}`
+      : null
 
   return (
     <div>
@@ -168,6 +205,9 @@ function FlowChart({
           role="img"
           aria-label="Hourly battery charge and discharge with state of charge"
         >
+          {socAreaPoints && (
+            <polygon points={socAreaPoints} fill={SOC_COLOR} opacity={0.08} />
+          )}
           {flow.map((hour) => {
             const hourSlot = localHourOf(hour.ts)
             return (
@@ -221,7 +261,7 @@ function FlowChart({
             <polyline
               points={socPoints}
               fill="none"
-              stroke="currentColor"
+              stroke={SOC_COLOR}
               strokeWidth={2}
               vectorEffect="non-scaling-stroke"
             />
@@ -255,30 +295,7 @@ function FlowChart({
 // the battery is unavailable.
 function BatteryPanel() {
   const batteryContext = useAiContext(fetchBatteryContext)
-  const [summary, setSummary] = useState<SummaryData | null>(null)
-  const [status, setStatus] = useState<"loading" | "ok" | "error">("loading")
-
-  const load = useCallback(async () => {
-    try {
-      const data = await fetchSummary()
-      setSummary(data)
-      setStatus("ok")
-    } catch {
-      setStatus("error")
-    }
-  }, [])
-
-  useEffect(() => {
-    // eslint-disable-next-line react/set-state-in-effect
-    void load()
-  }, [load])
-
-  // Keep the battery state current while the page stays open; the server
-  // caches the summary for 5 minutes, so this matches its refresh cadence.
-  useEffect(() => {
-    const id = setInterval(() => void load(), 5 * 60_000)
-    return () => clearInterval(id)
-  }, [load])
+  const { summary, status } = useSummary()
 
   if (status === "loading") {
     return (
@@ -301,19 +318,19 @@ function BatteryPanel() {
       ? CHARGING_COLOR
       : state === "discharging"
         ? DISCHARGING_COLOR
-        : "#94a3b8"
-  const stateText =
-    state === "charging"
-      ? "Charging"
-      : state === "discharging"
-        ? "Discharging"
+        : NEUTRAL_COLOR
+  const statePowerText =
+    state === "charging" && powerW !== null
+      ? `Charging +${powerW} W`
+      : state === "discharging" && powerW !== null
+        ? `Discharging ${powerW} W`
         : "Idle"
-  const powerText =
-    powerW === null
-      ? "Idle"
-      : `${powerW > 0 ? "+" : ""}${powerW} W ${
-          powerW > 0 ? "charging" : powerW < 0 ? "discharging" : "idle"
-        }`
+  const caption = `${soc === null ? "\u2014" : soc}% - ${statePowerText}`
+  const estimateText = summary.battery_full_in_min
+    ? `Full in about ${formatMinutes(summary.battery_full_in_min)}`
+    : summary.battery_empty_in_min
+      ? `Empty in about ${formatMinutes(summary.battery_empty_in_min)}`
+      : null
   const today = summary.today
   const netKwh =
     (today.battery_charged_kwh ?? 0) - (today.battery_discharged_kwh ?? 0)
@@ -334,33 +351,20 @@ function BatteryPanel() {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="grid gap-6 md:grid-cols-[15rem_13rem_1fr]">
+        <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-[13rem_12rem_1fr]">
           <div className="space-y-3">
-            <div className="flex items-center gap-4">
-              <div className="flex items-center">
-                <div className="h-10 w-20 rounded-lg border-2 p-1">
-                  <div
-                    className="h-full rounded-[4px] transition-[width]"
-                    style={{
-                      width: `${Math.min(Math.max(soc ?? 0, 0), 100)}%`,
-                      backgroundColor: color,
-                    }}
-                  />
-                </div>
-                <div
-                  className="ml-0.5 h-4 w-1.5 rounded-r-sm"
-                  style={{ backgroundColor: color, opacity: 0.6 }}
-                  aria-hidden="true"
-                />
-              </div>
-              <p className="text-4xl font-semibold tabular-nums">
-                {soc === null ? "\u2014" : `${soc}%`}
+            <BatteryGauge soc={soc} color={color} />
+            <p
+              className="text-sm font-medium tabular-nums"
+              style={{ color }}
+            >
+              {caption}
+            </p>
+            {estimateText && (
+              <p className="text-xs text-muted-foreground tabular-nums">
+                {estimateText}
               </p>
-            </div>
-            <Badge variant="outline" style={{ color }}>
-              {stateText}
-            </Badge>
-            <p className="text-sm tabular-nums">{powerText}</p>
+            )}
           </div>
 
           <div>

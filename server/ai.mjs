@@ -4,7 +4,11 @@
 // daily call cap. The API key is read from the environment and never
 // logged.
 
-import { localDateKey, localHourLabel } from "./time.mjs";
+import {
+  localDateKey,
+  localHourKey,
+  localHourLabel,
+} from "./time.mjs";
 
 const MISTRAL_URL = "https://api.mistral.ai/v1/chat/completions";
 const MISTRAL_MODEL = "mistral-small-latest";
@@ -359,8 +363,9 @@ export async function getPriceContext(priceData, cheapestBlock, solarDaily) {
 }
 
 // Compact battery context for the model: the snapshot, the range
-// throughputs and today's hourly flow; the solar forecast is optional.
-export function buildBatteryContext(summary, weatherDaily) {
+// throughputs and today's hourly flow; the solar forecast and the price
+// context are optional.
+export function buildBatteryContext(summary, weatherDaily, priceParts) {
   const context = {
     soc_pct: summary?.battery_soc_pct ?? null,
     state: summary?.battery_state ?? null,
@@ -384,11 +389,21 @@ export function buildBatteryContext(summary, weatherDaily) {
       estimated_kwh: day.estimated_kwh,
     }));
   }
+  if (priceParts?.priceData) {
+    context.current_price = priceParts.priceData.current_price ?? null;
+    context.cheapest_window = priceParts.cheapestBlock
+      ? {
+          start_hour: localHourLabel(priceParts.cheapestBlock.start),
+          end_hour: localHourLabel(priceParts.cheapestBlock.end),
+          average_price: priceParts.cheapestBlock.average_price,
+        }
+      : null;
+  }
   return context;
 }
 
-export async function getBatteryContext(summary, weatherDaily) {
-  const context = buildBatteryContext(summary, weatherDaily);
+export async function getBatteryContext(summary, weatherDaily, priceParts) {
+  const context = buildBatteryContext(summary, weatherDaily, priceParts);
   const cacheKey = hashString(JSON.stringify(context));
   return getInsight("battery", BATTERY_SYSTEM_PROMPT, cacheKey, context);
 }
@@ -396,48 +411,156 @@ export async function getBatteryContext(summary, weatherDaily) {
 // Daily summary insight: JSON with a summary text and up to three
 // recommended actions. The model output is parsed defensively; on failure
 // the caller receives { summary: null, actions: [], error }.
-export async function getSummaryInsight(summary, weatherDaily, priceParts) {
-  const context = buildSummaryContext(summary, weatherDaily, priceParts);
-  const cacheKey = hashString(JSON.stringify(context));
-  const result = await getInsight(
-    "summary",
-    SUMMARY_SYSTEM_PROMPT,
-    cacheKey,
-    context,
-    { json: true }
+// Context signature for the daily insight: the live values bucketed so
+// that trivial drift does not trigger a regeneration. The insight
+// regenerates only when this signature changes, which keeps the text in
+// step with the panels at a low call volume (roughly one regeneration per
+// hour from the current price hour changing, plus a handful per day from
+// battery state transitions and kWh buckets crossing).
+export function buildSummarySignature(summary, weatherDaily, priceParts) {
+  const bucket = (value, size) =>
+    value === null || value === undefined
+      ? "na"
+      : Math.floor(value / size).toString();
+  const parts = [];
+  // Battery: state, SOC (10%), power (500 W), today in/out (0.5 kWh).
+  parts.push(`b:${summary?.battery_state ?? "na"}`);
+  parts.push(`soc:${bucket(summary?.battery_soc_pct, 10)}`);
+  parts.push(
+    `pw:${
+      summary?.battery_power_w === null || summary?.battery_power_w === undefined
+        ? "na"
+        : Math.floor(summary.battery_power_w / 500)
+    }`
   );
-  const parsed = result.parsed;
-  const summaryText =
-    parsed && typeof parsed.summary === "string" ? parsed.summary : null;
-  const oneLiner =
-    parsed && typeof parsed.one_liner === "string" ? parsed.one_liner : null;
-  const actions =
-    parsed && Array.isArray(parsed.actions)
-      ? parsed.actions
-          .filter(
-            (action) => action && typeof action.text === "string"
-          )
-          .slice(0, 3)
-          .map((action) => ({
-            text: action.text,
-            window: typeof action.window === "string" ? action.window : "",
-            reason: typeof action.reason === "string" ? action.reason : "",
-          }))
-      : [];
-  if (result.error || !summaryText) {
+  parts.push(`bin:${bucket(summary?.today?.battery_charged_kwh, 0.5)}`);
+  parts.push(`bout:${bucket(summary?.today?.battery_discharged_kwh, 0.5)}`);
+  // Usage: from grid, home usage, to grid (0.5 kWh), cost (EUR 0.10).
+  parts.push(`fg:${bucket(summary?.today?.import_kwh, 0.5)}`);
+  parts.push(`hu:${bucket(summary?.today?.total_usage_kwh, 0.5)}`);
+  parts.push(`tg:${bucket(summary?.today?.export_kwh, 0.5)}`);
+  parts.push(`cost:${bucket(summary?.today?.cost_eur, 0.1)}`);
+  // Prices: current hour, cheapest window per day, remaining peak (0.05).
+  parts.push(`hour:${localHourKey(new Date()).slice(11, 13)}`);
+  parts.push(
+    `cw:${
+      priceParts?.cheapestByDay?.today
+        ? localHourLabel(priceParts.cheapestByDay.today.start)
+        : "na"
+    }`
+  );
+  parts.push(
+    `cwt:${
+      priceParts?.cheapestByDay?.tomorrow
+        ? localHourLabel(priceParts.cheapestByDay.tomorrow.start)
+        : "na"
+    }`
+  );
+  parts.push(`maxp:${bucket(priceParts?.remainingMaxPrice, 0.05)}`);
+  // Solar: actual and forecast production today (0.5 kWh).
+  const todayForecast = Array.isArray(weatherDaily)
+    ? (weatherDaily.find(
+        (day) => day.date === localDateKey(new Date())
+      )?.estimated_kwh ?? null)
+    : null;
+  parts.push(`pvact:${bucket(summary?.today?.pv_kwh, 0.5)}`);
+  parts.push(`pvfc:${bucket(todayForecast, 0.5)}`);
+  return parts.join("|");
+}
+
+// Records one upstream call against the shared daily cap.
+function recordApiCall() {
+  const utcDay = new Date().toISOString().slice(0, 10);
+  callsPerUtcDay.set(utcDay, (callsPerUtcDay.get(utcDay) ?? 0) + 1);
+}
+
+// Daily summary insight: cached against the bucketed context signature
+// and regenerated as soon as the signature changes (or on force), so the
+// text tracks the live panels. When the shared daily cap is exhausted (or
+// the upstream fails), the cached text is served and marked stale.
+let summaryInsightCache = null; // { signature, asOf, result }
+
+export async function getSummaryInsight(
+  summary,
+  weatherDaily,
+  priceParts,
+  options = {}
+) {
+  const force = options.force === true;
+  const signature = buildSummarySignature(summary, weatherDaily, priceParts);
+  const asOf = summary?.summary_as_of ?? null;
+  const cached = summaryInsightCache;
+
+  if (!force && cached && cached.signature === signature) {
+    return { ...cached.result, asOf: cached.asOf, stale: false, error: null };
+  }
+
+  const degrade = (error) => {
+    if (cached) {
+      return {
+        ...cached.result,
+        asOf: cached.asOf,
+        stale: true,
+        error: null,
+      };
+    }
     return {
       oneLiner: null,
       summary: null,
       actions: [],
       generatedAt: null,
-      error: result.error ?? "ai_unavailable",
+      asOf,
+      stale: error === "daily_limit_reached",
+      error,
     };
-  }
-  return {
-    oneLiner,
-    summary: summaryText,
-    actions,
-    generatedAt: result.generatedAt,
-    error: null,
   };
+
+  if (dailyLimitReached()) {
+    return degrade("daily_limit_reached");
+  }
+
+  const context = buildSummaryContext(summary, weatherDaily, priceParts);
+  let success = null;
+  for (let attempt = 0; attempt < 2 && !success; attempt++) {
+    // The JSON output is retried once on a parse failure; every attempt
+    // counts against the shared daily cap.
+    if (dailyLimitReached()) {
+      return degrade("daily_limit_reached");
+    }
+    recordApiCall();
+    try {
+      const text = await callMistral(SUMMARY_SYSTEM_PROMPT, context);
+      const parsed = parseInsightJson(text);
+      if (!parsed || typeof parsed.summary !== "string") {
+        throw new Error("model returned invalid JSON");
+      }
+      success = parsed;
+    } catch {
+      // Retried on the next loop iteration, degraded after it.
+    }
+  }
+  if (!success) {
+    return degrade("ai_unavailable");
+  }
+
+  const oneLiner =
+    typeof success.one_liner === "string" ? success.one_liner : null;
+  const actions = Array.isArray(success.actions)
+    ? success.actions
+        .filter((action) => action && typeof action.text === "string")
+        .slice(0, 3)
+        .map((action) => ({
+          text: action.text,
+          window: typeof action.window === "string" ? action.window : "",
+          reason: typeof action.reason === "string" ? action.reason : "",
+        }))
+    : [];
+  const result = {
+    oneLiner,
+    summary: success.summary,
+    actions,
+    generatedAt: new Date().toISOString(),
+  };
+  summaryInsightCache = { signature, asOf, result };
+  return { ...result, asOf, stale: false, error: null };
 }
