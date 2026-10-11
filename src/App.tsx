@@ -70,7 +70,10 @@ function App() {
               <span className="flex items-center gap-2">
                 <span className="text-xs text-muted-foreground tabular-nums">
                   Based on data from{" "}
-                  {new Date(insight.as_of).toLocaleTimeString("en-GB", {
+                  {new Date(insight.as_of).toLocaleString("en-GB", {
+                    weekday: "short",
+                    day: "numeric",
+                    month: "short",
                     hour: "2-digit",
                     minute: "2-digit",
                   })}

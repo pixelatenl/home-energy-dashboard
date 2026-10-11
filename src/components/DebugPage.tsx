@@ -13,6 +13,7 @@ import {
   fetchBatteryContext,
   fetchCheapestBlock,
   fetchDailyInsight,
+  fetchDebugTime,
   fetchPriceContext,
   fetchPrices,
   fetchSummary,
@@ -50,6 +51,14 @@ interface EndpointSpec {
 }
 
 const ENDPOINTS: EndpointSpec[] = [
+  {
+    key: "debug-time",
+    label: "GET /api/debug/time",
+    description:
+      "Server clock, timezone and the local Amsterdam buckets it computes, with raw rows",
+    params: [],
+    run: () => fetchDebugTime(),
+  },
   {
     key: "entities",
     label: "GET /api/entities",

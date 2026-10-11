@@ -14,8 +14,12 @@
 import { pool } from "./db.mjs";
 import {
   localDateKey,
+  localHourIndex,
+  localHourKey,
+  localIsoWithOffset,
   localDayStartUtcMs,
   mondayDateKey,
+  resolvedTimezone,
 } from "./time.mjs";
 
 export async function listEntities() {
@@ -362,6 +366,64 @@ export async function upsertSolarForecastDaily(dateKey, forecastKwh) {
            updated_at = now()`,
     [dateKey, forecastKwh]
   );
+}
+
+// --- Time diagnostics for the API debug panel ---
+
+// Everything needed to compare the server clock, the timezone it runs in
+// and the local Amsterdam buckets it computes, against raw stored rows.
+// Stored timestamps stay UTC; only the local_* fields convert.
+export async function getDebugTimeData() {
+  const now = new Date();
+  const currentHourStartMs =
+    localDayStartUtcMs(localDateKey(now)) + localHourIndex(now) * 3_600_000;
+  const [measurementRows, deltaRows, priceRows] = await Promise.all([
+    pool
+      .query(
+        `SELECT m.entity_id, e.ha_entity_id, m.ts, m.value, m.state
+           FROM measurement m
+           JOIN entity e ON e.id = m.entity_id
+          ORDER BY m.ts DESC
+          LIMIT 1`
+      )
+      .catch(() => ({ rows: [] })),
+    pool
+      .query(
+        `SELECT d.entity_id, e.ha_entity_id, d.ts, d.delta_kwh
+           FROM energy_delta d
+           JOIN entity e ON e.id = d.entity_id
+          ORDER BY d.ts DESC
+          LIMIT 1`
+      )
+      .catch(() => ({ rows: [] })),
+    pool
+      .query(
+        `SELECT ts, price_eur
+           FROM price
+          WHERE ts <= $1::timestamptz
+          ORDER BY ts DESC
+          LIMIT 1`,
+        [now]
+      )
+      .catch(() => ({ rows: [] })),
+  ]);
+  return {
+    // Server now, in UTC and with the Amsterdam offset, plus the timezone
+    // the process resolved to and the raw TZ variable if set.
+    server_now_utc: now.toISOString(),
+    server_now_local: localIsoWithOffset(now),
+    tz_env: process.env.TZ ?? null,
+    resolved_timezone: resolvedTimezone(),
+    // The local date and hour the server currently computes.
+    local_date: localDateKey(now),
+    local_hour: localHourKey(now),
+    current_hour_start_utc: new Date(currentHourStartMs).toISOString(),
+    // The price row the server considers current right now.
+    current_price_row: priceRows.rows[0] ?? null,
+    // One raw row per fact table, for comparing stored and displayed time.
+    latest_measurement: measurementRows.rows[0] ?? null,
+    latest_energy_delta: deltaRows.rows[0] ?? null,
+  };
 }
 
 // Battery snapshot: the latest SOC percent, the net power (latest charging

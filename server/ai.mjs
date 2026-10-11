@@ -6,8 +6,12 @@
 
 import {
   localDateKey,
+  localDayStartUtcMs,
   localHourKey,
+  localHourIndex,
   localHourLabel,
+  localIsoWithOffset,
+  nextDateKey,
 } from "./time.mjs";
 
 const MISTRAL_URL = "https://api.mistral.ai/v1/chat/completions";
@@ -33,7 +37,32 @@ const PRICE_SYSTEM_PROMPT =
   "production peak (self-consumption is free). Be concrete, no marketing " +
   "tone, no emoji.";
 
-const SUMMARY_SYSTEM_PROMPT =
+// Primary prompt: the model returns structured actions the frontend
+// renders as designed rows (day chip, window, icon, title, reason,
+// price). A window without a date is invalid.
+const SUMMARY_SYSTEM_PROMPT_STRUCTURED =
+  "You are the assistant of a home energy dashboard in the Netherlands " +
+  "with solar panels and a dynamic electricity contract. Given " +
+  "statistics, solar forecast and price data, reply in JSON only: " +
+  "{ one_liner: string (a single short sentence for the dashboard header " +
+  "about the context of the day), summary: string (2 to 3 short sentences " +
+  "about today and the coming days), actions: array of at most 3 objects " +
+  '{ date: string ("YYYY-MM-DD"), start: string ("HH:MM"), ' +
+  'end: string ("HH:MM"), type: string (one of "appliance", "battery", ' +
+  '"ev", "solar", "general"), title: string, reason: string, ' +
+  "price_eur: number or null (the average EUR/kWh in the window when " +
+  "known) } }. Use the dates from the context for the date fields. " +
+  "Recommend only windows that lie in the future relative to the current " +
+  "time. The title is a short imperative. The reason is one sentence " +
+  "containing the key number. No marketing tone, no emoji. Distinguish " +
+  "clearly between actual production today and the forecast for today; " +
+  "never present the forecast as realized production. The summary must " +
+  "open by naming today with its date, and when describing future days it " +
+  "must name them with their dates.";
+
+// Fallback prompt (prose actions) used when the structured output fails
+// validation twice, so the dashboard never breaks.
+const SUMMARY_SYSTEM_PROMPT_PROSE =
   "You are the assistant of a home energy dashboard in the Netherlands " +
   "with solar panels and a dynamic electricity contract. Given " +
   "statistics, solar forecast and price data, reply in JSON only: " +
@@ -44,7 +73,11 @@ const SUMMARY_SYSTEM_PROMPT =
   "time-specific recommended actions such as when to run appliances. No " +
   "marketing tone, no emoji. Distinguish clearly between actual production " +
   "today and the forecast for today; never present the forecast as " +
-  "realized production.";
+  "realized production. Every action must open with an explicit day label " +
+  '- "Today (Sat 11 Oct)" or "Tomorrow (Sun 12 Oct)" - directly before ' +
+  "the time window; a window without a day label is invalid and must be " +
+  "rewritten. The summary must open by naming today with its date, and " +
+  "when describing future days it must name them with their dates.";
 
 const BATTERY_SYSTEM_PROMPT =
   "You are the assistant of a home energy dashboard in the Netherlands " +
@@ -56,17 +89,7 @@ const BATTERY_SYSTEM_PROMPT =
 
 // The hourly row matching the current hour in Europe/Amsterdam.
 function currentHourConditions(todayHourly) {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Europe/Amsterdam",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    hourCycle: "h23",
-  }).formatToParts(new Date());
-  const get = (type) =>
-    parts.find((part) => part.type === type)?.value ?? "";
-  const prefix = `${get("year")}-${get("month")}-${get("day")}T${get("hour")}`;
+  const prefix = localHourKey(new Date());
   return todayHourly.find((hour) => hour.hour.startsWith(prefix)) ?? null;
 }
 
@@ -132,11 +155,25 @@ export function buildPriceContext(priceData, cheapestBlock, solarDaily) {
   return context;
 }
 
+// "Sat 11 Oct" for a local "YYYY-MM-DD" date key. Parsed and formatted at
+// UTC noon so the label never depends on the server's ambient timezone.
+function dayLabel(dateKey) {
+  return new Date(`${dateKey}T12:00:00Z`).toLocaleDateString("en-GB", {
+    timeZone: "UTC",
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+  });
+}
+
 // Compact summary statistics context for the model. weatherDaily and
 // priceParts are optional; parts whose source is unavailable are omitted.
 // priceParts has the shape returned by getPriceContextData() in prices.mjs.
 export function buildSummaryContext(summary, weatherDaily, priceParts) {
   const context = {
+    // The wall clock the model must treat as "now": only windows after
+    // this moment may be recommended.
+    now_local: localIsoWithOffset(new Date()),
     today: {
       net_usage_kwh: summary?.today?.import_kwh ?? null,
       total_usage_kwh: summary?.today?.total_usage_kwh ?? null,
@@ -147,29 +184,43 @@ export function buildSummaryContext(summary, weatherDaily, priceParts) {
     month_cost_eur: summary?.month?.cost_eur ?? null,
   };
   if (Array.isArray(weatherDaily)) {
-    // One compact line separating actual production from the forecast,
-    // e.g. "pv today: 9.5 kWh actual (forecast 15.88 kWh)".
+    // Strictly separated, explicitly dated solar facts. Today never
+    // appears in a future series; the multi-day line starts at tomorrow.
+    const todayKey = localDateKey(new Date());
+    const tomorrowKey = nextDateKey(todayKey, 1);
+    // Machine-readable dates for the structured action date fields.
+    context.today_date = todayKey;
+    context.tomorrow_date = tomorrowKey;
     const todayEntry =
-      weatherDaily.find(
-        (day) => day.date === localDateKey(new Date())
-      ) ?? null;
+      weatherDaily.find((day) => day.date === todayKey) ?? null;
     const actual = summary?.today?.pv_kwh ?? null;
     const forecast = todayEntry?.estimated_kwh ?? null;
-    if (actual !== null || forecast !== null) {
-      context.pv_today =
-        `pv today: ${actual !== null ? `${actual} kWh` : "unknown"} actual ` +
-        `(forecast ${forecast !== null ? `${forecast} kWh` : "unknown"})`;
+    if (actual !== null && forecast !== null) {
+      context.solar_today = `today ${dayLabel(todayKey)}: actual ${actual} kWh, forecast ${forecast} kWh`;
+    } else if (forecast !== null) {
+      context.solar_today = `today ${dayLabel(todayKey)}: forecast ${forecast} kWh`;
+    } else if (actual !== null) {
+      context.solar_today = `today ${dayLabel(todayKey)}: actual ${actual} kWh`;
     }
-    context.solar_forecast = weatherDaily.map((day) => ({
-      date: day.date,
-      solar_score: day.solar_score,
-      estimated_kwh: day.estimated_kwh,
-    }));
+    const tomorrowEntry =
+      weatherDaily.find((day) => day.date === tomorrowKey) ?? null;
+    if (tomorrowEntry) {
+      context.solar_tomorrow = `tomorrow ${dayLabel(tomorrowKey)}: forecast ${tomorrowEntry.estimated_kwh} kWh`;
+    }
+    const following = weatherDaily.filter((day) => day.date > tomorrowKey);
+    if (following.length > 0) {
+      context.solar_following_days =
+        "following days " +
+        following
+          .map((day) => `${dayLabel(day.date)} ${day.estimated_kwh} kWh`)
+          .join(", ");
+    }
   }
   if (priceParts?.priceData) {
     context.current_price = priceParts.priceData.current_price ?? null;
     context.cheapest_window = priceParts.cheapestBlock
       ? {
+          day: localDateKey(new Date(priceParts.cheapestBlock.start)),
           start_hour: localHourLabel(priceParts.cheapestBlock.start),
           end_hour: localHourLabel(priceParts.cheapestBlock.end),
           average_price: priceParts.cheapestBlock.average_price,
@@ -441,7 +492,7 @@ export function buildSummarySignature(summary, weatherDaily, priceParts) {
   parts.push(`tg:${bucket(summary?.today?.export_kwh, 0.5)}`);
   parts.push(`cost:${bucket(summary?.today?.cost_eur, 0.1)}`);
   // Prices: current hour, cheapest window per day, remaining peak (0.05).
-  parts.push(`hour:${localHourKey(new Date()).slice(11, 13)}`);
+  parts.push(`hour:${localHourIndex(new Date())}`);
   parts.push(
     `cw:${
       priceParts?.cheapestByDay?.today
@@ -474,6 +525,94 @@ function recordApiCall() {
   callsPerUtcDay.set(utcDay, (callsPerUtcDay.get(utcDay) ?? 0) + 1);
 }
 
+// --- Structured daily insight (summary + designed action rows) ---
+
+const ACTION_TYPES = ["appliance", "battery", "ev", "solar", "general"];
+const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+// Validates the structured insight: summary non-empty, at most three
+// actions, every field non-empty and well-formed, start before end. The
+// actions are normalized (unknown types become "general", prices become
+// number or null) and sorted ascending by date and start time. Returns
+// null when the payload does not fit the schema.
+export function validateStructuredInsight(parsed) {
+  if (!parsed || typeof parsed !== "object") {
+    return null;
+  }
+  const summary =
+    typeof parsed.summary === "string" ? parsed.summary.trim() : "";
+  if (!summary) {
+    return null;
+  }
+  const raw = Array.isArray(parsed.actions) ? parsed.actions : [];
+  if (raw.length > 3) {
+    return null;
+  }
+  const actions = [];
+  for (const action of raw) {
+    if (!action || typeof action !== "object") {
+      return null;
+    }
+    const date = String(action.date ?? "");
+    const start = String(action.start ?? "");
+    const end = String(action.end ?? "");
+    const title = String(action.title ?? "").trim();
+    const reason = String(action.reason ?? "").trim();
+    if (
+      !DATE_PATTERN.test(date) ||
+      !TIME_PATTERN.test(start) ||
+      !TIME_PATTERN.test(end) ||
+      !title ||
+      !reason
+    ) {
+      return null;
+    }
+    if (start >= end) {
+      return null;
+    }
+    actions.push({
+      date,
+      start,
+      end,
+      type: ACTION_TYPES.includes(action.type) ? action.type : "general",
+      title,
+      reason,
+      price_eur:
+        typeof action.price_eur === "number" && Number.isFinite(action.price_eur)
+          ? action.price_eur
+          : null,
+    });
+  }
+  actions.sort((a, b) =>
+    `${a.date}T${a.start}`.localeCompare(`${b.date}T${b.start}`)
+  );
+  const oneLiner =
+    typeof parsed.one_liner === "string" && parsed.one_liner.trim()
+      ? parsed.one_liner
+      : null;
+  return { oneLiner, summary, actions };
+}
+
+// Drops structured actions whose window has already ended relative to the
+// given instant (the summary as_of time, so advice for the past is never
+// shown). Legacy prose actions pass through unchanged.
+export function filterPastActions(actions, asOfMs) {
+  return actions.filter((action) => {
+    if (
+      typeof action?.date !== "string" ||
+      typeof action?.end !== "string" ||
+      !TIME_PATTERN.test(action.end)
+    ) {
+      return true; // legacy prose action
+    }
+    const [hours, minutes] = action.end.split(":").map(Number);
+    const endMs =
+      localDayStartUtcMs(action.date) + (hours * 60 + minutes) * 60_000;
+    return endMs > asOfMs;
+  });
+}
+
 // Daily summary insight: cached against the bucketed context signature
 // and regenerated as soon as the signature changes (or on force), so the
 // text tracks the live panels. When the shared daily cap is exhausted (or
@@ -489,20 +628,25 @@ export async function getSummaryInsight(
   const force = options.force === true;
   const signature = buildSummarySignature(summary, weatherDaily, priceParts);
   const asOf = summary?.summary_as_of ?? null;
+  const asOfMs = asOf !== null ? Date.parse(asOf) : Date.now();
   const cached = summaryInsightCache;
+  // Advice for the past is never shown: the filter runs on every
+  // response, including cached ones.
+  const serve = (result, stale) => ({
+    ...result,
+    actions: filterPastActions(result.actions, asOfMs),
+    asOf,
+    stale,
+    error: null,
+  });
 
   if (!force && cached && cached.signature === signature) {
-    return { ...cached.result, asOf: cached.asOf, stale: false, error: null };
+    return serve(cached.result, false);
   }
 
   const degrade = (error) => {
     if (cached) {
-      return {
-        ...cached.result,
-        asOf: cached.asOf,
-        stale: true,
-        error: null,
-      };
+      return serve(cached.result, true);
     }
     return {
       oneLiner: null,
@@ -520,47 +664,69 @@ export async function getSummaryInsight(
   }
 
   const context = buildSummaryContext(summary, weatherDaily, priceParts);
-  let success = null;
-  for (let attempt = 0; attempt < 2 && !success; attempt++) {
-    // The JSON output is retried once on a parse failure; every attempt
-    // counts against the shared daily cap.
+
+  // Structured output first; retried once on invalid JSON, then a single
+  // prose fallback call so the dashboard never breaks. Every attempt
+  // counts against the shared daily cap.
+  let result = null;
+  for (let attempt = 0; attempt < 2 && !result; attempt++) {
     if (dailyLimitReached()) {
       return degrade("daily_limit_reached");
     }
     recordApiCall();
     try {
-      const text = await callMistral(SUMMARY_SYSTEM_PROMPT, context);
+      const text = await callMistral(SUMMARY_SYSTEM_PROMPT_STRUCTURED, context);
+      const validated = validateStructuredInsight(parseInsightJson(text));
+      if (!validated) {
+        throw new Error("model returned invalid structured JSON");
+      }
+      result = {
+        oneLiner: validated.oneLiner,
+        summary: validated.summary,
+        actions: validated.actions,
+        generatedAt: new Date().toISOString(),
+      };
+    } catch (err) {
+      // Retried on the next loop iteration, prose fallback after it. The
+      // reason is logged so schema misses stay diagnosable.
+      console.warn(
+        `Structured insight validation failed: ${err?.message ?? err}`
+      );
+    }
+  }
+  if (!result && !dailyLimitReached()) {
+    recordApiCall();
+    try {
+      const text = await callMistral(SUMMARY_SYSTEM_PROMPT_PROSE, context);
       const parsed = parseInsightJson(text);
       if (!parsed || typeof parsed.summary !== "string") {
         throw new Error("model returned invalid JSON");
       }
-      success = parsed;
+      const actions = Array.isArray(parsed.actions)
+        ? parsed.actions
+            .filter((action) => action && typeof action.text === "string")
+            .slice(0, 3)
+            .map((action) => ({
+              text: action.text,
+              window: typeof action.window === "string" ? action.window : "",
+              reason: typeof action.reason === "string" ? action.reason : "",
+            }))
+        : [];
+      result = {
+        oneLiner:
+          typeof parsed.one_liner === "string" ? parsed.one_liner : null,
+        summary: parsed.summary,
+        actions,
+        generatedAt: new Date().toISOString(),
+      };
     } catch {
-      // Retried on the next loop iteration, degraded after it.
+      // Degraded below.
     }
   }
-  if (!success) {
+  if (!result) {
     return degrade("ai_unavailable");
   }
 
-  const oneLiner =
-    typeof success.one_liner === "string" ? success.one_liner : null;
-  const actions = Array.isArray(success.actions)
-    ? success.actions
-        .filter((action) => action && typeof action.text === "string")
-        .slice(0, 3)
-        .map((action) => ({
-          text: action.text,
-          window: typeof action.window === "string" ? action.window : "",
-          reason: typeof action.reason === "string" ? action.reason : "",
-        }))
-    : [];
-  const result = {
-    oneLiner,
-    summary: success.summary,
-    actions,
-    generatedAt: new Date().toISOString(),
-  };
   summaryInsightCache = { signature, asOf, result };
-  return { ...result, asOf, stale: false, error: null };
+  return serve(result, false);
 }

@@ -135,10 +135,41 @@ export function fetchSummary(): Promise<SummaryData> {
   return getJson<SummaryData>("/api/summary")
 }
 
-export interface InsightAction {
+export type InsightActionType =
+  | "appliance"
+  | "battery"
+  | "ev"
+  | "solar"
+  | "general"
+
+// Structured action: the primary insight format, rendered as a designed
+// row (day chip, window, type icon, title, reason, price tag).
+export interface StructuredInsightAction {
+  date: string // YYYY-MM-DD
+  start: string // HH:MM
+  end: string // HH:MM
+  type: InsightActionType
+  title: string
+  reason: string
+  price_eur: number | null
+}
+
+// Prose action: the fallback format when structured validation fails.
+export interface LegacyInsightAction {
   text: string
   window: string
   reason: string
+}
+
+export type InsightAction = StructuredInsightAction | LegacyInsightAction
+
+export function isStructuredAction(
+  action: InsightAction
+): action is StructuredInsightAction {
+  return (
+    typeof (action as StructuredInsightAction).date === "string" &&
+    typeof (action as StructuredInsightAction).start === "string"
+  )
 }
 
 export interface DailyInsight {
@@ -253,6 +284,32 @@ function withParams(
   }
   const suffix = query.toString()
   return suffix ? `${path}?${suffix}` : path
+}
+
+export interface DebugTimeRawRow {
+  entity_id?: number
+  ha_entity_id?: string
+  ts: string
+  [key: string]: unknown
+}
+
+// GET /api/debug/time: server clock, timezone and local bucket
+// diagnostics, plus raw rows for stored-vs-displayed time comparison.
+export interface DebugTime {
+  server_now_utc: string
+  server_now_local: string
+  tz_env: string | null
+  resolved_timezone: string
+  local_date: string
+  local_hour: string
+  current_hour_start_utc: string
+  current_price_row: { ts: string; price_eur: number | null } | null
+  latest_measurement: DebugTimeRawRow | null
+  latest_energy_delta: DebugTimeRawRow | null
+}
+
+export function fetchDebugTime(): Promise<DebugTime> {
+  return getJson<DebugTime>("/api/debug/time")
 }
 
 export function getEntities(): Promise<Entity[]> {

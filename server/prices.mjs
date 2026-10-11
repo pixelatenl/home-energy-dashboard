@@ -9,6 +9,7 @@ import {
   localDateKey,
   localDayStartUtcMs,
   localHourKey,
+  nextDateKey,
 } from "./time.mjs";
 
 const CACHE_TTL_MS = 10 * 60 * 1000;
@@ -39,11 +40,11 @@ async function loadCurve(days) {
 
   const now = new Date();
   const todayKey = localDateKey(now);
-  const tomorrowKey = localDateKey(
-    new Date(now.getTime() + 24 * 3_600_000)
-  );
+  // Calendar-safe day keys: adding 24 hours to a Date would land on the
+  // same local date in the early hours of a 25-hour DST day.
+  const tomorrowKey = nextDateKey(todayKey, 1);
   const windowStartMs = localDayStartUtcMs(todayKey);
-  const windowEndKey = localDateKey(new Date(now.getTime() + days * 24 * 3_600_000));
+  const windowEndKey = nextDateKey(todayKey, days);
   const windowEndMs = localDayStartUtcMs(windowEndKey);
   const currentKey = localHourKey(now);
 

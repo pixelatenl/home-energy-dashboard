@@ -22,6 +22,17 @@ export function todayInAmsterdam(): string {
   }).format(new Date())
 }
 
+// Calendar-safe date key N days after another "YYYY-MM-DD" key; correct
+// across DST transitions, unlike adding 24 hours.
+export function dateKeyPlus(dateKey: string, days: number): string {
+  const [year, month, day] = dateKey.split("-").map(Number)
+  const date = new Date(Date.UTC(year, month - 1, day + days))
+  const pad = (value: number) => String(value).padStart(2, "0")
+  return `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(
+    date.getUTCDate()
+  )}`
+}
+
 // Local date "YYYY-MM-DD" of an ISO timestamp.
 export function localDateOf(iso: string): string {
   const parts = partsIn(new Date(iso), {

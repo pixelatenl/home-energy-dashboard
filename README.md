@@ -114,8 +114,35 @@ API endpoints return 502 until the server is started.
 - `GET /api/insight/daily` - AI-generated daily summary with recommended actions
 - `GET /api/prices?days=N` - merged hourly price curve (today plus N-1 more days, default 2) with per-day stats and the cheapest 3-hour window
 - `GET /api/prices/cheapest?hours=N` - the cheapest N consecutive hours from now, by average price
+- `GET /api/debug/time` - server clock, timezone and local bucket diagnostics with raw rows
 
 The frontend consumes these through the typed client in `src/lib/api.ts`.
+
+### Time and timezones
+
+All stored timestamps are UTC; every user-facing day and hour bucket is
+Europe/Amsterdam local time. All conversion goes through the shared helpers
+in `server/time.mjs` (`localDateKey`, `localHourKey`, `localHourIndex`,
+`localDayStartUtcMs`, `nextDateKey`), which use `Intl.DateTimeFormat` with
+the named `timeZone: "Europe/Amsterdam"` option - never a fixed offset and
+never the server's ambient timezone. Nothing slices UTC ISO strings into
+buckets; the only string slicing happens on local keys the helpers
+themselves produced.
+
+Day keys are advanced with calendar arithmetic (`nextDateKey`), not by
+adding 24 hours to a Date, because a DST day is 23 or 25 hours long.
+`localDayStartUtcMs` probes the offset at 00:30 UTC, before Amsterdam's
+transitions, so local midnight is correct on transition days too. The DST
+transition on 26 October therefore requires no configuration change: the
+helpers use the named timezone, so CET applies automatically after the
+transition.
+
+The server logs one line at startup with the UTC time, the `TZ` variable
+and the resolved timezone, and `GET /api/debug/time` shows the same
+information live plus the local date and hour the server computes, the
+price row it considers current, and one raw measurement and one
+`energy_delta` row, so stored and displayed time can be compared when
+something looks misaligned.
 
 ### Weather widget
 
@@ -261,17 +288,40 @@ around zero load. The panel also carries an AI insight box below the chart
 and a charging/discharging tip; it follows the same caching, throttling
 and shared daily Mistral call cap as the other insight boxes. The AI
 summary context also received an actual-versus-forecast rule: it reports pv
-production as actual and forecast separately (e.g. "pv today: 9.5 kWh
-actual (forecast 15.88 kWh)") and never presents the forecast as realized
-production.
+production as actual and forecast separately and never presents the
+forecast as realized production. The solar facts in the summary context are
+strictly separated, explicitly dated lines - "today Sun 11 Oct: actual
+11.48 kWh, forecast 15.91 kWh", "tomorrow Mon 12 Oct: forecast 13.27 kWh",
+"following days Tue 13 Oct 12 kWh, ..." - so today never appears in a
+future series.
 
 `GET /api/insight/daily` returns an AI-generated one-liner for the dashboard
-header, a daily summary with up to three recommended actions (a bold time
-window, the action and the reason), all from a single JSON response that is
-parsed defensively with one retry. The response also carries `as_of` (the
-summary cache timestamp the text is based on) and `stale` (true when the
-inputs materially changed but the daily Mistral cap was exhausted, so the
-cached text is served).
+header, a daily summary and up to three recommended actions as structured
+data. Each action carries the schema `{ date: "YYYY-MM-DD", start: "HH:MM",
+end: "HH:MM", type: "appliance"|"battery"|"ev"|"solar"|"general", title,
+reason, price_eur }`; the model is told to recommend only future windows,
+to use a short imperative title and a one-sentence reason containing the
+key number. The server validates the payload (schema, at most three
+actions, non-empty fields, start before end, ascending by start time),
+normalizes unknown types to "general" and non-numeric prices to null, and
+retries once on invalid JSON. If structured output fails twice, a single
+prose fallback call produces the legacy `{ text, window, reason }` format
+so the dashboard never breaks; the frontend renders that as a simple list.
+Before responding, any structured action whose window has already ended
+relative to the summary `as_of` time is dropped - advice for the past is
+never shown.
+
+The frontend renders structured actions as designed rows: a day chip
+("Today" / "Tomorrow") above the prominent window, a type icon (washing
+machine, battery, car, sun, bolt), the title with the reason in smaller
+muted text beneath, and the price as a small tag on the right. Actions are
+grouped under small day headings when they span multiple days, and the
+nearest upcoming action carries a subtle "next" badge. The summary
+paragraph keeps its text but renders kWh, price and percentage figures
+as chips. The response also carries `as_of` (the summary cache timestamp
+the text is based on, shown with its weekday and date) and `stale` (true
+when the inputs materially changed but the daily Mistral cap was
+exhausted, so the cached text is served).
 
 The daily summary regenerates on a context signature, not a fixed cadence:
 the battery state, SOC (10% buckets), power (500 W buckets) and today's

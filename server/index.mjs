@@ -24,12 +24,13 @@ import { dailyForecast } from "./solar.mjs";
 import {
   currentMeasurements,
   dailyTotals,
+  getDebugTimeData,
   getSummary,
   hourlySeries,
   hourlyTotals,
   listEntities,
 } from "./queries.mjs";
-import { localDateKey } from "./time.mjs";
+import { localDateKey, resolvedTimezone } from "./time.mjs";
 
 // Dedicated port for the API server, distinct from the Vite dev server
 // (5173) so the two never race for the same port regardless of start order.
@@ -52,6 +53,14 @@ try {
   gitHash = "unknown";
 }
 const SERVER_VERSION = `${gitHash} @ ${SERVER_START}`;
+
+// One line at startup so a stale or misaligned clock is visible
+// immediately: the UTC time, the TZ variable and the timezone the
+// process actually resolved to.
+console.log(
+  `Server time: ${SERVER_START}, TZ=${process.env.TZ ?? "(unset)"}, ` +
+    `resolved timezone: ${resolvedTimezone()}`
+);
 
 const app = express();
 app.disable("x-powered-by");
@@ -210,6 +219,13 @@ app.get(
       generated_at: result.generatedAt,
       error: result.error,
     });
+  })
+);
+
+app.get(
+  "/api/debug/time",
+  asyncHandler(async (_req, res) => {
+    res.json(await getDebugTimeData());
   })
 );
 
