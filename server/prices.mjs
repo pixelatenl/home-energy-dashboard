@@ -260,6 +260,11 @@ export async function getPriceContextData() {
         max: summary.tomorrow.max,
       },
     },
+    // Whether price rows for tomorrow actually exist in the merged curve
+    // (local midnight tomorrow onwards). Zonneplan publishes them around
+    // 18:00; until then no rows exist and the AI insight must not make
+    // any claims about tomorrow's prices.
+    tomorrowPricesAvailable: tomorrowEntries.length > 0,
     cheapestBlock: summary.cheapest_block,
     // Per-day cheapest windows and the remaining peak, for the AI insight
     // context signature.

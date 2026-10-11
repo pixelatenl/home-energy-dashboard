@@ -34,8 +34,9 @@ const PRICE_SYSTEM_PROMPT =
   "production data, reply in 2 to 3 short sentences: how grid prices " +
   "develop between today and tomorrow, when the cheapest window is, and " +
   "one practical tip that combines cheap grid hours with the sun's " +
-  "production peak (self-consumption is free). Be concrete, no marketing " +
-  "tone, no emoji.";
+  "production peak (self-consumption is free). Never invent or " +
+  "extrapolate prices; if data for a period is unavailable, do not make " +
+  "claims about that period. Be concrete, no marketing tone, no emoji.";
 
 // Primary prompt: the model returns structured actions the frontend
 // renders as designed rows (day chip, window, icon, title, reason,
@@ -58,7 +59,15 @@ const SUMMARY_SYSTEM_PROMPT_STRUCTURED =
   "clearly between actual production today and the forecast for today; " +
   "never present the forecast as realized production. The summary must " +
   "open by naming today with its date, and when describing future days it " +
-  "must name them with their dates.";
+  "must name them with their dates. Never invent or extrapolate prices; " +
+  "if data for a period is unavailable, do not make claims about that " +
+  "period. The context field tomorrow_prices_available says whether " +
+  "price rows for tomorrow exist: when it is false, do not mention " +
+  "tomorrow's prices or any cheapest window for tomorrow, and base " +
+  "advice only on today's actual prices, today's remaining hours and " +
+  "live usage. Every action must refer to one single coherent time " +
+  "frame: never combine a window on one day with solar production or " +
+  "prices from another day in the same sentence.";
 
 // Fallback prompt (prose actions) used when the structured output fails
 // validation twice, so the dashboard never breaks.
@@ -77,7 +86,15 @@ const SUMMARY_SYSTEM_PROMPT_PROSE =
   '- "Today (Sat 11 Oct)" or "Tomorrow (Sun 12 Oct)" - directly before ' +
   "the time window; a window without a day label is invalid and must be " +
   "rewritten. The summary must open by naming today with its date, and " +
-  "when describing future days it must name them with their dates.";
+  "when describing future days it must name them with their dates. " +
+  "Never invent or extrapolate prices; if data for a period is " +
+  "unavailable, do not make claims about that period. The context field " +
+  "tomorrow_prices_available says whether price rows for tomorrow exist: " +
+  "when it is false, do not mention tomorrow's prices or any cheapest " +
+  "window for tomorrow, and base advice only on today's actual prices, " +
+  "today's remaining hours and live usage. Every action must refer to " +
+  "one single coherent time frame: never combine a window on one day " +
+  "with solar production or prices from another day in the same sentence.";
 
 const BATTERY_SYSTEM_PROMPT =
   "You are the assistant of a home energy dashboard in the Netherlands " +
@@ -216,6 +233,13 @@ export function buildSummaryContext(summary, weatherDaily, priceParts) {
           .join(", ");
     }
   }
+  // Whether price rows for tomorrow actually exist (computed by
+  // getPriceContextData from the merged curve, local midnight tomorrow
+  // onwards). Always a definite boolean: when false, the model must not
+  // make any claims about tomorrow's prices, so the tomorrow price
+  // section is omitted entirely rather than offered as nulls.
+  context.tomorrow_prices_available =
+    priceParts?.tomorrowPricesAvailable === true;
   if (priceParts?.priceData) {
     context.current_price = priceParts.priceData.current_price ?? null;
     context.cheapest_window = priceParts.cheapestBlock
@@ -226,10 +250,15 @@ export function buildSummaryContext(summary, weatherDaily, priceParts) {
           average_price: priceParts.cheapestBlock.average_price,
         }
       : null;
-    context.tomorrow = {
-      available: priceParts.priceData.tomorrow?.available ?? null,
-      average: priceParts.priceData.tomorrow?.average ?? null,
-    };
+    if (context.tomorrow_prices_available) {
+      // Tomorrow's published rows exist; the model may use them.
+      context.tomorrow = {
+        available: true,
+        average: priceParts.priceData.tomorrow?.average ?? null,
+        min: priceParts.priceData.tomorrow?.min ?? null,
+        max: priceParts.priceData.tomorrow?.max ?? null,
+      };
+    }
   }
   // One compact battery line, or "no data" when unavailable.
   if (summary?.battery_available) {
@@ -491,8 +520,13 @@ export function buildSummarySignature(summary, weatherDaily, priceParts) {
   parts.push(`hu:${bucket(summary?.today?.total_usage_kwh, 0.5)}`);
   parts.push(`tg:${bucket(summary?.today?.export_kwh, 0.5)}`);
   parts.push(`cost:${bucket(summary?.today?.cost_eur, 0.1)}`);
-  // Prices: current hour, cheapest window per day, remaining peak (0.05).
+  // Prices: current hour, tomorrow availability, cheapest window per
+  // day, remaining peak (0.05).
   parts.push(`hour:${localHourIndex(new Date())}`);
+  // Tomorrow's price rows: the insight must regenerate when they appear
+  // (Zonneplan publishes them around 18:00), so tomorrow advice can
+  // start and tomorrow claims never outlive the data.
+  parts.push(`tpa:${priceParts?.tomorrowPricesAvailable === true ? 1 : 0}`);
   parts.push(
     `cw:${
       priceParts?.cheapestByDay?.today
