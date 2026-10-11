@@ -306,3 +306,27 @@ operation: move that file into the new backend and adapt the surrounding
 plumbing. If your schema uses different column names, adjust them in
 `server/queries.mjs` - nowhere else touches SQL.
 
+### Deployment on the mini PC
+
+In production the same Express process also serves the built frontend from
+`dist/`: `express.static` for the assets and an SPA fallback that returns
+`index.html` for any non-`/api` GET request, so client-side routing keeps
+working on refresh. The server binds to `HOST` (default `0.0.0.0`, reachable
+on the home network, not from the internet) and starts on `PORT`
+(default `API_PORT`/5273; the service below uses 8080). The frontend calls
+the API with relative `/api/...` paths, so no build-time configuration is
+needed.
+
+Two committed files under `deploy/` handle the rest:
+
+- `deploy/ems-dashboard.service` - a systemd unit (with a `YOUR_USER`
+  placeholder to substitute on the machine) that runs the server from
+  `server/` with `server/.env` and restarts it every 10 seconds on failure.
+  The real `server/.env` on the mini PC holds the database credentials and
+  the remaining secrets; it is never committed.
+- `deploy/deploy-dashboard.sh` - pull the latest code, install
+  dependencies, build the frontend and restart the service. It aborts on
+  any error, so a failed build never restarts the service on stale code.
+
+After a reboot the whole stack (Home Assistant, TimescaleDB, ingest worker
+and this dashboard) comes up by itself.

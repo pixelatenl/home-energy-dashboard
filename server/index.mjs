@@ -1,5 +1,7 @@
 import "dotenv/config";
 import { execSync } from "node:child_process";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import express from "express";
 import { shutdown } from "./db.mjs";
 import {
@@ -336,6 +338,20 @@ app.get(
   })
 );
 
+// Serve the production build of the frontend. Express matches in
+// registration order, so this must come before the catch-all 404 handler
+// below, which would otherwise intercept every page request.
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const distDir = path.resolve(__dirname, "..", "dist");
+
+app.use(express.static(distDir));
+
+// SPA fallback: any non-API GET request returns index.html, so client-side
+// routing keeps working on refresh.
+app.get(/^\/(?!api\/).*/, (_req, res) => {
+  res.sendFile(path.join(distDir, "index.html"));
+});
+
 app.use((_req, res) => {
   res.status(404).json({ error: "Not found" });
 });
@@ -349,9 +365,14 @@ app.use((err, _req, res, _next) => {
   res.status(500).json({ error: "Internal server error" });
 });
 
+// Bind to the network instead of localhost only; the dashboard is meant
+// to be reachable from other devices on the home network. Not reachable
+// from the internet as long as the router does not forward the port.
+const HOST = process.env.HOST ?? "0.0.0.0";
+
 function listen(port) {
-  const server = app.listen(port, () => {
-    console.log(`API server listening on http://localhost:${port}`);
+  const server = app.listen(port, HOST, () => {
+    console.log(`API server listening on http://${HOST}:${port}`);
   });
   server.on("error", (err) => {
     if (err.code === "EADDRINUSE" && port < MAX_PORT) {
@@ -364,7 +385,9 @@ function listen(port) {
   });
 }
 
-listen(DEFAULT_PORT);
+// Development keeps the default 5273 via API_PORT; production overrides
+// the start port via PORT (see deploy/ems-dashboard.service).
+listen(Number(process.env.PORT ?? DEFAULT_PORT));
 
 for (const signal of ["SIGINT", "SIGTERM"]) {
   process.on(signal, () => {
