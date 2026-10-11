@@ -10,4 +10,14 @@ export default defineConfig({
       "@": `${import.meta.dirname}/src`,
     },
   },
+  server: {
+    proxy: {
+      // Forward API calls to the local data server (server/index.mjs),
+      // which runs on its own port so it never collides with Vite.
+      "/api": {
+        target: `http://localhost:${process.env.API_PORT ?? 5273}`,
+        changeOrigin: true,
+      },
+    },
+  },
 })
