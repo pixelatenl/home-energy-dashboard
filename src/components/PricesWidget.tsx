@@ -95,27 +95,31 @@ function PriceBars({
   average,
   nowFraction,
   block,
-  compact,
+  scale,
 }: {
   hours: PreparedHour[]
   average: number | null
   nowFraction: number | null
   block: { startHour: number; endHour: number } | null
-  compact: boolean
+  // Shared min/max across charts, so a euro has the same bar height and
+  // color everywhere; falls back to the chart's own range when omitted.
+  scale?: { min: number; max: number } | null
 }) {
   const width = 960
-  const height = compact ? 64 : 150
-  // Non-compact charts reserve an empty band at the top with room for two
-  // stacked labels ("Now" and "cheapest window"); the bars, the marker line
-  // and the window outline all start below it.
-  const top = compact ? 6 : 32
-  const base = height - (compact ? 10 : 16)
+  const height = 150
+  // The top band leaves room for the two stacked labels ("Now" and
+  // "cheapest window"); the bars, the marker line and the window outline
+  // all start below it.
+  const top = 32
+  const base = height - 16
   const slot = width / 24
   const prices = hours
     .map((hour) => hour.price)
     .filter((price): price is number => price !== null)
-  const min = prices.length > 0 ? Math.min(...prices) : 0
-  const max = prices.length > 0 ? Math.max(...prices, average ?? 0) : 0
+  const min = scale?.min ?? (prices.length > 0 ? Math.min(...prices) : 0)
+  const max =
+    scale?.max ??
+    (prices.length > 0 ? Math.max(...prices, average ?? 0) : 0)
   const scaleMax = max > 0 ? max : 0.05
   const y = (price: number) => base - (price / scaleMax) * (base - top)
 
@@ -148,7 +152,7 @@ function PriceBars({
         <svg
           viewBox={`0 0 ${width} ${height}`}
           preserveAspectRatio="none"
-          className={compact ? "h-16 w-full" : "h-36 w-full"}
+          className="h-36 w-full"
           role="img"
           aria-label="Hourly electricity prices"
         >
@@ -244,13 +248,11 @@ function PriceBars({
           />
         )}
       </div>
-      {!compact && (
-        <div className="mt-1 flex justify-between text-xs text-muted-foreground tabular-nums">
-          {[0, 3, 6, 9, 12, 15, 18, 21].map((hour) => (
-            <span key={hour}>{String(hour).padStart(2, "0")}</span>
-          ))}
-        </div>
-      )}
+      <div className="mt-1 flex justify-between text-xs text-muted-foreground tabular-nums">
+        {[0, 3, 6, 9, 12, 15, 18, 21].map((hour) => (
+          <span key={hour}>{String(hour).padStart(2, "0")}</span>
+        ))}
+      </div>
     </div>
   )
 }
@@ -356,6 +358,18 @@ function PricesWidget() {
     return !best || (best.price ?? -Infinity) < hour.price ? hour : best
   }, null)
   const block = summary?.cheapest_block ?? null
+  // Shared price scale across both days so a euro always has the same bar
+  // height and color in today's and tomorrow's charts.
+  const allPrices =
+    summary
+      ? [...todayHours, ...tomorrowHours]
+          .map((hour) => hour.price)
+          .filter((price): price is number => price !== null)
+      : []
+  const sharedScale =
+    allPrices.length > 0
+      ? { min: Math.min(...allPrices), max: Math.max(...allPrices) }
+      : null
 
   return (
     <Card>
@@ -420,7 +434,7 @@ function PricesWidget() {
                 average={summary.today.average}
                 nowFraction={now.date === today ? now.fraction : null}
                 block={blockForDate(block, today)}
-                compact={false}
+                scale={sharedScale}
               />
               {block && (
                 <p className="mt-2 text-xs text-muted-foreground">
@@ -448,7 +462,7 @@ function PricesWidget() {
                     average={summary.tomorrow.average}
                     nowFraction={null}
                     block={blockForDate(block, tomorrow)}
-                    compact
+                    scale={sharedScale}
                   />
                 ) : (
                   <div className="flex h-16 items-center justify-center rounded-lg bg-muted/50 text-sm text-muted-foreground">

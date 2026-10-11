@@ -1,7 +1,9 @@
 import "dotenv/config";
+import { execSync } from "node:child_process";
 import express from "express";
 import { shutdown } from "./db.mjs";
 import {
+  getBatteryContext,
   getPriceContext,
   getSummaryInsight,
   getWeatherContext,
@@ -31,6 +33,23 @@ import { localDateKey } from "./time.mjs";
 // (5173) so the two never race for the same port regardless of start order.
 const DEFAULT_PORT = Number(process.env.API_PORT ?? 5273);
 const MAX_PORT = DEFAULT_PORT + 10;
+
+// Build identifier set at server start: the short git hash of the checkout
+// plus the process start time. The debug panel shows it so a stale process
+// (started before the latest code changes) is recognizable on screen.
+const SERVER_START = new Date().toISOString();
+let gitHash = "unknown";
+try {
+  gitHash = execSync("git rev-parse --short HEAD", {
+    cwd: import.meta.dirname,
+    stdio: ["ignore", "pipe", "ignore"],
+  })
+    .toString()
+    .trim();
+} catch {
+  gitHash = "unknown";
+}
+const SERVER_VERSION = `${gitHash} @ ${SERVER_START}`;
 
 const app = express();
 app.disable("x-powered-by");
@@ -195,7 +214,7 @@ app.get(
 app.get(
   "/api/summary",
   asyncHandler(async (_req, res) => {
-    res.json(await getSummary());
+    res.json({ ...(await getSummary()), server_version: SERVER_VERSION });
   })
 );
 
@@ -221,6 +240,27 @@ app.get(
       one_liner: result.oneLiner,
       summary: result.summary,
       actions: result.actions,
+      generated_at: result.generatedAt,
+      error: result.error,
+    });
+  })
+);
+
+app.get(
+  "/api/battery/context",
+  asyncHandler(async (_req, res) => {
+    const summary = await getSummary();
+    // Optional solar forecast; omitted when the weather data is
+    // unavailable rather than failing the request.
+    let daily = null;
+    try {
+      daily = await weatherDaily(5);
+    } catch {
+      daily = null;
+    }
+    const result = await getBatteryContext(summary, daily);
+    res.json({
+      text: result.text,
       generated_at: result.generatedAt,
       error: result.error,
     });

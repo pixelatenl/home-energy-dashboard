@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react"
+import BatteryPanel from "@/components/BatteryPanel"
 import DebugPage from "@/components/DebugPage"
 import PricesWidget from "@/components/PricesWidget"
 import StatsHeader from "@/components/StatsHeader"
@@ -88,6 +89,8 @@ function App() {
           <WeatherForecast />
           <PricesWidget />
         </div>
+
+        <BatteryPanel />
       </main>
     </div>
   )

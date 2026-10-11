@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react"
+import BatteryCard from "@/components/BatteryCard"
 import {
   Card,
   CardDescription,
@@ -44,6 +45,13 @@ function StatsHeader() {
     void load()
   }, [load])
 
+  // Keep the stats current while the page stays open; the server caches
+  // the summary for 5 minutes, so this matches its refresh cadence.
+  useEffect(() => {
+    const id = setInterval(() => void load(), 5 * 60_000)
+    return () => clearInterval(id)
+  }, [load])
+
   const metrics: MetricSpec[] = summary
     ? [
         {
@@ -86,15 +94,24 @@ function StatsHeader() {
 
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-      {status === "loading"
-        ? metrics.map((metric) => (
+      {status === "loading" ? (
+        <>
+          {metrics.map((metric) => (
             <div
               key={metric.label}
               className="min-h-32 animate-pulse rounded-lg bg-muted"
               aria-hidden="true"
             />
-          ))
-        : metrics.map((metric) => (
+          ))}
+          <div
+            key="battery"
+            className="min-h-32 animate-pulse rounded-lg bg-muted"
+            aria-hidden="true"
+          />
+        </>
+      ) : (
+        <>
+          {metrics.map((metric) => (
             <Card key={metric.label} className="min-h-32">
               <CardHeader>
                 <CardDescription>
@@ -118,6 +135,9 @@ function StatsHeader() {
               </CardHeader>
             </Card>
           ))}
+          {summary && <BatteryCard summary={summary} />}
+        </>
+      )}
     </div>
   )
 }

@@ -4,7 +4,7 @@
 // daily call cap. The API key is read from the environment and never
 // logged.
 
-import { localHourLabel } from "./time.mjs";
+import { localDateKey, localHourLabel } from "./time.mjs";
 
 const MISTRAL_URL = "https://api.mistral.ai/v1/chat/completions";
 const MISTRAL_MODEL = "mistral-small-latest";
@@ -38,7 +38,17 @@ const SUMMARY_SYSTEM_PROMPT =
   "about today and the coming days), actions: array of at most 3 objects " +
   "{ text: string, window: string, reason: string } } with concrete, " +
   "time-specific recommended actions such as when to run appliances. No " +
-  "marketing tone, no emoji.";
+  "marketing tone, no emoji. Distinguish clearly between actual production " +
+  "today and the forecast for today; never present the forecast as " +
+  "realized production.";
+
+const BATTERY_SYSTEM_PROMPT =
+  "You are the assistant of a home energy dashboard in the Netherlands " +
+  "with a home battery and solar panels. Given battery state and flow " +
+  "data, reply in 2 to 3 short sentences: the current charge state, how " +
+  "the battery has been used today, and one practical tip about charging " +
+  "(prefer surplus solar) or timing discharge. Be concrete, no marketing " +
+  "tone, no emoji.";
 
 // The hourly row matching the current hour in Europe/Amsterdam.
 function currentHourConditions(todayHourly) {
@@ -133,6 +143,19 @@ export function buildSummaryContext(summary, weatherDaily, priceParts) {
     month_cost_eur: summary?.month?.cost_eur ?? null,
   };
   if (Array.isArray(weatherDaily)) {
+    // One compact line separating actual production from the forecast,
+    // e.g. "pv today: 9.5 kWh actual (forecast 15.88 kWh)".
+    const todayEntry =
+      weatherDaily.find(
+        (day) => day.date === localDateKey(new Date())
+      ) ?? null;
+    const actual = summary?.today?.pv_kwh ?? null;
+    const forecast = todayEntry?.estimated_kwh ?? null;
+    if (actual !== null || forecast !== null) {
+      context.pv_today =
+        `pv today: ${actual !== null ? `${actual} kWh` : "unknown"} actual ` +
+        `(forecast ${forecast !== null ? `${forecast} kWh` : "unknown"})`;
+    }
     context.solar_forecast = weatherDaily.map((day) => ({
       date: day.date,
       solar_score: day.solar_score,
@@ -152,6 +175,29 @@ export function buildSummaryContext(summary, weatherDaily, priceParts) {
       available: priceParts.priceData.tomorrow?.available ?? null,
       average: priceParts.priceData.tomorrow?.average ?? null,
     };
+  }
+  // One compact battery line, or "no data" when unavailable.
+  if (summary?.battery_available) {
+    const parts = [];
+    if (summary.battery_soc_pct !== null) {
+      parts.push(`soc ${summary.battery_soc_pct} pct`);
+    }
+    if (
+      (summary.battery_state === "charging" ||
+        summary.battery_state === "discharging") &&
+      summary.battery_power_w !== null
+    ) {
+      parts.push(`${summary.battery_state} ${Math.abs(summary.battery_power_w)} W`);
+    } else {
+      parts.push("idle");
+    }
+    parts.push(
+      `today ${summary.today?.battery_charged_kwh} kWh in, ` +
+        `${summary.today?.battery_discharged_kwh} kWh out`
+    );
+    context.battery = parts.join(", ");
+  } else {
+    context.battery = "no data";
   }
   return context;
 }
@@ -310,6 +356,41 @@ export async function getPriceContext(priceData, cheapestBlock, solarDaily) {
     cacheKey,
     buildPriceContext(priceData, cheapestBlock, solarDaily)
   );
+}
+
+// Compact battery context for the model: the snapshot, the range
+// throughputs and today's hourly flow; the solar forecast is optional.
+export function buildBatteryContext(summary, weatherDaily) {
+  const context = {
+    soc_pct: summary?.battery_soc_pct ?? null,
+    state: summary?.battery_state ?? null,
+    power_w: summary?.battery_power_w ?? null,
+    today_in_kwh: summary?.today?.battery_charged_kwh ?? null,
+    today_out_kwh: summary?.today?.battery_discharged_kwh ?? null,
+    week_in_kwh: summary?.week?.battery_charged_kwh ?? null,
+    week_out_kwh: summary?.week?.battery_discharged_kwh ?? null,
+    month_in_kwh: summary?.month?.battery_charged_kwh ?? null,
+    month_out_kwh: summary?.month?.battery_discharged_kwh ?? null,
+    flow_hourly: (summary?.battery_flow_hourly ?? []).map((hour) => ({
+      hour: localHourLabel(hour.ts),
+      in_kwh: hour.in_kwh,
+      out_kwh: hour.out_kwh,
+    })),
+  };
+  if (Array.isArray(weatherDaily)) {
+    context.solar_forecast = weatherDaily.map((day) => ({
+      date: day.date,
+      solar_score: day.solar_score,
+      estimated_kwh: day.estimated_kwh,
+    }));
+  }
+  return context;
+}
+
+export async function getBatteryContext(summary, weatherDaily) {
+  const context = buildBatteryContext(summary, weatherDaily);
+  const cacheKey = hashString(JSON.stringify(context));
+  return getInsight("battery", BATTERY_SYSTEM_PROMPT, cacheKey, context);
 }
 
 // Daily summary insight: JSON with a summary text and up to three

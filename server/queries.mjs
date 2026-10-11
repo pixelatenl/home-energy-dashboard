@@ -126,10 +126,31 @@ const COUNTER_ENTITIES = {
     "sensor.anker_solix_solarbank_max_ac_009_battery_discharge_energy",
 };
 
+// Instantaneous battery sensors in the measurement table, resolved the
+// same way.
+const BATTERY_MEASUREMENT_ENTITIES = {
+  batterySoc: "sensor.anker_solix_solarbank_max_ac_009_soc",
+  batteryChargingPower:
+    "sensor.anker_solix_solarbank_max_ac_009_battery_charging_power",
+  batteryDischargingPower:
+    "sensor.anker_solix_solarbank_max_ac_009_battery_discharging_power",
+};
+
+// Roles backed by energy_delta rows.
+const COUNTER_ROLES = [
+  "import",
+  "export",
+  "pv",
+  "batteryCharging",
+  "batteryDischarging",
+];
+
+const ROLE_NAMES = { ...COUNTER_ENTITIES, ...BATTERY_MEASUREMENT_ENTITIES };
+
 let entityMapCache = null; // { fetchedAt, map }
 const ENTITY_MAP_TTL_MS = 10 * 60 * 1000;
 
-// Maps the counter roles to entity IDs by ha_entity_id.
+// Maps the counter and battery roles to entity IDs by ha_entity_id.
 async function resolveEntityMap() {
   if (entityMapCache && Date.now() - entityMapCache.fetchedAt < ENTITY_MAP_TTL_MS) {
     return entityMapCache.map;
@@ -138,11 +159,11 @@ async function resolveEntityMap() {
     `SELECT id, ha_entity_id
        FROM entity
       WHERE ha_entity_id = ANY($1::text[])`,
-    [Object.values(COUNTER_ENTITIES)]
+    [Object.values(ROLE_NAMES)]
   );
   const idByName = new Map(rows.map((row) => [row.ha_entity_id, row.id]));
   const map = {};
-  for (const [role, name] of Object.entries(COUNTER_ENTITIES)) {
+  for (const [role, name] of Object.entries(ROLE_NAMES)) {
     map[role] = idByName.get(name) ?? null;
   }
   entityMapCache = { fetchedAt: Date.now(), map };
@@ -182,7 +203,9 @@ export async function getRangeMetrics(startMs, endMs) {
     battery_charged_kwh: null,
     battery_discharged_kwh: null,
   };
-  const ids = Object.values(map).filter((id) => Number.isFinite(id));
+  const ids = COUNTER_ROLES.map((role) => map[role]).filter((id) =>
+    Number.isFinite(id)
+  );
   if (ids.length === 0) {
     return metrics;
   }
@@ -260,6 +283,135 @@ export async function getRangeMetrics(startMs, endMs) {
   return metrics;
 }
 
+// Battery snapshot: the latest SOC percent, the net power (latest charging
+// power minus latest discharging power, valid only while both rows are
+// less than an hour old), the age of the most recent power row, today's
+// hourly charge/discharge flow, and today's SOC series.
+async function getBatterySnapshot(map, startMs, endMs) {
+  const snapshot = {
+    socPct: null,
+    powerW: null,
+    powerAgeMin: null,
+    flowHourly: [],
+    socSeries: [],
+  };
+  try {
+    if (map.batterySoc !== null) {
+      const { rows } = await pool.query(
+        `SELECT value
+           FROM measurement
+          WHERE entity_id = $1
+          ORDER BY ts DESC LIMIT 1`,
+        [map.batterySoc]
+      );
+      if (rows.length > 0) {
+        snapshot.socPct = Math.round(rows[0].value);
+      }
+    }
+    // Latest row of each power series, with its age.
+    const powerIds = [map.batteryChargingPower, map.batteryDischargingPower]
+      .filter((id) => Number.isFinite(id))
+      .filter((id) => id !== null);
+    if (powerIds.length > 0) {
+      const { rows } = await pool.query(
+        `SELECT DISTINCT ON (entity_id) entity_id, ts, value
+           FROM measurement
+          WHERE entity_id = ANY($1::smallint[])
+          ORDER BY entity_id, ts DESC`,
+        [powerIds]
+      );
+      const latest = new Map(rows.map((row) => [row.entity_id, row]));
+      const charging = latest.get(map.batteryChargingPower) ?? null;
+      const discharging = latest.get(map.batteryDischargingPower) ?? null;
+      const newestTs = Math.max(
+        charging?.ts.getTime() ?? -Infinity,
+        discharging?.ts.getTime() ?? -Infinity
+      );
+      if (newestTs !== -Infinity) {
+        snapshot.powerAgeMin = Math.round((Date.now() - newestTs) / 60_000);
+      }
+      // Net power: latest charging power minus latest discharging power.
+      // A series whose latest row is more than an hour old reads as 0 W:
+      // the sensors stop updating around zero load, so a stale series is an
+      // idle one - a fresh reading on the other series still counts.
+      const isFresh = (row) =>
+        row !== null && Date.now() - row.ts.getTime() <= 60 * 60 * 1000;
+      const chargingW = isFresh(charging) ? charging.value : 0;
+      const dischargingW = isFresh(discharging) ? discharging.value : 0;
+      snapshot.powerW = Math.round(chargingW - dischargingW);
+    }
+    // Today's hourly charge/discharge flow from the energy counters; hours
+    // without rows are omitted.
+    const flowIds = [map.batteryCharging, map.batteryDischarging]
+      .filter((id) => Number.isFinite(id))
+      .filter((id) => id !== null);
+    if (flowIds.length > 0) {
+      const { rows } = await pool.query(
+        `SELECT time_bucket('1 hour', ts) AS bucket, entity_id, sum(delta_kwh) AS kwh
+           FROM energy_delta
+          WHERE entity_id = ANY($1::smallint[])
+            AND ts >= $2::timestamptz AND ts < $3::timestamptz
+          GROUP BY bucket, entity_id`,
+        [flowIds, new Date(startMs), new Date(endMs)]
+      );
+      const byHour = new Map(); // bucket start (ms) -> entry
+      for (const row of rows) {
+        const key = row.bucket.getTime();
+        const entry =
+          byHour.get(key) ??
+          { ts: row.bucket.toISOString(), in_kwh: 0, out_kwh: 0 };
+        if (map.batteryCharging !== null && row.entity_id === map.batteryCharging) {
+          entry.in_kwh += row.kwh ?? 0;
+        } else if (
+          map.batteryDischarging !== null &&
+          row.entity_id === map.batteryDischarging
+        ) {
+          entry.out_kwh += row.kwh ?? 0;
+        }
+        byHour.set(key, entry);
+      }
+      snapshot.flowHourly = [...byHour.values()]
+        .map((entry) => ({
+          ts: entry.ts,
+          in_kwh: Math.round(entry.in_kwh * 1000) / 1000,
+          out_kwh: Math.round(entry.out_kwh * 1000) / 1000,
+        }))
+        .sort((a, b) => a.ts.localeCompare(b.ts));
+    }
+    // Today's SOC series.
+    if (map.batterySoc !== null) {
+      const { rows } = await pool.query(
+        `SELECT ts, value
+           FROM measurement
+          WHERE entity_id = $1
+            AND ts >= $2::timestamptz AND ts < $3::timestamptz
+          ORDER BY ts ASC`,
+        [map.batterySoc, new Date(startMs), new Date(endMs)]
+      );
+      snapshot.socSeries = rows.map((row) => ({
+        ts: row.ts.toISOString(),
+        soc_pct: Math.round(row.value),
+      }));
+    }
+  } catch {
+    // Keep nulls; the summary still serves without the snapshot.
+  }
+  return snapshot;
+}
+
+// Battery state from net power with a 25 W deadband. Stale or absent power
+// readings read as idle (the sensors stop updating around zero load);
+// 'unavailable' when the battery entities have no data.
+function batteryStateFromPower(available, powerW) {
+  if (!available) {
+    return "unavailable";
+  }
+  if (powerW === null || Math.abs(powerW) <= 25) {
+    return "idle";
+  }
+  return powerW > 25 ? "charging" : "discharging";
+}
+
 let summaryCache = null; // { fetchedAt, data }
 const SUMMARY_CACHE_MS = 5 * 60 * 1000;
 
@@ -273,25 +425,37 @@ export async function getSummary() {
     return summaryCache.data;
   }
   const map = await resolveEntityMap();
+  const counterIds = COUNTER_ROLES.map((role) => map[role]).filter((id) =>
+    Number.isFinite(id)
+  );
   const now = new Date();
   const endMs = now.getTime();
   const todayKey = localDateKey(now);
-  const [today, week, month, dataEntities] = await Promise.all([
-    getRangeMetrics(localDayStartUtcMs(todayKey), endMs),
+  const todayStartMs = localDayStartUtcMs(todayKey);
+  const [today, week, month, dataEntities, battery] = await Promise.all([
+    getRangeMetrics(todayStartMs, endMs),
     getRangeMetrics(localDayStartUtcMs(mondayDateKey(now)), endMs),
     getRangeMetrics(localDayStartUtcMs(`${todayKey.slice(0, 7)}-01`), endMs),
-    counterEntitiesWithData(Object.values(map).filter((id) => Number.isFinite(id))),
+    counterEntitiesWithData(counterIds),
+    getBatterySnapshot(map, todayStartMs, endMs),
   ]);
+  const batteryAvailable =
+    map.batteryCharging !== null &&
+    map.batteryDischarging !== null &&
+    dataEntities.has(map.batteryCharging) &&
+    dataEntities.has(map.batteryDischarging);
   const data = {
     today,
     week,
     month,
     pv_available: map.pv !== null && dataEntities.has(map.pv),
-    battery_available:
-      map.batteryCharging !== null &&
-      map.batteryDischarging !== null &&
-      dataEntities.has(map.batteryCharging) &&
-      dataEntities.has(map.batteryDischarging),
+    battery_available: batteryAvailable,
+    battery_soc_pct: battery.socPct,
+    battery_power_w: battery.powerW,
+    battery_power_age_min: battery.powerAgeMin,
+    battery_state: batteryStateFromPower(batteryAvailable, battery.powerW),
+    battery_flow_hourly: battery.flowHourly,
+    battery_soc_series: battery.socSeries,
   };
   summaryCache = { fetchedAt: Date.now(), data };
   return data;

@@ -168,6 +168,44 @@ because it undercounts. Definitions:
 have rows in `energy_delta`. Week and month values cover available data
 only.
 
+### Battery
+
+The stats header includes a battery card for the Anker SOLIX Solarbank Max
+AC when the battery entities have data; otherwise the card is hidden. It
+shows the state of charge (latest SOC value from `measurement`), a status
+line and today's throughput. The net power is the latest charging power
+minus the latest discharging power, where a series whose latest row is
+more than an hour old reads as 0 W (the sensors stop updating around zero
+load, so a stale series is an idle one and a fresh reading on the other
+series still counts). The state applies a 25 W
+deadband: charging, discharging or idle. Charge and discharge totals come
+from the verified `energy_delta` counters for today, this week and this
+month; the summary's total usage already accounts for the battery net term
+since the counter correction.
+
+### Battery panel
+
+Below the chart widgets a full-width battery panel expands on the compact
+card (both consume the same `/api/summary` battery data). Left: the state
+of charge with a prominent battery gauge, the state badge and the current
+power in watts. Middle: today's throughput (in, out and net kWh) with this
+week's and this month's in/out totals beneath. Right: a combined chart for
+today - hourly charge kWh as green bars upward from the zero line,
+discharge kWh as amber bars downward, and the SOC series (from the SOC
+sensor's `measurement` rows) as a line on a secondary 0-100 percent axis;
+an empty state appears when there is no data.
+
+The state is derived from net power with a 25 W deadband; a power series
+whose latest row is stale reads as 0 W, because the sensors stop updating
+around zero load. The panel also carries an AI insight box below the chart
+(`GET /api/battery/context`) that comments on the charge state, today's use
+and a charging/discharging tip; it follows the same caching, throttling
+and shared daily Mistral call cap as the other insight boxes. The AI
+summary context also received an actual-versus-forecast rule: it reports pv
+production as actual and forecast separately (e.g. "pv today: 9.5 kWh
+actual (forecast 15.88 kWh)") and never presents the forecast as realized
+production.
+
 `GET /api/insight/daily` returns an AI-generated one-liner for the dashboard
 header, a daily summary with up to three recommended actions (a bold time
 window, the action and the reason), all from a single JSON response that is

@@ -32,10 +32,22 @@ export function localDateOf(iso: string): string {
   return `${partValue(parts, "year")}-${partValue(parts, "month")}-${partValue(parts, "day")}`
 }
 
-// Local hour (0-23) of an ISO timestamp.
+// Local hour of an ISO timestamp (0-23).
 export function localHourOf(iso: string): number {
   const parts = partsIn(new Date(iso), { hour: "2-digit", hourCycle: "h23" })
   return Number(partValue(parts, "hour"))
+}
+
+// Local hour fraction (e.g. 13.5 for 13:30) of an ISO timestamp.
+export function localHourFractionOf(iso: string): number {
+  const parts = partsIn(new Date(iso), {
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  })
+  return (
+    Number(partValue(parts, "hour")) + Number(partValue(parts, "minute")) / 60
+  )
 }
 
 // Local time "HH:MM" of an ISO timestamp.

@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import {
+  fetchBatteryContext,
   fetchCheapestBlock,
   fetchDailyInsight,
   fetchPriceContext,
@@ -69,6 +70,13 @@ const ENDPOINTS: EndpointSpec[] = [
     description: "AI-generated daily summary with recommended actions",
     params: [],
     run: () => fetchDailyInsight(),
+  },
+  {
+    key: "battery-context",
+    label: "GET /api/battery/context",
+    description: "AI-generated insight over the battery state and flow",
+    params: [],
+    run: () => fetchBatteryContext(),
   },
   {
     key: "totals-daily",
@@ -145,7 +153,6 @@ const ENDPOINTS: EndpointSpec[] = [
 ]
 
 const DEFAULT_PARAMS: Record<string, number> = { days: 7, hours: 24 }
-
 function rowCount(data: unknown): number | null {
   return Array.isArray(data) ? data.length : null
 }
@@ -242,6 +249,20 @@ function EndpointCard({
 
 function DebugPage() {
   const [params, setParams] = useState<Record<string, number>>(DEFAULT_PARAMS)
+  // Server build identifier from /api/summary, to confirm on screen that
+  // the running process matches the current code.
+  const [serverInfo, setServerInfo] = useState<{
+    version: string | null
+    loaded: boolean
+  }>({ version: null, loaded: false })
+  useEffect(() => {
+    // eslint-disable-next-line react/set-state-in-effect
+    void fetchSummary()
+      .then((summary) =>
+        setServerInfo({ version: summary.server_version ?? null, loaded: true })
+      )
+      .catch(() => setServerInfo({ version: null, loaded: true }))
+  }, [])
   const [results, setResults] = useState<Record<string, EndpointResult>>(
     () =>
       Object.fromEntries(
@@ -321,6 +342,18 @@ function DebugPage() {
             <p className="text-sm text-muted-foreground">
               Raw responses from the local data server
             </p>
+            {serverInfo.loaded &&
+              (serverInfo.version ? (
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Server build:{" "}
+                  <span className="font-mono">{serverInfo.version}</span>
+                </p>
+              ) : (
+                <p className="mt-1 text-xs text-destructive">
+                  Running API server predates the build identifier - restart
+                  it to load the current code.
+                </p>
+              ))}
           </div>
           <div className="flex gap-2">
             <Button variant="outline" onClick={loadAll}>

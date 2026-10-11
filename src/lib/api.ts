@@ -87,12 +87,36 @@ export interface RangeMetrics {
   battery_discharged_kwh: number | null
 }
 
+export type BatteryState =
+  | "charging"
+  | "discharging"
+  | "idle"
+  | "unavailable"
+
+export interface BatteryFlowHour {
+  ts: string
+  in_kwh: number
+  out_kwh: number
+}
+
+export interface BatterySocPoint {
+  ts: string
+  soc_pct: number
+}
+
 export interface SummaryData {
   today: RangeMetrics
   week: RangeMetrics
   month: RangeMetrics
   pv_available: boolean
   battery_available: boolean
+  battery_soc_pct: number | null
+  battery_power_w: number | null
+  battery_power_age_min: number | null
+  battery_state: BatteryState
+  battery_flow_hourly: BatteryFlowHour[]
+  battery_soc_series: BatterySocPoint[]
+  server_version: string
 }
 
 export function fetchSummary(): Promise<SummaryData> {
@@ -176,6 +200,12 @@ export interface WeatherContext {
 }
 
 export interface PriceContext {
+  text: string | null
+  generated_at: string | null
+  error: string | null
+}
+
+export interface BatteryContext {
   text: string | null
   generated_at: string | null
   error: string | null
@@ -274,6 +304,23 @@ export function fetchPriceContext(): Promise<PriceContext> {
   }
   return getJson<PriceContext>("/api/prices/context").then((value) => {
     priceContextCache = { fetchedAt: Date.now(), value }
+    return value
+  })
+}
+
+let batteryContextCache: { fetchedAt: number; value: BatteryContext } | null =
+  null
+
+// Fetches the battery AI insight at most once every 30 minutes.
+export function fetchBatteryContext(): Promise<BatteryContext> {
+  if (
+    batteryContextCache &&
+    Date.now() - batteryContextCache.fetchedAt < CONTEXT_CACHE_MS
+  ) {
+    return Promise.resolve(batteryContextCache.value)
+  }
+  return getJson<BatteryContext>("/api/battery/context").then((value) => {
+    batteryContextCache = { fetchedAt: Date.now(), value }
     return value
   })
 }
