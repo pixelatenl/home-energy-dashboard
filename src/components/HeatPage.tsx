@@ -3,14 +3,14 @@ import PeriodNavigator from "@/components/PeriodNavigator"
 import { Card, CardContent } from "@/components/ui/card"
 
 // Placeholder for the heat spoke of the hub-and-spoke restructure.
-// The header carries the shared period navigator, as the usage page
-// header carries its range selector.
+// The shared period navigator sits in the tab row, right of the main
+// tabs, mirroring the usage page's range selector position.
 function HeatPage() {
   return (
     <PageLayout
       title="Heat"
       subtitle="Heating energy at a glance"
-      actions={<PeriodNavigator />}
+      toolbar={<PeriodNavigator />}
     >
       <Card>
         <CardContent className="text-sm text-muted-foreground">

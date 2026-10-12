@@ -11,7 +11,7 @@ const KINDS: { value: PeriodKind; label: string }[] = [
 ]
 
 // Shared period navigation for analytical pages: a compact inline
-// group for the page header's right side - prev/next arrows, an
+// group for the tab row's right side - prev/next arrows, an
 // always-visible period label, a Today button when the period moved,
 // a "so far" chip on the current period, then the Day/Week/Month/Year
 // segmented control. Keyboard, on any page that renders this:
