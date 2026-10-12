@@ -1,5 +1,5 @@
 import { useEffect } from "react"
-import { ChevronLeft, ChevronRight } from "lucide-react"
+import { ChevronLeft, ChevronRight, Undo2 } from "lucide-react"
 import { periodLabel, type PeriodKind } from "@/lib/period"
 import { usePeriod } from "@/lib/usePeriod"
 
@@ -11,17 +11,16 @@ const KINDS: { value: PeriodKind; label: string }[] = [
 ]
 
 // Shared period navigation for analytical pages: a compact inline
-// group for the tab row's right side - the period label first (with
-// a "so far" chip on the current period), a Today button when the
-// period moved, then prev/next arrows as icon segments directly
-// beside the Day/Week/Month/Year segmented control, one navigation
-// unit that wraps as a row. The label takes its natural width, so
-// with the group right-aligned only its left edge moves between
-// periods. Keyboard, on any page that renders this: ArrowLeft/
-// ArrowRight step prev/next (next blocked on the current period), T
-// jumps to today, D/W/M/Y switch granularity. Shortcuts are ignored
-// while typing in an input, textarea or select, and when modifier
-// keys are held.
+// group for the tab row's right side - the period label first, a
+// small Today pill with an undo icon when the period moved, then
+// prev/next arrows as icon segments directly beside the
+// Day/Week/Month/Year segmented control, one navigation unit that
+// wraps as a row. The label takes its natural width, so with the
+// group right-aligned only its left edge moves between periods.
+// Keyboard, on any page that renders this: ArrowLeft/ArrowRight step
+// prev/next (next blocked on the current period), T jumps to today,
+// D/W/M/Y switch granularity. Shortcuts are ignored while typing in
+// an input, textarea or select, and when modifier keys are held.
 function PeriodNavigator() {
   const { period, setKind, shift, goToday, isCurrent } = usePeriod()
 
@@ -80,20 +79,16 @@ function PeriodNavigator() {
 
   return (
     <div className="flex flex-wrap items-center gap-x-2 gap-y-2">
-      <span className="flex items-center gap-2 text-sm font-medium tabular-nums">
+      <span className="text-sm font-medium tabular-nums">
         {periodLabel(period)}
-        {isCurrent && (
-          <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
-            so far
-          </span>
-        )}
       </span>
       {!isCurrent && (
         <button
           type="button"
           onClick={goToday}
-          className="rounded-full border px-3 py-1 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none"
+          className="inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none"
         >
+          <Undo2 className="size-3.5" aria-hidden="true" />
           Today
         </button>
       )}
