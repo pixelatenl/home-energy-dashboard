@@ -735,3 +735,251 @@ export async function applianceLatestPower() {
   );
   return rows;
 }
+
+// ---- Heat zones ----
+
+// First local day with heat zone data; the frontend renders its empty
+// state for periods before it. Also part of the /api/heat/zones
+// response.
+export const HEAT_DATA_START = "2026-10-12";
+
+// Friendly display names for the heat zones, derived from the entity
+// suffixes (heat_temperature_<key> paired with heat_setpoint_<key>).
+// Zones without a curated name fall back to the suffix with
+// underscores as spaces and the first word capitalized.
+const HEAT_ZONE_NAMES = {
+  badkamer: "Badkamer",
+  entree: "Entree",
+  kantoor: "Kantoor",
+  layne: "Layne",
+  maddox: "Maddox",
+  master_bedroom: "Master Bedroom",
+  reza: "Reza",
+  woonkamer: "Woonkamer",
+  zolder_voor: "Zolder voor",
+};
+
+function heatZoneName(key) {
+  const known = HEAT_ZONE_NAMES[key];
+  if (known !== undefined) {
+    return known;
+  }
+  return key
+    .split("_")
+    .map((word, index) =>
+      index === 0 ? word.charAt(0).toUpperCase() + word.slice(1) : word
+    )
+    .join(" ");
+}
+
+// Heat zone pairs from the entity table: every heat_temperature_<key>
+// with a heat_setpoint_<key> counterpart. The heat_temperature_home
+// aggregate has no setpoint pair and is excluded.
+export async function heatZoneEntities() {
+  const { rows } = await pool.query(
+    `SELECT id, ha_entity_id FROM entity WHERE domain = 'heat' ORDER BY id`
+  );
+  const temperatures = new Map();
+  const setpoints = new Map();
+  for (const row of rows) {
+    const temperatureKey = /^sensor\.heat_temperature_(.+)$/.exec(
+      row.ha_entity_id
+    );
+    if (temperatureKey !== null) {
+      temperatures.set(temperatureKey[1], row.id);
+    }
+    const setpointKey = /^sensor\.heat_setpoint_(.+)$/.exec(row.ha_entity_id);
+    if (setpointKey !== null) {
+      setpoints.set(setpointKey[1], row.id);
+    }
+  }
+  const zones = [];
+  for (const [key, temperatureId] of temperatures) {
+    if (key === "home") {
+      continue;
+    }
+    zones.push({
+      key,
+      name: heatZoneName(key),
+      temperatureId,
+      setpointId: setpoints.get(key) ?? null,
+    });
+  }
+  zones.sort((a, b) => a.key.localeCompare(b.key));
+  return zones;
+}
+
+// The outdoor temperature entity: the weather-domain sample sensor.
+export async function outdoorTemperatureEntity() {
+  const { rows } = await pool.query(
+    `SELECT id FROM entity
+      WHERE domain = 'weather' AND is_counter = false
+      ORDER BY id LIMIT 1`
+  );
+  return rows[0]?.id ?? null;
+}
+
+// Stored temperature/setpoint samples in [from, to), 5-minute cadence.
+export async function heatSamples(entityIds, fromMs, toMs) {
+  const { rows } = await pool.query(
+    `SELECT m.entity_id, m.ts, m.value
+       FROM measurement m
+      WHERE m.entity_id = ANY($1::smallint[])
+        AND m.ts >= $2::timestamptz
+        AND m.ts < $3::timestamptz
+      ORDER BY m.entity_id, m.ts`,
+    [entityIds, new Date(fromMs), new Date(toMs)]
+  );
+  return rows;
+}
+
+// Hourly averages in [from, to) from the measurement_hourly
+// continuous aggregate.
+export async function heatSamplesHourly(entityIds, fromMs, toMs) {
+  const { rows } = await pool.query(
+    `SELECT h.entity_id, h.bucket, h.avg_value
+       FROM measurement_hourly h
+      WHERE h.entity_id = ANY($1::smallint[])
+        AND h.bucket >= $2::timestamptz
+        AND h.bucket < $3::timestamptz
+      ORDER BY h.entity_id, h.bucket`,
+    [entityIds, new Date(fromMs), new Date(toMs)]
+  );
+  return rows;
+}
+
+// One zone series point per stored temperature sample; the setpoint is
+// the latest setpoint sample at or before it, forward-filled so the
+// sparse setpoint stream pairs with the denser temperature stream.
+function mergeZoneSamples(tempRows, setpointRows) {
+  const points = [];
+  let index = 0;
+  let setpoint = null;
+  for (const row of tempRows) {
+    while (index < setpointRows.length && setpointRows[index].ts <= row.ts) {
+      setpoint = Number(setpointRows[index].value);
+      index += 1;
+    }
+    points.push({
+      ts: row.ts.toISOString(),
+      temp: Number(row.value),
+      setpoint,
+    });
+  }
+  return points;
+}
+
+// Hourly zone series: bucket-aligned averages from the continuous
+// aggregate, with the setpoint average of the same bucket.
+function mergeZoneHourly(tempRows, setpointRows) {
+  const setpoints = new Map(
+    setpointRows.map((row) => [row.bucket.getTime(), Number(row.avg_value)])
+  );
+  return tempRows.map((row) => ({
+    ts: row.bucket.toISOString(),
+    temp: Number(row.avg_value),
+    setpoint: setpoints.get(row.bucket.getTime()) ?? null,
+  }));
+}
+
+// Heating intervals for one zone: a maximal run of consecutive series
+// points where the temperature sits below the setpoint minus the
+// hysteresis becomes one interval. This is an inference from the
+// setpoint gap, not measured heat demand.
+function heatingIntervals(series, hysteresis) {
+  const intervals = [];
+  let from = null;
+  let to = null;
+  for (const point of series) {
+    const heating =
+      point.setpoint !== null && point.temp < point.setpoint - hysteresis;
+    if (heating) {
+      if (from === null) {
+        from = point.ts;
+      }
+      to = point.ts;
+    } else if (from !== null) {
+      intervals.push({ from, to });
+      from = null;
+    }
+  }
+  if (from !== null) {
+    intervals.push({ from, to });
+  }
+  return intervals;
+}
+
+// GET /api/heat/zones data: per-zone temperature/setpoint series and
+// heating intervals, plus the outdoor temperature series. resolution
+// "raw" returns the stored 5-minute samples, "hourly" the continuous
+// aggregate averages. Periods entirely before HEAT_DATA_START return
+// empty series and intervals rather than an error. The hysteresis in
+// degrees Celsius comes from EMS_HEAT_HYSTERESIS (default 0; unset,
+// empty or invalid values behave as 0). Missing parts degrade softly:
+// a zone without a setpoint entity keeps its temperature series with
+// null setpoints, a missing outdoor entity yields an empty series.
+export async function getHeatZones(fromMs, toMs, resolution) {
+  const zones = await heatZoneEntities();
+  if (localDateKey(new Date(toMs - 1)) < HEAT_DATA_START) {
+    return {
+      zones: zones.map((zone) => ({
+        key: zone.key,
+        name: zone.name,
+        series: [],
+        heatingIntervals: [],
+      })),
+      outdoor: { series: [] },
+    };
+  }
+
+  const hysteresisRaw = process.env.EMS_HEAT_HYSTERESIS;
+  const hysteresisParsed =
+    hysteresisRaw === undefined || hysteresisRaw === "" ? 0 : Number(hysteresisRaw);
+  const hysteresis = Number.isFinite(hysteresisParsed) ? hysteresisParsed : 0;
+
+  const outdoorId = await outdoorTemperatureEntity();
+  const allIds = [
+    ...zones.map((zone) => zone.temperatureId),
+    ...zones
+      .map((zone) => zone.setpointId)
+      .filter((id) => id !== null),
+  ];
+  if (outdoorId !== null) {
+    allIds.push(outdoorId);
+  }
+
+  const rows =
+    resolution === "hourly"
+      ? await heatSamplesHourly(allIds, fromMs, toMs)
+      : await heatSamples(allIds, fromMs, toMs);
+  const byEntity = new Map();
+  for (const row of rows) {
+    const list = byEntity.get(row.entity_id) ?? [];
+    list.push(row);
+    byEntity.set(row.entity_id, list);
+  }
+
+  const zoneResults = zones.map((zone) => {
+    const tempRows = byEntity.get(zone.temperatureId) ?? [];
+    const setpointRows =
+      zone.setpointId !== null ? byEntity.get(zone.setpointId) ?? [] : [];
+    const series =
+      resolution === "hourly"
+        ? mergeZoneHourly(tempRows, setpointRows)
+        : mergeZoneSamples(tempRows, setpointRows);
+    return {
+      key: zone.key,
+      name: zone.name,
+      series,
+      heatingIntervals: heatingIntervals(series, hysteresis),
+    };
+  });
+
+  const outdoorRows = outdoorId !== null ? byEntity.get(outdoorId) ?? [] : [];
+  const outdoorSeries = outdoorRows.map((row) => ({
+    ts: resolution === "hourly" ? row.bucket.toISOString() : row.ts.toISOString(),
+    temp: Number(resolution === "hourly" ? row.avg_value : row.value),
+  }));
+
+  return { zones: zoneResults, outdoor: { series: outdoorSeries } };
+}

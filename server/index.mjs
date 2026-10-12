@@ -31,7 +31,9 @@ import {
   currentMeasurements,
   dailyTotals,
   getDebugTimeData,
+  getHeatZones,
   getSummary,
+  HEAT_DATA_START,
   hourlySeries,
   hourlyTotals,
   listEntities,
@@ -39,6 +41,7 @@ import {
 import {
   localDateKey,
   localDayStartUtcMs,
+  localIsoWithOffset,
   nextDateKey,
   periodDateKeys,
   resolvedTimezone,
@@ -416,6 +419,46 @@ app.get(
         plug_kwh: Math.round(plugKwh * 100) / 100,
         plug_cost: Math.round(plugCost * 100) / 100,
       },
+    });
+  })
+);
+
+// GET /api/heat/zones: the zone timeline data for the heat page,
+// anchored to a concrete period (period=day|week|month|year,
+// date=YYYY-MM-DD). Day periods return the stored 5-minute samples,
+// week/month/year the hourly continuous-aggregate averages. The
+// window is half-open: start is the local midnight of the first day,
+// end the local midnight after the last day.
+app.get(
+  "/api/heat/zones",
+  asyncHandler(async (req, res) => {
+    const period = req.query.period;
+    const date = req.query.date;
+    if (typeof period !== "string" || typeof date !== "string") {
+      return res.status(400).json({
+        error:
+          "period and date are required (period=day|week|month|year, date=YYYY-MM-DD)",
+      });
+    }
+    const keys = periodDateKeys(period, date);
+    if (keys === null) {
+      return res.status(400).json({
+        error:
+          "unknown period or invalid date (period=day|week|month|year, date=YYYY-MM-DD)",
+      });
+    }
+    const fromMs = localDayStartUtcMs(keys.startKey);
+    const toMs = localDayStartUtcMs(nextDateKey(keys.endKey, 1));
+    const resolution = period === "day" ? "raw" : "hourly";
+    const zones = await getHeatZones(fromMs, toMs, resolution);
+    res.json({
+      window: {
+        start: localIsoWithOffset(new Date(fromMs)),
+        end: localIsoWithOffset(new Date(toMs)),
+      },
+      dataStart: HEAT_DATA_START,
+      resolution,
+      ...zones,
     });
   })
 );
