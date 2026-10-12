@@ -36,8 +36,13 @@ const PRICE_SYSTEM_PROMPT =
   "tomorrow's prices; otherwise focus on today and today's remaining " +
   "hours), when the cheapest window is, and one practical tip that " +
   "combines cheap grid hours with the sun's production peak " +
-  "(self-consumption is free). Only state numbers that are present in " +
-  "the provided context. If data for a period is unavailable, do not " +
+  "(self-consumption is free). Every sentence must refer to one single " +
+  "coherent time frame: never combine a window on one day with prices " +
+  "or solar production from another day. Never call appliances " +
+  "solar-heavy; appliances are flexible or not. Advise to run flexible " +
+  "appliances during the solar production peak to increase " +
+  "self-consumption. Only state numbers that are present in the " +
+  "provided context. If data for a period is unavailable, do not " +
   "reference that period, do not estimate, and do not invent values. " +
   "Be concrete, no marketing tone, no emoji.";
 
@@ -196,14 +201,16 @@ export function buildPriceContext(priceParts, solarDaily) {
 // Detects claims about tomorrow that must not be made while tomorrow's
 // prices are unpublished: a sentence mentioning tomorrow that carries a
 // specific price figure (with or without a currency marker - models
-// drop the "EUR" often) or claims a cheapest window for it. Sentences
-// about tomorrow being not yet published are the legitimate exception.
+// drop the "EUR" often), claims a cheapest window for it, or names a
+// concrete time window on it. Sentences about tomorrow being not yet
+// published are the legitimate exception.
 export function claimsTomorrowPrices(text) {
   const pending =
     /not (yet )?(published|available)|pending|becomes? available|become available/i;
   const price =
     /(\beur\b\s?[\d.,]+|€\s?[\d.,]+|[\d.,]+\s?(?:eur|€|\/kwh)|\d+\.\d{2,})/i;
-  const windowClaim = /cheapest|window/i;
+  const windowClaim =
+    /cheapest|window|\b\d{1,2}:\d{2}\s*(?:-|to|and)\s*\d{1,2}:\d{2}\b/i;
   const sentences = text.split(/(?<=[.!?])\s+/);
   for (const sentence of sentences) {
     if (!/tomorrow/i.test(sentence)) {
