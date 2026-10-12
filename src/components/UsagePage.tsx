@@ -52,7 +52,7 @@ function HourlyChart({
   const appliances = [...new Set(hourly.map((row) => row.appliance))]
 
   return (
-    <div className="rounded-xl border bg-card p-4 shadow-md">
+    <div className="rounded-xl border bg-card p-4 shadow-card">
       <p className="text-sm font-medium">{title}</p>
       <div className="mt-3 flex h-40 items-end gap-1" role="img" aria-label="Hourly appliance energy stacked per hour">
         {Array.from({ length: 24 }, (_, hour) => {
@@ -127,7 +127,7 @@ function TotalsTable({
     value === null ? "\u2014" : value.toFixed(digits)
 
   return (
-    <div className="rounded-xl border bg-card p-4 shadow-md">
+    <div className="rounded-xl border bg-card p-4 shadow-card">
       <p className="text-sm font-medium">Totals</p>
       <Table className="mt-2">
         <TableHeader>
@@ -233,7 +233,7 @@ function UsagePage() {
       }
     >
         {!hasData ? (
-          <p className="rounded-xl border bg-card p-4 shadow-md text-sm text-muted-foreground">
+          <p className="rounded-xl border bg-card p-4 shadow-card text-sm text-muted-foreground">
             No smart plug data for this period.
           </p>
         ) : (
@@ -245,7 +245,7 @@ function UsagePage() {
               />
             )}
             {status === "error" && (
-              <p className="rounded-xl border bg-card p-4 shadow-md text-sm text-muted-foreground">
+              <p className="rounded-xl border bg-card p-4 shadow-card text-sm text-muted-foreground">
                 Could not load appliance data. Try again in a moment.
               </p>
             )}
@@ -254,7 +254,7 @@ function UsagePage() {
                 {data.appliances.length === 0 &&
                 data.totals.plug_kwh === 0 &&
                 data.hourly.length === 0 ? (
-                  <p className="rounded-xl border bg-card p-4 shadow-md text-sm text-muted-foreground">
+                  <p className="rounded-xl border bg-card p-4 shadow-card text-sm text-muted-foreground">
                     No appliance data yet. The first energy deltas appear
                     after the first completed appliance cycle
                     {" \u2014 "}smart plugs report their energy once a run

@@ -135,16 +135,16 @@ function TodayPage() {
       subtitle={insight?.one_liner ?? "Monitor your household energy use"}
       actions={
         <span className="flex items-center gap-2">
-          <span className="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-sm font-medium tabular-nums">
+          <span className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-blue-600 to-sky-500 px-3 py-1 text-sm font-medium tabular-nums text-white shadow-card dark:from-blue-800 dark:to-sky-700">
             {insightFrom ? (
               <>Insight from {insightFrom}</>
             ) : (
-              <span className="font-normal text-muted-foreground">
+              <span className="font-normal text-white/80">
                 No insight yet
               </span>
             )}
             {insight?.stale && hasInsightText && (
-              <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold uppercase tracking-wide text-amber-900 dark:bg-amber-500/20 dark:text-amber-300">
+              <span className="rounded-full bg-white/20 px-2 py-0.5 text-xs font-semibold uppercase tracking-wide text-white">
                 stale
               </span>
             )}
@@ -163,7 +163,7 @@ function TodayPage() {
               triggerAiRefresh()
               triggerDataRefresh()
             }}
-            className="rounded-full text-muted-foreground transition-colors hover:text-foreground focus-visible:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+            className="rounded-full bg-gradient-to-r from-blue-600 to-sky-500 p-1.5 text-white transition-opacity hover:opacity-90 focus-visible:opacity-90 disabled:cursor-not-allowed disabled:opacity-40 dark:from-blue-800 dark:to-sky-700"
           >
             <RefreshCw className="size-3.5" aria-hidden="true" />
           </button>
@@ -187,7 +187,7 @@ function TodayPage() {
       <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
         {HUB_LINKS.map(({ to, icon: Icon, title, description }) => (
           <Link key={title} to={`${to}${modeSearch}`}>
-            <Card className="transition-colors hover:border-foreground/30">
+            <Card className="transition hover:border-foreground/30 hover:shadow-card-lift">
               <CardContent className="flex items-center gap-3">
                 <Icon
                   className="size-5 shrink-0 text-muted-foreground"

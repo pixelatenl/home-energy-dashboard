@@ -51,7 +51,7 @@ function ApplianceTile({
   const state = liveState(power_w, power_ts)
   return (
     <div
-      className="rounded-lg border-2 bg-card p-4 shadow-md"
+      className="rounded-lg border-2 bg-card p-4 shadow-card"
       style={{ borderColor: color }}
     >
       <div className="flex items-center justify-between gap-2">
@@ -93,7 +93,7 @@ function ApplianceTile({
 function RestOfHomeTile({ kwh, share }: CardShare & { kwh: number }) {
   return (
     <div
-      className="rounded-lg border-2 bg-card p-4 shadow-md"
+      className="rounded-lg border-2 bg-card p-4 shadow-card"
       style={{ borderColor: REST_COLOR }}
     >
       <div className="flex items-center justify-between gap-2">

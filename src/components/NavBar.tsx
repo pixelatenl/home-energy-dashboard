@@ -30,9 +30,9 @@ function NavBar() {
           to={`${tab.to}${modeSearch}`}
           end={tab.end}
           className={({ isActive }) =>
-            `rounded-md px-4 py-1.5 text-sm font-medium transition-colors focus-visible:outline-none ${
+            `rounded-md px-4 py-1.5 text-sm font-medium transition focus-visible:outline-none ${
               isActive
-                ? "bg-background text-foreground shadow-sm"
+                ? "bg-background text-foreground shadow-card"
                 : "text-muted-foreground hover:text-foreground"
             }`
           }

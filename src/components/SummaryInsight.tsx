@@ -88,33 +88,33 @@ function ActionRow({
 }) {
   const Icon = TYPE_ICONS[action.type] ?? Zap
   return (
-    <div className="flex items-center gap-3 rounded-xl bg-white/60 p-3 dark:bg-white/5">
+    <div className="flex items-center gap-3 rounded-xl bg-white/15 p-3">
       <div className="flex shrink-0 flex-col items-start gap-1">
-        <span className="whitespace-nowrap rounded-full bg-white/70 px-2 py-0.5 text-xs font-medium dark:bg-white/10">
+        <span className="whitespace-nowrap rounded-full bg-white/25 px-2 py-0.5 text-xs font-medium">
           {dayChipLabel(action.date)}
         </span>
         <span className="whitespace-nowrap text-sm font-semibold leading-none tabular-nums">
           {action.start} - {action.end}
         </span>
       </div>
-      <Icon className="size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
+      <Icon className="size-5 shrink-0 text-white/70" aria-hidden="true" />
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-sm font-medium leading-snug">
             {action.title}
           </span>
           {isNext && (
-            <span className="rounded-full bg-sky-200/80 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-sky-900 dark:bg-sky-400/20 dark:text-sky-200">
+            <span className="rounded-full bg-white/90 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-blue-700">
               next
             </span>
           )}
         </div>
-        <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
+        <p className="mt-0.5 text-xs leading-relaxed text-white/75">
           {action.reason}
         </p>
       </div>
       {action.price_eur != null && (
-        <span className="shrink-0 rounded-full bg-foreground/5 px-2 py-1 text-xs font-medium tabular-nums dark:bg-white/10">
+        <span className="shrink-0 rounded-full bg-white/20 px-2 py-1 text-xs font-medium tabular-nums">
           {action.price_eur.toFixed(2)} EUR/kWh
         </span>
       )}
@@ -140,7 +140,7 @@ function LegacyActionRow({ action }: { action: LegacyInsightAction }) {
   return (
     <li className="text-sm leading-relaxed">
       {dayLabel && (
-        <span className="mr-1.5 inline-flex items-center rounded-full bg-white/70 px-2 py-0.5 text-xs font-medium dark:bg-white/10">
+        <span className="mr-1.5 inline-flex items-center rounded-full bg-white/25 px-2 py-0.5 text-xs font-medium">
           {dayLabel}
         </span>
       )}
@@ -148,7 +148,7 @@ function LegacyActionRow({ action }: { action: LegacyInsightAction }) {
       {" \u2014 "}
       {action.text}
       {action.reason && (
-        <span className="text-muted-foreground"> ({action.reason})</span>
+        <span className="text-white/70"> ({action.reason})</span>
       )}
     </li>
   )
@@ -221,11 +221,12 @@ function SummaryInsight({
         </CardTitle>
       </CardHeader>
       <CardContent>
-        {/* The sky-tinted summary panel sits inside the white card. */}
-        <div className="rounded-xl bg-sky-100/70 p-4 dark:bg-sky-950/40">
+        {/* The blue-gradient AI panel sits inside the white card; the
+            gradient is the visual identity of AI content. */}
+        <div className="rounded-xl bg-gradient-to-br from-blue-600 to-sky-500 p-4 text-white dark:from-blue-800 dark:to-sky-700">
           <SummaryText text={insight.summary} />
           {insight.stale && (
-            <p className="mt-2 text-xs text-muted-foreground">
+            <p className="mt-2 text-xs text-white/70">
               This insight is older than the live data; it refreshes when
               the AI budget allows
             </p>
@@ -235,7 +236,7 @@ function SummaryInsight({
           {groups.map((group) => (
             <div key={group.label}>
               {showHeadings && (
-                <p className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                <p className="mb-1 text-xs font-medium uppercase tracking-wide text-white/70">
                   {group.label}
                 </p>
               )}

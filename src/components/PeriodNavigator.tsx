@@ -75,7 +75,7 @@ function PeriodNavigator() {
   // Icon segments use the segment box height (px-3 py-1.5 around a
   // 20px text line = 32px) so the arrows match the segments exactly.
   const segmentBase =
-    "inline-flex items-center justify-center rounded-md px-3 py-1.5 h-8 text-sm font-medium transition-colors focus-visible:outline-none"
+    "inline-flex items-center justify-center rounded-md px-3 py-1.5 h-8 text-sm font-medium transition focus-visible:outline-none"
 
   return (
     <div className="flex flex-wrap items-center gap-x-2 gap-y-2">
@@ -123,7 +123,7 @@ function PeriodNavigator() {
               onClick={() => setKind(value)}
               className={`${segmentBase} ${
                 period.kind === value
-                  ? "bg-background text-foreground shadow-sm"
+                  ? "bg-background text-foreground shadow-card"
                   : "text-muted-foreground hover:text-foreground"
               }`}
             >
