@@ -147,3 +147,39 @@
   animation-timing-function: linear;
   animation-iteration-count: infinite;
 }
+
+/* Time-of-day background: twinkling stars, opacity only. */
+@keyframes star-twinkle {
+  0%,
+  100% {
+    opacity: 0.25;
+  }
+  50% {
+    opacity: 0.9;
+  }
+}
+
+.star-twinkle {
+  animation-name: star-twinkle;
+  animation-duration: 4s;
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+}
+
+/* Time-of-day background: clouds drift across the widget via transform
+   only, very slowly; the traversal is generous so the animation stays
+   seamless at every widget width. */
+@keyframes cloud-drift {
+  from {
+    transform: translateX(-240px);
+  }
+  to {
+    transform: translateX(1100px);
+  }
+}
+
+.cloud-drift {
+  animation-name: cloud-drift;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}

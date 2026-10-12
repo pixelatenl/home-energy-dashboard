@@ -484,8 +484,12 @@ app.use((err, _req, res, _next) => {
 // from the internet as long as the router does not forward the port.
 const HOST = process.env.HOST ?? "0.0.0.0";
 
+// The successfully bound server, so shutdown can stop accepting requests.
+let activeServer = null;
+
 function listen(port) {
   const server = app.listen(port, HOST, () => {
+    activeServer = server;
     console.log(`API server listening on http://${HOST}:${port}`);
   });
   server.on("error", (err) => {
@@ -503,10 +507,29 @@ function listen(port) {
 // the start port via PORT (see deploy/ems-dashboard.service).
 listen(Number(process.env.PORT ?? DEFAULT_PORT));
 
-for (const signal of ["SIGINT", "SIGTERM"]) {
-  process.on(signal, () => {
-    shutdown()
-      .catch(() => {})
-      .finally(() => process.exit(0));
-  });
+// Graceful shutdown: stop accepting requests before the pool ends, and
+// always exit, even when pool.end() never resolves - a stuck database
+// connection hangs it, and a listening process with an ended pool would
+// answer every request with a 500. The timeout guarantees the exit; a
+// second signal exits at once. SIGHUP covers closing the terminal that
+// ran `pnpm dev:all`.
+let shuttingDown = false;
+function gracefulShutdown() {
+  if (shuttingDown) {
+    process.exit(0);
+  }
+  shuttingDown = true;
+  const exit = () => process.exit(0);
+  if (activeServer) {
+    activeServer.close();
+    activeServer.closeIdleConnections?.();
+  }
+  shutdown()
+    .catch(() => {})
+    .finally(exit);
+  setTimeout(exit, 5000).unref();
+}
+
+for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
+  process.on(signal, gracefulShutdown);
 }

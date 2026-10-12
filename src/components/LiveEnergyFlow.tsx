@@ -1,5 +1,7 @@
 import { Zap } from "lucide-react"
 import houseUrl from "@/house.png"
+import TimeOfDayBackground from "@/components/TimeOfDayBackground"
+import { useTimeOfDayPhase } from "@/lib/timeOfDay"
 import {
   Card,
   CardContent,
@@ -170,8 +172,10 @@ function FlowEdgeChip({ edge }: { edge: FlowEdge }) {
 
 // Renders the diagram data: the house and flow lines in SVG, nodes and
 // value chips as overlays, in an aspect-locked box that fills the widget
-// width. Chips only appear on active flows.
-function FlowDiagram({ data }: { data: FlowData }) {
+// width. Chips only appear on active flows. On the dark night, sunset
+// and dusk skies the inherited currentColor turns light so the "no
+// active flow" note stays legible.
+function FlowDiagram({ data, onDark }: { data: FlowData; onDark: boolean }) {
   return (
     <div
       className="relative mx-auto w-full max-w-[720px]"
@@ -183,7 +187,9 @@ function FlowDiagram({ data }: { data: FlowData }) {
       <svg
         viewBox={`0 0 ${DIAGRAM_WIDTH} ${DIAGRAM_HEIGHT}`}
         preserveAspectRatio="none"
-        className="absolute inset-0 h-full w-full"
+        className={`absolute inset-0 h-full w-full transition-colors duration-[2500ms] ${
+          onDark ? "text-white" : ""
+        }`}
         role="img"
         aria-label="Live energy flow diagram"
       >
@@ -223,9 +229,10 @@ function FlowDiagram({ data }: { data: FlowData }) {
 // The live energy flow widget: the flow snapshot from /api/summary drawn
 // around the house illustration - Solar top left, Battery bottom left,
 // Grid bottom right - with orthogonal animated dashed flow lines and
-// value chips at the stat card value size.
+// value chips at the stat card value size, over a time-of-day sky.
 function LiveEnergyFlow() {
   const { summary, status } = useSummary()
+  const { phase, sunProgress, onDark } = useTimeOfDayPhase()
 
   if (status === "loading") {
     return (
@@ -237,18 +244,31 @@ function LiveEnergyFlow() {
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Zap className="size-5" aria-hidden="true" />
-          Live energy flow
-        </CardTitle>
-        <CardDescription>
-          Power between solar, home, grid and battery
-        </CardDescription>
+    <Card className="relative">
+      {/* The sky fills the card behind everything; content sits above it. */}
+      <TimeOfDayBackground phase={phase} sunProgress={sunProgress} />
+      <CardHeader className="relative z-10">
+        {/* Same muted panel background as the charts. */}
+        <div className="rounded-xl bg-muted/30 p-4">
+          <CardTitle
+            className={`flex items-center gap-2 transition-colors duration-[2500ms] ${
+              onDark ? "text-white" : ""
+            }`}
+          >
+            <Zap className="size-5" aria-hidden="true" />
+            Live energy flow
+          </CardTitle>
+          <CardDescription
+            className={`transition-colors duration-[2500ms] ${
+              onDark ? "text-white/75" : ""
+            }`}
+          >
+            Power between solar, home, grid and battery
+          </CardDescription>
+        </div>
       </CardHeader>
-      <CardContent className="flex justify-center">
-        <FlowDiagram data={buildFlowDiagram(summary)} />
+      <CardContent className="relative z-10 flex justify-center">
+        <FlowDiagram data={buildFlowDiagram(summary)} onDark={onDark} />
       </CardContent>
     </Card>
   )
