@@ -983,3 +983,143 @@ export async function getHeatZones(fromMs, toMs, resolution) {
 
   return { zones: zoneResults, outdoor: { series: outdoorSeries } };
 }
+
+// ---- Gas usage and cost ----
+
+// First local day with gas data; earlier periods return the empty
+// series rather than an error.
+export const GAS_DATA_START = "2026-10-12";
+
+// The gas counter entities (domain 'gas'). Their energy_delta values
+// are cubic metres, even though the shared delta column is named
+// delta_kwh for the electricity entities.
+export async function gasCounterEntityIds() {
+  const { rows } = await pool.query(
+    `SELECT id FROM entity WHERE domain = 'gas' AND is_counter = true ORDER BY id`
+  );
+  return rows.map((row) => row.id);
+}
+
+// Gas prices, one row per day, ordered by day up to and including
+// endDay. Days without their own row fall back to the most recent
+// earlier one at lookup time. Cast to text so the comparison works on
+// the plain YYYY-MM-DD day, without timezone parsing.
+export async function gasPrices(endDay) {
+  const { rows } = await pool.query(
+    `SELECT day::text AS day, price_eur_per_m3
+       FROM gas_price
+      WHERE day <= $1::date
+      ORDER BY day`,
+    [endDay]
+  );
+  return rows;
+}
+
+// Hourly gas deltas in [from, to) from the energy_hourly continuous
+// aggregate. The kwh column holds m3 for gas entities.
+export async function gasHourly(entityIds, fromMs, toMs) {
+  const { rows } = await pool.query(
+    `SELECT h.bucket, h.kwh
+       FROM energy_hourly h
+      WHERE h.entity_id = ANY($1::smallint[])
+        AND h.bucket >= $2::timestamptz
+        AND h.bucket < $3::timestamptz
+      ORDER BY h.bucket`,
+    [entityIds, new Date(fromMs), new Date(toMs)]
+  );
+  return rows;
+}
+
+// Daily gas deltas in [from, to) from the energy_daily continuous
+// aggregate; the kwh column holds m3 for gas entities.
+export async function gasDaily(entityIds, fromMs, toMs) {
+  const { rows } = await pool.query(
+    `SELECT h.bucket, h.kwh
+       FROM energy_daily h
+      WHERE h.entity_id = ANY($1::smallint[])
+        AND h.bucket >= $2::timestamptz
+        AND h.bucket < $3::timestamptz
+      ORDER BY h.bucket`,
+    [entityIds, new Date(fromMs), new Date(toMs)]
+  );
+  return rows;
+}
+
+// GET /api/heat/gas data: gas consumption per interval with the
+// applicable price and cost. granularity "hour" reads energy_hourly,
+// "day" energy_daily, "month" rolls energy_daily up per UTC calendar
+// month; all three read the shared delta column whose name says kWh
+// but holds m3 for the gas counter. The price for an interval is the
+// last known gas_price on or before its local day; cost is m3 * price,
+// and null (never 0) only when no price row exists at all.
+export async function getGasUsage(fromMs, toMs, granularity) {
+  if (localDateKey(new Date(toMs - 1)) < GAS_DATA_START) {
+    return {
+      granularity,
+      series: [],
+      totals: { m3: 0, cost_eur: 0, hasUnknownPrice: false },
+    };
+  }
+
+  // One interval per bucket; multiple gas counters (none today) would
+  // sum into the same bucket.
+  const intervals = new Map();
+  const entityIds = await gasCounterEntityIds();
+  if (entityIds.length > 0) {
+    const rows =
+      granularity === "hour"
+        ? await gasHourly(entityIds, fromMs, toMs)
+        : await gasDaily(entityIds, fromMs, toMs);
+    for (const row of rows) {
+      const tsMs =
+        granularity === "month"
+          ? Date.UTC(
+              row.bucket.getUTCFullYear(),
+              row.bucket.getUTCMonth(),
+              1
+            )
+          : row.bucket.getTime();
+      intervals.set(tsMs, (intervals.get(tsMs) ?? 0) + Number(row.kwh));
+    }
+  }
+
+  // One price query for the whole series, forward-filled by day.
+  const prices = await gasPrices(localDateKey(new Date(toMs - 1)));
+  const series = [];
+  let index = 0;
+  let price = null;
+  let totalM3 = 0;
+  let totalCost = 0;
+  let hasUnknownPrice = false;
+  for (const tsMs of [...intervals.keys()].sort((a, b) => a - b)) {
+    const day = localDateKey(new Date(tsMs));
+    while (index < prices.length && prices[index].day <= day) {
+      price = Number(prices[index].price_eur_per_m3);
+      index += 1;
+    }
+    const m3 = Math.round(intervals.get(tsMs) * 1000) / 1000;
+    const cost = price === null ? null : Math.round(m3 * price * 100) / 100;
+    if (cost === null) {
+      hasUnknownPrice = true;
+    } else {
+      totalCost += cost;
+    }
+    totalM3 += m3;
+    series.push({
+      ts: new Date(tsMs).toISOString(),
+      m3,
+      price_eur_per_m3: price,
+      cost_eur: cost,
+    });
+  }
+
+  return {
+    granularity,
+    series,
+    totals: {
+      m3: Math.round(totalM3 * 1000) / 1000,
+      cost_eur: Math.round(totalCost * 100) / 100,
+      hasUnknownPrice,
+    },
+  };
+}

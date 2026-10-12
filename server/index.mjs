@@ -31,6 +31,7 @@ import {
   currentMeasurements,
   dailyTotals,
   getDebugTimeData,
+  getGasUsage,
   getHeatZones,
   getSummary,
   HEAT_DATA_START,
@@ -459,6 +460,46 @@ app.get(
       dataStart: HEAT_DATA_START,
       resolution,
       ...zones,
+    });
+  })
+);
+
+// GET /api/heat/gas: gas consumption and cost for the heat page,
+// anchored to a concrete period. Granularity follows the period: hour
+// for day, day for week and month, month for year. The meta note is a
+// known data caveat the frontend can footnote.
+app.get(
+  "/api/heat/gas",
+  asyncHandler(async (req, res) => {
+    const period = req.query.period;
+    const date = req.query.date;
+    if (typeof period !== "string" || typeof date !== "string") {
+      return res.status(400).json({
+        error:
+          "period and date are required (period=day|week|month|year, date=YYYY-MM-DD)",
+      });
+    }
+    const keys = periodDateKeys(period, date);
+    if (keys === null) {
+      return res.status(400).json({
+        error:
+          "unknown period or invalid date (period=day|week|month|year, date=YYYY-MM-DD)",
+      });
+    }
+    const fromMs = localDayStartUtcMs(keys.startKey);
+    const toMs = localDayStartUtcMs(nextDateKey(keys.endKey, 1));
+    const granularity =
+      period === "day" ? "hour" : period === "year" ? "month" : "day";
+    const gas = await getGasUsage(fromMs, toMs, granularity);
+    res.json({
+      window: {
+        start: localIsoWithOffset(new Date(fromMs)),
+        end: localIsoWithOffset(new Date(toMs)),
+      },
+      ...gas,
+      meta: {
+        note: "gas day totals miss roughly the first half hour after midnight",
+      },
     });
   })
 );
