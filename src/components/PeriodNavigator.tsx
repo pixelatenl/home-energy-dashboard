@@ -10,14 +10,15 @@ const KINDS: { value: PeriodKind; label: string }[] = [
   { value: "year", label: "Year" },
 ]
 
-// Shared period navigation for analytical pages: a Day/Week/Month/Year
-// segmented control, prev/next arrows, an always-visible period label,
-// a Today button when the period moved and a "so far" chip on the
-// current period. Keyboard, on any page that renders this: ArrowLeft/
-// ArrowRight step prev/next (next blocked on the current period), T
-// jumps to today, D/W/M/Y switch granularity. Shortcuts are ignored
-// while typing in an input, textarea or select, and when modifier
-// keys are held.
+// Shared period navigation for analytical pages: prev/next arrows, an
+// always-visible period label, a Today button when the period moved
+// and a "so far" chip on the current period, sitting left of the
+// Day/Week/Month/Year segmented control (which takes the same
+// right-side position as the usage page's range selector). Keyboard,
+// on any page that renders this: ArrowLeft/ArrowRight step prev/next
+// (next blocked on the current period), T jumps to today, D/W/M/Y
+// switch granularity. Shortcuts are ignored while typing in an input,
+// textarea or select, and when modifier keys are held.
 function PeriodNavigator() {
   const { period, setKind, shift, goToday, isCurrent } = usePeriod()
 
@@ -74,23 +75,6 @@ function PeriodNavigator() {
 
   return (
     <div className="flex flex-wrap items-center justify-between gap-4">
-      <div className="inline-flex rounded-lg border bg-muted p-1">
-        {KINDS.map(({ value, label }) => (
-          <button
-            key={value}
-            type="button"
-            aria-pressed={period.kind === value}
-            onClick={() => setKind(value)}
-            className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors focus-visible:outline-none ${
-              period.kind === value
-                ? "bg-background text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
       <div className="flex items-center gap-2">
         <button
           type="button"
@@ -126,6 +110,23 @@ function PeriodNavigator() {
             Today
           </button>
         )}
+      </div>
+      <div className="inline-flex rounded-lg border bg-muted p-1">
+        {KINDS.map(({ value, label }) => (
+          <button
+            key={value}
+            type="button"
+            aria-pressed={period.kind === value}
+            onClick={() => setKind(value)}
+            className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors focus-visible:outline-none ${
+              period.kind === value
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            {label}
+          </button>
+        ))}
       </div>
     </div>
   )
