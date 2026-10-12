@@ -272,6 +272,31 @@ export function fetchHeatZones(
   return getJson<HeatZonesData>(withParams("/api/heat/zones", { period, date }))
 }
 
+// GET /api/heat/gas: gas consumption and cost for the heat page. Cost
+// is null (never 0) when no gas price applies; the meta note is a
+// known data caveat for the section's footnote.
+export interface GasInterval {
+  ts: string
+  m3: number
+  price_eur_per_m3: number | null
+  cost_eur: number | null
+}
+
+export interface GasUsageData {
+  window: { start: string; end: string }
+  granularity: "hour" | "day" | "month"
+  series: GasInterval[]
+  totals: { m3: number; cost_eur: number; hasUnknownPrice: boolean }
+  meta: { note: string }
+}
+
+export function fetchHeatGas(
+  period: PeriodKind,
+  date: string
+): Promise<GasUsageData> {
+  return getJson<GasUsageData>(withParams("/api/heat/gas", { period, date }))
+}
+
 export type InsightActionType =
   | "appliance"
   | "battery"
