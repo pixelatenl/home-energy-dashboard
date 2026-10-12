@@ -88,9 +88,9 @@ function ActionRow({
 }) {
   const Icon = TYPE_ICONS[action.type] ?? Zap
   return (
-    <div className="flex items-center gap-3 rounded-xl bg-muted/60 p-3">
+    <div className="flex items-center gap-3 rounded-xl bg-white/60 p-3 dark:bg-white/5">
       <div className="flex shrink-0 flex-col items-start gap-1">
-        <span className="whitespace-nowrap rounded-full bg-muted px-2 py-0.5 text-xs font-medium">
+        <span className="whitespace-nowrap rounded-full bg-white/70 px-2 py-0.5 text-xs font-medium dark:bg-white/10">
           {dayChipLabel(action.date)}
         </span>
         <span className="whitespace-nowrap text-sm font-semibold leading-none tabular-nums">
@@ -140,7 +140,7 @@ function LegacyActionRow({ action }: { action: LegacyInsightAction }) {
   return (
     <li className="text-sm leading-relaxed">
       {dayLabel && (
-        <span className="mr-1.5 inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-xs font-medium">
+        <span className="mr-1.5 inline-flex items-center rounded-full bg-white/70 px-2 py-0.5 text-xs font-medium dark:bg-white/10">
           {dayLabel}
         </span>
       )}
@@ -220,13 +220,15 @@ function SummaryInsight({
         </CardTitle>
       </CardHeader>
       <CardContent>
-        <SummaryText text={insight.summary} />
-        {insight.stale && (
-          <p className="mt-2 text-xs text-muted-foreground">
-            Live updates paused (daily AI limit reached); the insight may
-            lag
-          </p>
-        )}
+        {/* The sky-tinted summary panel sits inside the white card. */}
+        <div className="rounded-xl bg-sky-100/70 p-4 dark:bg-sky-950/40">
+          <SummaryText text={insight.summary} />
+          {insight.stale && (
+            <p className="mt-2 text-xs text-muted-foreground">
+              Live updates paused (daily AI limit reached); the insight may
+              lag
+            </p>
+          )}
       {groups.length > 0 && (
         <div className="mt-3 space-y-2">
           {groups.map((group) => (
@@ -256,6 +258,7 @@ function SummaryInsight({
           ))}
         </ul>
       )}
+        </div>
       </CardContent>
     </Card>
   )
