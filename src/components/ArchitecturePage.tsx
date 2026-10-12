@@ -8,7 +8,7 @@ import {
   Plug,
   Server,
 } from "lucide-react"
-import NavBar from "@/components/NavBar"
+import PageLayout from "@/components/PageLayout"
 import {
   Card,
   CardContent,
@@ -60,23 +60,10 @@ const LAYERS = [
 // styling.
 function ArchitecturePage() {
   return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b">
-        <div className="flex flex-wrap items-center justify-between gap-4 px-6 py-4">
-          <div>
-            <h1 className="text-xl font-semibold">Architecture</h1>
-            <p className="text-sm text-muted-foreground">
-              How the system fits together
-            </p>
-          </div>
-        </div>
-      </header>
-
-      <div className="px-6 pt-4">
-        <NavBar />
-      </div>
-
-      <main className="space-y-6 px-6 pt-4 pb-8">
+    <PageLayout
+      title="Architecture"
+      subtitle="How the system fits together"
+    >
         <Card>
           <CardHeader>
             <CardTitle>Architecture at a glance</CardTitle>
@@ -141,8 +128,7 @@ function ArchitecturePage() {
             </div>
           </CardContent>
         </Card>
-      </main>
-    </div>
+    </PageLayout>
   )
 }
 

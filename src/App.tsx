@@ -8,8 +8,9 @@ import SolarPage from "@/components/SolarPage"
 import TodayPage from "@/components/TodayPage"
 import UsagePage from "@/components/UsagePage"
 
-// Hub-and-spoke shell: pure routing. Each page owns its header, renders
-// the NavBar between the header and its content, and fills the body.
+// Hub-and-spoke shell: pure routing. Each page wraps its content in
+// the shared PageLayout, which renders the page header, the tab row,
+// the content area and the footer.
 function App() {
   return (
     <BrowserRouter>

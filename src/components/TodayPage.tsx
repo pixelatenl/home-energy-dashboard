@@ -2,25 +2,23 @@ import { useCallback, useEffect, useState } from "react"
 import ApplianceUsageToday from "@/components/ApplianceUsageToday"
 import BatteryPanel from "@/components/BatteryPanel"
 import LiveEnergyFlow from "@/components/LiveEnergyFlow"
-import NavBar from "@/components/NavBar"
+import PageLayout from "@/components/PageLayout"
 import PricesWidget from "@/components/PricesWidget"
 import StatsHeader from "@/components/StatsHeader"
 import SummaryInsight from "@/components/SummaryInsight"
 import WeatherForecast from "@/components/WeatherForecast"
 import { RefreshCw } from "lucide-react"
-import { useNavigate } from "react-router-dom"
 import { fetchSummary, type SummaryInsight as SummaryInsightData } from "@/lib/api"
 import { greetingFor } from "@/lib/time"
 import { triggerAiRefresh } from "@/lib/useAiContext"
 import { triggerDataRefresh, useRefetchOnWake } from "@/lib/useDataRefresh"
-import { Button } from "@/components/ui/button"
 
-// The dashboard page: greeting header with the insight pill, the refresh
-// and API debug controls, and the widget grid. Owns the insight loading
-// (fetchSummary, the Mistral budget counter, the 5-minute refresh cycle
-// and the wake/focus catch-up).
+// The dashboard page: the widget grid, plus the insight loading
+// (fetchSummary, the Mistral budget counter, the 5-minute refresh
+// cycle and the wake/focus catch-up). The greeting header with the
+// insight pill and refresh button lives in the shared PageLayout's
+// header slots.
 function TodayPage() {
-  const navigate = useNavigate()
   // Ticks once a minute so the greeting follows the local time of day.
   const [nowTick, setNowTick] = useState(() => Date.now())
   const [insight, setInsight] = useState<SummaryInsightData | null>(null)
@@ -78,82 +76,60 @@ function TodayPage() {
       : null
 
   return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b">
-        <div className="flex flex-wrap items-center justify-between gap-4 px-6 py-4">
-          <div>
-            <h1 className="text-xl font-semibold">{greetingFor(nowTick)}</h1>
-            <p className="text-sm text-muted-foreground">
-              {insight?.one_liner ?? "Monitor your household energy use"}
-            </p>
-          </div>
-          <div className="flex items-center gap-3">
-            <span className="flex items-center gap-2">
-              <span className="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-sm font-medium tabular-nums">
-                {insightFrom ? (
-                  <>Insight from {insightFrom}</>
-                ) : (
-                  <span className="font-normal text-muted-foreground">
-                    No insight yet
-                  </span>
-                )}
-                {insight?.stale && hasInsightText && (
-                  <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold uppercase tracking-wide text-amber-900 dark:bg-amber-500/20 dark:text-amber-300">
-                    stale
-                  </span>
-                )}
+    <PageLayout
+      title={greetingFor(nowTick)}
+      subtitle={insight?.one_liner ?? "Monitor your household energy use"}
+      actions={
+        <span className="flex items-center gap-2">
+          <span className="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-sm font-medium tabular-nums">
+            {insightFrom ? (
+              <>Insight from {insightFrom}</>
+            ) : (
+              <span className="font-normal text-muted-foreground">
+                No insight yet
               </span>
-              <button
-                type="button"
-                aria-label="Refresh dashboard"
-                title={
-                  budgetExhausted
-                    ? "Daily AI budget exhausted; the insight refreshes tomorrow"
-                    : "Regenerate all AI insights and refresh widget data now"
-                }
-                disabled={refreshDisabled}
-                onClick={() => {
-                  void loadInsight(true)
-                  triggerAiRefresh()
-                  triggerDataRefresh()
-                }}
-                className="rounded-full text-muted-foreground transition-colors hover:text-foreground focus-visible:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                <RefreshCw className="size-3.5" aria-hidden="true" />
-              </button>
-            </span>
-            <Button
-              variant="outline"
-              onClick={() => {
-                navigate("/debug")
-              }}
-            >
-              API debug
-            </Button>
-          </div>
-        </div>
-      </header>
-
-      <div className="px-6 pt-4">
-        <NavBar />
+            )}
+            {insight?.stale && hasInsightText && (
+              <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold uppercase tracking-wide text-amber-900 dark:bg-amber-500/20 dark:text-amber-300">
+                stale
+              </span>
+            )}
+          </span>
+          <button
+            type="button"
+            aria-label="Refresh dashboard"
+            title={
+              budgetExhausted
+                ? "Daily AI budget exhausted; the insight refreshes tomorrow"
+                : "Regenerate all AI insights and refresh widget data now"
+            }
+            disabled={refreshDisabled}
+            onClick={() => {
+              void loadInsight(true)
+              triggerAiRefresh()
+              triggerDataRefresh()
+            }}
+            className="rounded-full text-muted-foreground transition-colors hover:text-foreground focus-visible:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <RefreshCw className="size-3.5" aria-hidden="true" />
+          </button>
+        </span>
+      }
+    >
+      <div className="grid gap-6 lg:grid-cols-2">
+        <StatsHeader />
+        <SummaryInsight insight={insight} loading={insightLoading} />
       </div>
 
-      <main className="space-y-6 px-6 pt-4 pb-8">
-        <div className="grid gap-6 lg:grid-cols-2">
-          <StatsHeader />
-          <SummaryInsight insight={insight} loading={insightLoading} />
-        </div>
+      <div className="grid gap-6 lg:grid-cols-2">
+        <LiveEnergyFlow />
+        <PricesWidget />
+        <WeatherForecast />
+        <BatteryPanel />
+      </div>
 
-        <div className="grid gap-6 lg:grid-cols-2">
-          <LiveEnergyFlow />
-          <PricesWidget />
-          <WeatherForecast />
-          <BatteryPanel />
-        </div>
-
-        <ApplianceUsageToday />
-      </main>
-    </div>
+      <ApplianceUsageToday />
+    </PageLayout>
   )
 }
 

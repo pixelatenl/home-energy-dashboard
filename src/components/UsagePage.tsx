@@ -1,6 +1,6 @@
 import { useState } from "react"
 import ApplianceUsageWidget from "@/components/ApplianceUsageWidget"
-import NavBar from "@/components/NavBar"
+import PageLayout from "@/components/PageLayout"
 import {
   Table,
   TableBody,
@@ -233,24 +233,11 @@ function UsagePage() {
       : Math.max(0, homeUsageKwh - plugKwh)
 
   return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b">
-        <div className="flex flex-wrap items-center justify-between gap-4 px-6 py-4">
-          <div>
-            <h1 className="text-xl font-semibold">Usage</h1>
-            <p className="text-sm text-muted-foreground">
-              What your smart-plug appliances use
-            </p>
-          </div>
-          <RangeSelector range={range} onChange={setRange} />
-        </div>
-      </header>
-
-      <div className="px-6 pt-4">
-        <NavBar />
-      </div>
-
-      <main className="space-y-6 px-6 pt-4 pb-8">
+    <PageLayout
+      title="Usage"
+      subtitle="What your smart-plug appliances use"
+      toolbar={<RangeSelector range={range} onChange={setRange} />}
+    >
         {status === "loading" && (
           <div
             className="min-h-64 animate-pulse rounded-lg bg-muted"
@@ -291,8 +278,7 @@ function UsagePage() {
             )}
           </>
         )}
-      </main>
-    </div>
+    </PageLayout>
   )
 }
 

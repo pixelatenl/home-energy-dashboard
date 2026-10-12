@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { Badge } from "@/components/ui/badge"
-import NavBar from "@/components/NavBar"
+import PageLayout from "@/components/PageLayout"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -368,61 +368,58 @@ function DebugPage() {
   )
 
   return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b">
-        <div className="flex items-center justify-between px-6 py-4">
-          <div>
-            <h1 className="text-xl font-semibold">API debug</h1>
-            <p className="text-sm text-muted-foreground">
-              Raw responses from the local data server
-            </p>
-            {serverInfo.loaded &&
-              (serverInfo.version ? (
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Server build:{" "}
-                  <span className="font-mono">{serverInfo.version}</span>
-                </p>
-              ) : (
-                <p className="mt-1 text-xs text-destructive">
-                  Running API server predates the build identifier - restart
-                  it to load the current code.
-                </p>
-              ))}
-            {observability.haFetch && observability.mistral && (
+    <PageLayout
+      title="API debug"
+      subtitle={
+        <>
+          <p className="text-sm text-muted-foreground">
+            Raw responses from the local data server
+          </p>
+          {serverInfo.loaded &&
+            (serverInfo.version ? (
               <p className="mt-1 text-xs text-muted-foreground">
-                HA price fetch:{" "}
-                {observability.haFetch.price_entity_ok === null
-                  ? "not fetched yet"
-                  : observability.haFetch.price_entity_ok
-                    ? "ok"
-                    : "failed"}
-                {" · "}forecast age:{" "}
-                {observability.haFetch.price_forecast_age_min ?? "?"} min
-                {" · "}Mistral budget:{" "}
-                {observability.mistral.remaining_calls}/
-                {observability.mistral.daily_limit} left (
-                {observability.mistral.calls_today} today)
+                Server build:{" "}
+                <span className="font-mono">{serverInfo.version}</span>
               </p>
-            )}
-          </div>
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={loadAll}>
-              Reload all
-            </Button>
-            <Button
-              onClick={() => {
-                navigate("/")
-              }}
-            >
-              Back to dashboard
-            </Button>
-          </div>
+            ) : (
+              <p className="mt-1 text-xs text-destructive">
+                Running API server predates the build identifier - restart
+                it to load the current code.
+              </p>
+            ))}
+          {observability.haFetch && observability.mistral && (
+            <p className="mt-1 text-xs text-muted-foreground">
+              HA price fetch:{" "}
+              {observability.haFetch.price_entity_ok === null
+                ? "not fetched yet"
+                : observability.haFetch.price_entity_ok
+                  ? "ok"
+                  : "failed"}
+              {" · "}forecast age:{" "}
+              {observability.haFetch.price_forecast_age_min ?? "?"} min
+              {" · "}Mistral budget:{" "}
+              {observability.mistral.remaining_calls}/
+              {observability.mistral.daily_limit} left (
+              {observability.mistral.calls_today} today)
+            </p>
+          )}
+        </>
+      }
+      actions={
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={loadAll}>
+            Reload all
+          </Button>
+          <Button
+            onClick={() => {
+              navigate("/")
+            }}
+          >
+            Back to dashboard
+          </Button>
         </div>
-      </header>
-      <div className="px-6 pt-4">
-        <NavBar />
-      </div>
-      <main className="space-y-6 px-6 py-8">
+      }
+    >
         {ENDPOINTS.map((spec) => (
           <EndpointCard
             key={spec.key}
@@ -433,8 +430,7 @@ function DebugPage() {
             onReload={handleReload}
           />
         ))}
-      </main>
-    </div>
+    </PageLayout>
   )
 }
 
