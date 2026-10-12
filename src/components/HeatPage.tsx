@@ -1,4 +1,5 @@
 import GasSection from "@/components/GasSection"
+import HeatingModelCard from "@/components/HeatingModelCard"
 import ModeToggle from "@/components/ModeToggle"
 import PageLayout from "@/components/PageLayout"
 import PeriodNavigator from "@/components/PeriodNavigator"
@@ -6,6 +7,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import ZoneTimeline from "@/components/ZoneTimeline"
 import { periodHasData } from "@/lib/period"
 import { useHeatGas } from "@/lib/useHeatGas"
+import { useHeatModel } from "@/lib/useHeatModel"
 import { useHeatZones } from "@/lib/useHeatZones"
 import { usePeriod } from "@/lib/usePeriod"
 
@@ -21,6 +23,7 @@ function HeatPage() {
   const hasData = periodHasData(period, HEAT_DATA_START)
   const zones = useHeatZones(period.kind, period.date)
   const gas = useHeatGas(period.kind, period.date)
+  const model = useHeatModel(period.kind, period.date)
 
   return (
     <PageLayout
@@ -60,6 +63,7 @@ function HeatPage() {
             />
           ) : null}
           <GasSection data={gas.data} status={gas.status} />
+          <HeatingModelCard data={model.data} status={model.status} />
         </>
       )}
     </PageLayout>

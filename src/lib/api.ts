@@ -297,6 +297,38 @@ export function fetchHeatGas(
   return getJson<GasUsageData>(withParams("/api/heat/gas", { period, date }))
 }
 
+// GET /api/heat/model: the hybrid heating cost model for a period.
+// The gas route is the cost basis; every heat pump number is an
+// estimate. Null means the period lacks the data; unknown is never 0.
+export interface HeatModelData {
+  window: { start: string; end: string }
+  gas_route: {
+    cost_per_kwh_heat: number | null
+    price_eur_per_m3: number | null
+    calorific_kwh_per_m3: number
+    boiler_efficiency: number
+  }
+  heat_pump_route: {
+    cost_per_kwh_heat: number | null
+    avg_electricity_price_eur_per_kwh: number | null
+    avg_cop: number | null
+    avg_outdoor_temp: number | null
+  }
+  assumptions: {
+    gas_calorific_kwh_per_m3: number
+    boiler_efficiency: number
+    cop_at_7c: number
+    cop_at_minus_7c: number
+  }
+}
+
+export function fetchHeatModel(
+  period: PeriodKind,
+  date: string
+): Promise<HeatModelData> {
+  return getJson<HeatModelData>(withParams("/api/heat/model", { period, date }))
+}
+
 export type InsightActionType =
   | "appliance"
   | "battery"

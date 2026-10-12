@@ -1197,3 +1197,120 @@ export async function getGasUsage(fromMs, toMs, granularity) {
     },
   };
 }
+
+// ---- Heating cost model ----
+
+// Env-derived model inputs with physical defaults; unset, empty or
+// invalid values fall back to the defaults. The calorific value is
+// physically 9.7-10.3 kWh/m3 (default 9.9); the boiler efficiency
+// assumes a condensing boiler (default 0.9); the COP anchors define a
+// simple outdoor-temperature model.
+function heatModelAssumptions() {
+  const fromEnv = (name, fallback) => {
+    const raw = process.env[name];
+    if (raw === undefined || raw === "") {
+      return fallback;
+    }
+    const parsed = Number(raw);
+    return Number.isFinite(parsed) ? parsed : fallback;
+  };
+  return {
+    gasCalorificKwhPerM3: fromEnv("EMS_GAS_CALORIFIC_KWH_PER_M3", 9.9),
+    boilerEfficiency: fromEnv("EMS_BOILER_EFFICIENCY", 0.9),
+    copAt7C: fromEnv("EMS_COP_AT_7C", 3.0),
+    copAtMinus7C: fromEnv("EMS_COP_AT_MINUS_7C", 2.2),
+  };
+}
+
+// COP estimate from the average outdoor temperature: linear between
+// the two anchors (3.0 at 7 C, 2.2 at -7 C by default), clamped
+// outside that range. This is an outdoor-temperature model; no
+// measured heat pump data exists yet.
+function copEstimate(avgOutdoorTemp, assumptions) {
+  const { copAt7C, copAtMinus7C } = assumptions;
+  const t = Math.min(7, Math.max(-7, avgOutdoorTemp));
+  return copAt7C + ((t - 7) / 14) * (copAtMinus7C - copAt7C);
+}
+
+// GET /api/heat/model data: the two heating cost routes for a period.
+// The gas route is the cost basis - the last known gas price on or
+// before the period's end day divided by (calorific value times
+// boiler efficiency). The heat pump route is an estimate: the
+// period's average electricity price over a COP estimated from the
+// average outdoor temperature. Values the period lacks data for are
+// null, never 0. The card that renders this informs; it does not
+// advise.
+export async function getHeatModel(fromMs, toMs, resolution) {
+  const assumptions = heatModelAssumptions();
+
+  // Gas route: the freshest price that applies to the period.
+  const endDay = localDateKey(new Date(toMs - 1));
+  const prices = await gasPrices(endDay);
+  const gasPrice =
+    prices.length > 0
+      ? Number(prices[prices.length - 1].price_eur_per_m3)
+      : null;
+  const gasCostPerKwhHeat =
+    gasPrice === null
+      ? null
+      : gasPrice /
+        (assumptions.gasCalorificKwhPerM3 * assumptions.boilerEfficiency);
+
+  // Heat pump route: average electricity price over the period's
+  // price-table hours.
+  const priceRows = await dbHourlyPrices(fromMs, toMs);
+  const avgElectricityPrice =
+    priceRows.length > 0
+      ? priceRows.reduce((sum, row) => sum + Number(row.price_eur), 0) /
+        priceRows.length
+      : null;
+
+  // Average outdoor temperature: the plain mean over the period's
+  // samples (stored 5-minute samples for a day, hourly aggregate
+  // averages otherwise).
+  const outdoorId = await outdoorTemperatureEntity();
+  let avgOutdoorTemp = null;
+  if (outdoorId !== null) {
+    const rows =
+      resolution === "hourly"
+        ? await heatSamplesHourly([outdoorId], fromMs, toMs)
+        : await heatSamples([outdoorId], fromMs, toMs);
+    if (rows.length > 0) {
+      avgOutdoorTemp =
+        rows.reduce(
+          (sum, row) =>
+            sum + Number(resolution === "hourly" ? row.avg_value : row.value),
+          0
+        ) / rows.length;
+    }
+  }
+  const avgCop = avgOutdoorTemp === null ? null : copEstimate(avgOutdoorTemp, assumptions);
+  const heatPumpCostPerKwhHeat =
+    avgElectricityPrice === null || avgCop === null || avgCop === 0
+      ? null
+      : avgElectricityPrice / avgCop;
+
+  const round = (value, digits) =>
+    value === null ? null : Math.round(value * 10 ** digits) / 10 ** digits;
+
+  return {
+    gas_route: {
+      cost_per_kwh_heat: round(gasCostPerKwhHeat, 4),
+      price_eur_per_m3: gasPrice,
+      calorific_kwh_per_m3: assumptions.gasCalorificKwhPerM3,
+      boiler_efficiency: assumptions.boilerEfficiency,
+    },
+    heat_pump_route: {
+      cost_per_kwh_heat: round(heatPumpCostPerKwhHeat, 4),
+      avg_electricity_price_eur_per_kwh: round(avgElectricityPrice, 4),
+      avg_cop: round(avgCop, 2),
+      avg_outdoor_temp: round(avgOutdoorTemp, 1),
+    },
+    assumptions: {
+      gas_calorific_kwh_per_m3: assumptions.gasCalorificKwhPerM3,
+      boiler_efficiency: assumptions.boilerEfficiency,
+      cop_at_7c: assumptions.copAt7C,
+      cop_at_minus_7c: assumptions.copAtMinus7C,
+    },
+  };
+}

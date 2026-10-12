@@ -32,6 +32,7 @@ import {
   dailyTotals,
   getDebugTimeData,
   getGasUsage,
+  getHeatModel,
   getHeatZones,
   getSummary,
   HEAT_DATA_START,
@@ -500,6 +501,44 @@ app.get(
       meta: {
         note: "gas day totals miss roughly the first half hour after midnight",
       },
+    });
+  })
+);
+
+// GET /api/heat/model: the hybrid heating cost model for a period -
+// the gas route as the cost basis and the heat pump route as a
+// visible estimate, with the env-derived assumptions echoed back.
+app.get(
+  "/api/heat/model",
+  asyncHandler(async (req, res) => {
+    const period = req.query.period;
+    const date = req.query.date;
+    if (typeof period !== "string" || typeof date !== "string") {
+      return res.status(400).json({
+        error:
+          "period and date are required (period=day|week|month|year, date=YYYY-MM-DD)",
+      });
+    }
+    const keys = periodDateKeys(period, date);
+    if (keys === null) {
+      return res.status(400).json({
+        error:
+          "unknown period or invalid date (period=day|week|month|year, date=YYYY-MM-DD)",
+      });
+    }
+    const fromMs = localDayStartUtcMs(keys.startKey);
+    const toMs = localDayStartUtcMs(nextDateKey(keys.endKey, 1));
+    const model = await getHeatModel(
+      fromMs,
+      toMs,
+      period === "day" ? "raw" : "hourly"
+    );
+    res.json({
+      window: {
+        start: localIsoWithOffset(new Date(fromMs)),
+        end: localIsoWithOffset(new Date(toMs)),
+      },
+      ...model,
     });
   })
 );
