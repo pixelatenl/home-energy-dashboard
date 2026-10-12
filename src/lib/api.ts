@@ -241,6 +241,37 @@ export function fetchAppliances(
   )
 }
 
+// GET /api/heat/zones: the zone timeline data for the heat page. The
+// window is half-open local ISO; heating intervals are inferred
+// server-side from the setpoint gap.
+export interface HeatZonePoint {
+  ts: string
+  temp: number
+  setpoint: number | null
+}
+
+export interface HeatZone {
+  key: string
+  name: string
+  series: HeatZonePoint[]
+  heatingIntervals: { from: string; to: string }[]
+}
+
+export interface HeatZonesData {
+  window: { start: string; end: string }
+  dataStart: string
+  resolution: "raw" | "hourly"
+  zones: HeatZone[]
+  outdoor: { series: { ts: string; temp: number }[] }
+}
+
+export function fetchHeatZones(
+  period: PeriodKind,
+  date: string
+): Promise<HeatZonesData> {
+  return getJson<HeatZonesData>(withParams("/api/heat/zones", { period, date }))
+}
+
 export type InsightActionType =
   | "appliance"
   | "battery"

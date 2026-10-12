@@ -2,10 +2,22 @@ import ModeToggle from "@/components/ModeToggle"
 import PageLayout from "@/components/PageLayout"
 import PeriodNavigator from "@/components/PeriodNavigator"
 import { Card, CardContent } from "@/components/ui/card"
+import ZoneTimeline from "@/components/ZoneTimeline"
+import { periodHasData } from "@/lib/period"
+import { useHeatZones } from "@/lib/useHeatZones"
+import { usePeriod } from "@/lib/usePeriod"
 
-// The heat and hot water spoke: zone climate and gas history, with
-// charts and cost views arriving in the analytics pass.
+// First local day with heat data, matching the server's dataStart.
+const HEAT_DATA_START = "2026-10-12"
+
+// The heat and hot water spoke. The hero is the zone timeline: nine
+// zone rows plus the outdoor reference row on one shared time axis,
+// with shaded, inferred heating intervals (captioned in the section).
 function HeatPage() {
+  const { period, isCurrent } = usePeriod()
+  const hasData = periodHasData(period, HEAT_DATA_START)
+  const { data, status } = useHeatZones(period.kind, period.date)
+
   return (
     <PageLayout
       title="Heat"
@@ -17,19 +29,26 @@ function HeatPage() {
         </div>
       }
     >
-      <Card>
-        <CardContent className="space-y-2 text-sm text-muted-foreground">
-          <p>
-            Heat and hot water data accumulates since the evening of
-            12 October 2026: zone temperatures, setpoints, house average,
-            gas consumption, daily gas price and outdoor temperature.
-          </p>
-          <p>
-            The cost basis is gas; heat pump estimates appear as visible
-            assumptions. Charts and cost views arrive in the analytics pass.
-          </p>
-        </CardContent>
-      </Card>
+      {!hasData ? (
+        <Card>
+          <CardContent className="text-sm text-muted-foreground">
+            Heat data starts on 12 October 2026.
+          </CardContent>
+        </Card>
+      ) : status === "loading" && data === null ? (
+        <div
+          className="min-h-64 animate-pulse rounded-lg bg-muted"
+          aria-hidden="true"
+        />
+      ) : status === "error" ? (
+        <Card>
+          <CardContent className="text-sm text-muted-foreground">
+            Could not load zone data. Try again in a moment.
+          </CardContent>
+        </Card>
+      ) : data !== null ? (
+        <ZoneTimeline data={data} kind={period.kind} showNow={isCurrent} />
+      ) : null}
     </PageLayout>
   )
 }
