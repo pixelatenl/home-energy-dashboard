@@ -201,7 +201,8 @@ app.get(
 
 app.get(
   "/api/prices/context",
-  asyncHandler(async (_req, res) => {
+  asyncHandler(async (req, res) => {
+    const force = req.query.force === "1" || req.query.force === "true";
     const priceParts = await getPriceContextData();
     // Optional solar summary from the weather module; omitted when the
     // weather data is unavailable rather than failing the request.
@@ -220,7 +221,7 @@ app.get(
     } catch {
       solarDaily = null;
     }
-    const result = await getPriceContext(priceParts, solarDaily);
+    const result = await getPriceContext(priceParts, solarDaily, { force });
     res.json({
       text: result.text,
       generated_at: result.generatedAt,
@@ -370,7 +371,8 @@ app.get(
 
 app.get(
   "/api/battery/context",
-  asyncHandler(async (_req, res) => {
+  asyncHandler(async (req, res) => {
+    const force = req.query.force === "1" || req.query.force === "true";
     const summary = await getSummary();
     // Optional solar forecast and price context; omitted when the source
     // is unavailable rather than failing the request.
@@ -386,7 +388,9 @@ app.get(
     } catch {
       priceParts = null;
     }
-    const result = await getBatteryContext(summary, daily, priceParts);
+    const result = await getBatteryContext(summary, daily, priceParts, {
+      force,
+    });
     res.json({
       text: result.text,
       generated_at: result.generatedAt,
@@ -438,12 +442,13 @@ app.get(
 
 app.get(
   "/api/weather/context",
-  asyncHandler(async (_req, res) => {
+  asyncHandler(async (req, res) => {
+    const force = req.query.force === "1" || req.query.force === "true";
     const daily = await dailyForecast(5);
     const hourlyResult =
       (await weatherHourly(localDateKey(new Date()))) ??
       { current: null, hours: [] };
-    const result = await getWeatherContext(daily, hourlyResult);
+    const result = await getWeatherContext(daily, hourlyResult, { force });
     res.json({
       text: result.text,
       generated_at: result.generatedAt,

@@ -13,6 +13,7 @@ import WeatherForecast from "@/components/WeatherForecast"
 import { RefreshCw } from "lucide-react"
 import { fetchDailyInsight, type DailyInsight } from "@/lib/api"
 import { greetingFor } from "@/lib/time"
+import { triggerAiRefresh } from "@/lib/useAiContext"
 import { Button } from "@/components/ui/button"
 
 type View = "dashboard" | "debug" | "usage" | "architecture"
@@ -109,9 +110,12 @@ function App() {
                 </span>
                 <button
                   type="button"
-                  aria-label="Refresh AI summary"
-                  title="Regenerate the AI summary now"
-                  onClick={() => void loadInsight(true)}
+                  aria-label="Refresh AI insights"
+                  title="Regenerate all AI insights now"
+                  onClick={() => {
+                    void loadInsight(true)
+                    triggerAiRefresh()
+                  }}
                   className="rounded-full text-muted-foreground transition-colors hover:text-foreground focus-visible:text-foreground"
                 >
                   <RefreshCw className="size-3.5" aria-hidden="true" />

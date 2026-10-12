@@ -383,11 +383,14 @@ let contextCache: { fetchedAt: number; value: WeatherContext } | null = null
 
 // Fetches the AI insight at most once every 30 minutes; the module-level
 // cache means remounts and day selections never trigger a new request.
-export function fetchWeatherContext(): Promise<WeatherContext> {
-  if (contextCache && Date.now() - contextCache.fetchedAt < CONTEXT_CACHE_MS) {
+// With force, the cache is bypassed and the server is asked to regenerate.
+export function fetchWeatherContext(force = false): Promise<WeatherContext> {
+  if (!force && contextCache && Date.now() - contextCache.fetchedAt < CONTEXT_CACHE_MS) {
     return Promise.resolve(contextCache.value)
   }
-  return getJson<WeatherContext>("/api/weather/context").then((value) => {
+  return getJson<WeatherContext>(
+    withParams("/api/weather/context", force ? { force: "1" } : {})
+  ).then((value) => {
     contextCache = { fetchedAt: Date.now(), value }
     return value
   })
@@ -407,15 +410,19 @@ let priceContextCache: { fetchedAt: number; value: PriceContext } | null =
   null
 
 // Fetches the price AI insight at most once every 30 minutes; the
-// module-level cache means remounts never trigger a new request.
-export function fetchPriceContext(): Promise<PriceContext> {
+// module-level cache means remounts never trigger a new request. With
+// force, the cache is bypassed and the server is asked to regenerate.
+export function fetchPriceContext(force = false): Promise<PriceContext> {
   if (
+    !force &&
     priceContextCache &&
     Date.now() - priceContextCache.fetchedAt < CONTEXT_CACHE_MS
   ) {
     return Promise.resolve(priceContextCache.value)
   }
-  return getJson<PriceContext>("/api/prices/context").then((value) => {
+  return getJson<PriceContext>(
+    withParams("/api/prices/context", force ? { force: "1" } : {})
+  ).then((value) => {
     priceContextCache = { fetchedAt: Date.now(), value }
     return value
   })
@@ -424,15 +431,19 @@ export function fetchPriceContext(): Promise<PriceContext> {
 let batteryContextCache: { fetchedAt: number; value: BatteryContext } | null =
   null
 
-// Fetches the battery AI insight at most once every 30 minutes.
-export function fetchBatteryContext(): Promise<BatteryContext> {
+// Fetches the battery AI insight at most once every 30 minutes. With
+// force, the cache is bypassed and the server is asked to regenerate.
+export function fetchBatteryContext(force = false): Promise<BatteryContext> {
   if (
+    !force &&
     batteryContextCache &&
     Date.now() - batteryContextCache.fetchedAt < CONTEXT_CACHE_MS
   ) {
     return Promise.resolve(batteryContextCache.value)
   }
-  return getJson<BatteryContext>("/api/battery/context").then((value) => {
+  return getJson<BatteryContext>(
+    withParams("/api/battery/context", force ? { force: "1" } : {})
+  ).then((value) => {
     batteryContextCache = { fetchedAt: Date.now(), value }
     return value
   })

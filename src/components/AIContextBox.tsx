@@ -1,12 +1,13 @@
 import type { AiContextValue } from "@/lib/useAiContext"
 import { Sparkles } from "lucide-react"
 
-// AI insight box shared by the weather and prices widgets: a subtle card
-// with the label and the text. When no text is available (API failure or
-// daily limit reached) the box renders nothing at all; the shimmering
-// placeholder reserves roughly the final height so loading causes no layout
-// shift.
-function AIContextBox({ text, loading }: AiContextValue) {
+// AI insight box shared by the weather, prices and battery widgets: a
+// subtle card with the label and the text. When no text is available (API
+// failure or daily limit reached) the box renders nothing at all - except
+// when the daily AI limit is the reason, which is explained in a muted
+// note; the shimmering placeholder reserves roughly the final height so
+// loading causes no layout shift.
+function AIContextBox({ text, error, loading }: AiContextValue) {
   if (loading) {
     return (
       <div
@@ -16,7 +17,17 @@ function AIContextBox({ text, loading }: AiContextValue) {
     )
   }
 
+  const limitReached = error === "daily_limit_reached"
+
   if (!text) {
+    if (limitReached) {
+      return (
+        <p className="text-xs text-muted-foreground">
+          AI insight paused (daily AI limit reached); it resumes after
+          midnight UTC
+        </p>
+      )
+    }
     return null
   }
 
@@ -27,6 +38,11 @@ function AIContextBox({ text, loading }: AiContextValue) {
         AI insight
       </span>
       <p className="mt-2 text-sm leading-relaxed">{text}</p>
+      {limitReached && (
+        <p className="mt-2 text-xs text-muted-foreground">
+          Live updates paused (daily AI limit reached); the insight may lag
+        </p>
+      )}
     </div>
   )
 }

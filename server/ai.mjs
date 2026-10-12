@@ -479,11 +479,12 @@ function dailyLimitReached() {
 // decides the fallback. Retries count against the shared daily cap.
 async function getInsight(namespace, systemPrompt, cacheKey, context, options = {}) {
   const asJson = options.json === true;
+  const force = options.force === true;
   const validate = typeof options.validate === "function" ? options.validate : null;
   const corrective =
     typeof options.corrective === "string" ? options.corrective : null;
   const cached = insightCaches.get(namespace);
-  if (cached && cached.key === cacheKey) {
+  if (!force && cached && cached.key === cacheKey) {
     return asJson
       ? { parsed: cached.parsed ?? null, generatedAt: cached.generatedAt, error: null }
       : { text: cached.text, generatedAt: cached.generatedAt, error: null };
@@ -498,7 +499,13 @@ async function getInsight(namespace, systemPrompt, cacheKey, context, options = 
     }
     // At most one upstream call per 30 minutes regardless of cache keys; a
     // stale cached text is preferable to skipping the insight entirely.
-    if (attempt === 0 && Date.now() - (lastCallAt.get(namespace) ?? 0) < MIN_CALL_INTERVAL_MS) {
+    // A manual force bypasses this throttle but still counts against the
+    // shared daily cap.
+    if (
+      attempt === 0 &&
+      !force &&
+      Date.now() - (lastCallAt.get(namespace) ?? 0) < MIN_CALL_INTERVAL_MS
+    ) {
       if (cached) {
         return asJson
           ? { parsed: cached.parsed ?? null, generatedAt: cached.generatedAt, error: null }
@@ -549,7 +556,7 @@ async function getInsight(namespace, systemPrompt, cacheKey, context, options = 
   }
 }
 
-export async function getWeatherContext(daily, todayHourly) {
+export async function getWeatherContext(daily, todayHourly, options = {}) {
   const cacheKey = hashString(
     `${JSON.stringify(daily)}|${JSON.stringify(todayHourly)}`
   );
@@ -557,11 +564,12 @@ export async function getWeatherContext(daily, todayHourly) {
     "weather",
     WEATHER_SYSTEM_PROMPT,
     cacheKey,
-    buildWeatherContext(daily, todayHourly)
+    buildWeatherContext(daily, todayHourly),
+    options
   );
 }
 
-export async function getPriceContext(priceParts, solarDaily) {
+export async function getPriceContext(priceParts, solarDaily, options = {}) {
   const context = buildPriceContext(priceParts, solarDaily);
   // The cache key follows the context, so it changes the moment
   // tomorrow's prices are published and the insight can legitimately
@@ -593,6 +601,7 @@ export async function getPriceContext(priceParts, solarDaily) {
     );
   }
   const result = await getInsight("prices", PRICE_SYSTEM_PROMPT, cacheKey, context, {
+    force: options.force === true,
     validate:
       validators.length > 0
         ? (text) => validators.every((check) => check(text))
@@ -651,10 +660,10 @@ export function buildBatteryContext(summary, weatherDaily, priceParts) {
   return context;
 }
 
-export async function getBatteryContext(summary, weatherDaily, priceParts) {
+export async function getBatteryContext(summary, weatherDaily, priceParts, options = {}) {
   const context = buildBatteryContext(summary, weatherDaily, priceParts);
   const cacheKey = hashString(JSON.stringify(context));
-  return getInsight("battery", BATTERY_SYSTEM_PROMPT, cacheKey, context);
+  return getInsight("battery", BATTERY_SYSTEM_PROMPT, cacheKey, context, options);
 }
 
 // Daily summary insight: JSON with a summary text and up to three
