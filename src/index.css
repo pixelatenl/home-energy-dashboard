@@ -50,7 +50,7 @@
 }
 
 :root {
-    --background: #f5f5f5;
+    --background: oklch(1 0 0);
     /* Dark text and chart lines use the owner's slate tone. */
     --foreground: #344145;
     --card: oklch(1 0 0);
