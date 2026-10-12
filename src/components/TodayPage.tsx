@@ -7,18 +7,72 @@ import PricesWidget from "@/components/PricesWidget"
 import StatsHeader from "@/components/StatsHeader"
 import SummaryInsight from "@/components/SummaryInsight"
 import WeatherForecast from "@/components/WeatherForecast"
-import { RefreshCw } from "lucide-react"
+import {
+  Activity,
+  BatteryCharging,
+  Droplets,
+  Flame,
+  Plug,
+  RefreshCw,
+  Sun,
+} from "lucide-react"
+import { Link } from "react-router-dom"
+import { Card, CardContent } from "@/components/ui/card"
 import { fetchSummary, type SummaryInsight as SummaryInsightData } from "@/lib/api"
+import { useModeSearch } from "@/lib/mode"
 import { greetingFor } from "@/lib/time"
 import { triggerAiRefresh } from "@/lib/useAiContext"
 import { triggerDataRefresh, useRefetchOnWake } from "@/lib/useDataRefresh"
 
-// The dashboard page: the widget grid, plus the insight loading
-// (fetchSummary, the Mistral budget counter, the 5-minute refresh
-// cycle and the wake/focus catch-up). The greeting header with the
-// insight pill and refresh button lives in the shared PageLayout's
-// header slots.
+// Spoke links below the widget grid: one compact card per analytical
+// page. Heat and hot water share the /heat page.
+const HUB_LINKS = [
+  {
+    to: "/usage",
+    icon: Activity,
+    title: "Usage",
+    description: "Grid and home energy per period",
+  },
+  {
+    to: "/solar",
+    icon: Sun,
+    title: "Solar",
+    description: "Yield and avoided cost",
+  },
+  {
+    to: "/battery",
+    icon: BatteryCharging,
+    title: "Battery",
+    description: "Charge cycles and value",
+  },
+  {
+    to: "/appliances",
+    icon: Plug,
+    title: "Appliances",
+    description: "Per-appliance energy",
+  },
+  {
+    to: "/heat",
+    icon: Flame,
+    title: "Heat",
+    description: "Zones, gas and heating cost",
+  },
+  {
+    to: "/heat",
+    icon: Droplets,
+    title: "Hot water",
+    description: "Hot water on the heat page",
+  },
+]
+
+// The dashboard page: the widget grid and the spoke link cards, plus
+// the insight loading (fetchSummary, the Mistral budget counter, the
+// 5-minute refresh cycle and the wake/focus catch-up). The greeting
+// header with the insight pill and refresh button lives in the shared
+// PageLayout's header slots.
 function TodayPage() {
+  // Hub links carry the mode param, like the NavBar tabs.
+  const modeSearch = useModeSearch()
   // Ticks once a minute so the greeting follows the local time of day.
   const [nowTick, setNowTick] = useState(() => Date.now())
   const [insight, setInsight] = useState<SummaryInsightData | null>(null)
@@ -129,6 +183,25 @@ function TodayPage() {
       </div>
 
       <ApplianceUsageToday />
+
+      <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+        {HUB_LINKS.map(({ to, icon: Icon, title, description }) => (
+          <Link key={title} to={`${to}${modeSearch}`}>
+            <Card className="transition-colors hover:border-foreground/30">
+              <CardContent className="flex items-center gap-3">
+                <Icon
+                  className="size-5 shrink-0 text-muted-foreground"
+                  aria-hidden="true"
+                />
+                <div>
+                  <p className="text-sm font-medium">{title}</p>
+                  <p className="text-xs text-muted-foreground">{description}</p>
+                </div>
+              </CardContent>
+            </Card>
+          </Link>
+        ))}
+      </div>
     </PageLayout>
   )
 }

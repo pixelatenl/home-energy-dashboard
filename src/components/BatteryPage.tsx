@@ -3,7 +3,8 @@ import PageLayout from "@/components/PageLayout"
 import PeriodNavigator from "@/components/PeriodNavigator"
 import { Card, CardContent } from "@/components/ui/card"
 
-// Placeholder for the battery spoke of the hub-and-spoke restructure.
+// The battery spoke: charge and discharge history, with cycles and
+// value views arriving in the analytics pass.
 function BatteryPage() {
   return (
     <PageLayout
@@ -17,8 +18,9 @@ function BatteryPage() {
       }
     >
       <Card>
-        <CardContent className="text-sm text-muted-foreground">
-          This page arrives in the next build pass.
+        <CardContent className="space-y-2 text-sm text-muted-foreground">
+          <p>Battery flows accumulate since 10 October 2026.</p>
+          <p>Charts, charge cycles and value views arrive in the analytics pass.</p>
         </CardContent>
       </Card>
     </PageLayout>

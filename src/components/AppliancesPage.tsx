@@ -3,7 +3,8 @@ import PageLayout from "@/components/PageLayout"
 import PeriodNavigator from "@/components/PeriodNavigator"
 import { Card, CardContent } from "@/components/ui/card"
 
-// Placeholder for the appliances spoke of the hub-and-spoke restructure.
+// The appliances spoke: per-appliance smart plug history, with the
+// per-period breakdown on the Usage page.
 function AppliancesPage() {
   return (
     <PageLayout
@@ -17,8 +18,9 @@ function AppliancesPage() {
       }
     >
       <Card>
-        <CardContent className="text-sm text-muted-foreground">
-          This page arrives in the next build pass.
+        <CardContent className="space-y-2 text-sm text-muted-foreground">
+          <p>Smart plug data accumulates since 11 October 2026.</p>
+          <p>Per-appliance charts and cost views arrive in the analytics pass.</p>
         </CardContent>
       </Card>
     </PageLayout>

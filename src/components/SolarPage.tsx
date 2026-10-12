@@ -3,7 +3,8 @@ import PageLayout from "@/components/PageLayout"
 import PeriodNavigator from "@/components/PeriodNavigator"
 import { Card, CardContent } from "@/components/ui/card"
 
-// Placeholder for the solar spoke of the hub-and-spoke restructure.
+// The solar spoke: PV yield and power history, with charts and cost
+// views arriving in the analytics pass.
 function SolarPage() {
   return (
     <PageLayout
@@ -17,8 +18,9 @@ function SolarPage() {
       }
     >
       <Card>
-        <CardContent className="text-sm text-muted-foreground">
-          This page arrives in the next build pass.
+        <CardContent className="space-y-2 text-sm text-muted-foreground">
+          <p>PV yield and power data accumulate since 10 October 2026.</p>
+          <p>Charts, period totals and cost views arrive in the analytics pass.</p>
         </CardContent>
       </Card>
     </PageLayout>

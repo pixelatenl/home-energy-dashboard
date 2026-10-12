@@ -3,14 +3,13 @@ import PageLayout from "@/components/PageLayout"
 import PeriodNavigator from "@/components/PeriodNavigator"
 import { Card, CardContent } from "@/components/ui/card"
 
-// Placeholder for the heat spoke of the hub-and-spoke restructure.
-// The shared period navigator sits in the tab row, right of the main
-// tabs, mirroring the usage page's range selector position.
+// The heat and hot water spoke: zone climate and gas history, with
+// charts and cost views arriving in the analytics pass.
 function HeatPage() {
   return (
     <PageLayout
       title="Heat"
-      subtitle="Heating energy at a glance"
+      subtitle="Zones, gas and heating cost"
       toolbar={
         <div className="flex flex-wrap items-center gap-2">
           <PeriodNavigator />
@@ -19,8 +18,16 @@ function HeatPage() {
       }
     >
       <Card>
-        <CardContent className="text-sm text-muted-foreground">
-          This page arrives in the next build pass.
+        <CardContent className="space-y-2 text-sm text-muted-foreground">
+          <p>
+            Heat and hot water data accumulates since the evening of
+            12 October 2026: zone temperatures, setpoints, house average,
+            gas consumption, daily gas price and outdoor temperature.
+          </p>
+          <p>
+            The cost basis is gas; heat pump estimates appear as visible
+            assumptions. Charts and cost views arrive in the analytics pass.
+          </p>
         </CardContent>
       </Card>
     </PageLayout>
