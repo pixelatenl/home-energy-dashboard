@@ -220,10 +220,12 @@ function SummaryInsight({
           AI summary
         </CardTitle>
       </CardHeader>
-      <CardContent>
+      {/* The content grows so the blue AI panel always fills the card
+          down to its bottom edge, next to the taller stats header. */}
+      <CardContent className="flex flex-1 flex-col">
         {/* The blue-gradient AI panel sits inside the white card; the
             gradient is the visual identity of AI content. */}
-        <div className="rounded-xl bg-gradient-to-br from-blue-700 to-sky-600 p-4 text-white dark:from-blue-900 dark:to-sky-800">
+        <div className="flex-1 rounded-xl bg-gradient-to-br from-blue-700 to-sky-600 p-4 text-white dark:from-blue-900 dark:to-sky-800">
           <SummaryText text={insight.summary} />
           {insight.stale && (
             <p className="mt-2 text-xs text-white/70">
