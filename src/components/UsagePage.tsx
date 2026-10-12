@@ -1,3 +1,4 @@
+import { useMemo } from "react"
 import ApplianceUsageWidget from "@/components/ApplianceUsageWidget"
 import ModeToggle from "@/components/ModeToggle"
 import PageLayout from "@/components/PageLayout"
@@ -10,8 +11,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import type { ApplianceHour, ApplianceRange, ApplianceSummary } from "@/lib/api"
+import type { ApplianceHour, ApplianceSummary } from "@/lib/api"
 import { applianceColor } from "@/lib/applianceColors"
+import { periodHasData, periodLabel } from "@/lib/period"
 import { localHourOf } from "@/lib/time"
 import { useAppliances } from "@/lib/useAppliances"
 import { usePeriod } from "@/lib/usePeriod"
@@ -35,16 +37,23 @@ function hourSlots(hourly: ApplianceHour[]): Map<number, HourSlot> {
   return byHour
 }
 
-// Stacked bar chart of kWh per hour per appliance for today, built from
-// plain divs: segment heights are percentages of the busiest hour.
-function HourlyChart({ hourly }: { hourly: ApplianceHour[] }) {
+// Stacked bar chart of kWh per hour per appliance for a day window,
+// built from plain divs: segment heights are percentages of the
+// busiest hour.
+function HourlyChart({
+  hourly,
+  title,
+}: {
+  hourly: ApplianceHour[]
+  title: string
+}) {
   const byHour = hourSlots(hourly)
   const maxKwh = Math.max(0.001, ...[...byHour.values()].map((s) => s.totalKwh))
   const appliances = [...new Set(hourly.map((row) => row.appliance))]
 
   return (
     <div className="rounded-xl border bg-card p-4">
-      <p className="text-sm font-medium">Today per hour</p>
+      <p className="text-sm font-medium">{title}</p>
       <div className="mt-3 flex h-40 items-end gap-1" role="img" aria-label="Hourly appliance energy stacked per hour">
         {Array.from({ length: 24 }, (_, hour) => {
           const slot = byHour.get(hour)
@@ -171,28 +180,39 @@ function TotalsTable({
   )
 }
 
+// First day with smart plug data in the database; periods ending
+// before it show the empty state instead of empty charts.
+const PLUG_DATA_START = "2026-10-11"
+
 // The appliance usage view: the shared period navigator in the tab
-// row, the full usage widget on top, today's hourly stacked chart and
-// the totals table beneath. Home usage comes from the summary the
-// dashboard already fetches (import + PV - export - net battery); the
-// year range has no summary equivalent, so percentages read as
-// unavailable there. The appliance API has no date parameter yet, so
-// the fetch rides the period kind only (the navigator's day reads as
-// the API's "today").
+// row, the full usage widget on top, the day's hourly stacked chart
+// and the totals table beneath. The fetch is anchored to the
+// navigator's concrete period window; the hourly chart exists only
+// for day periods. Home usage comes from the summary the dashboard
+// already fetches (import + PV - export - net battery) and only
+// matches the current period, so the share column reads as
+// unavailable on past periods and on the year granularity.
 function UsagePage() {
-  const { period } = usePeriod()
-  const range: ApplianceRange = period.kind === "day" ? "today" : period.kind
-  const { data, status } = useAppliances(range)
+  const { period, isCurrent } = usePeriod()
+  const anchor = useMemo(
+    () => ({ period: period.kind, date: period.date }),
+    [period.kind, period.date]
+  )
+  const { data, status } = useAppliances(
+    period.kind === "day" ? "today" : period.kind,
+    anchor
+  )
   const { summary } = useSummary()
+  const hasData = periodHasData(period, PLUG_DATA_START)
 
   const homeUsageKwh =
-    summary === null
+    summary === null || !isCurrent
       ? null
-      : range === "today"
+      : period.kind === "day"
         ? summary.today.total_usage_kwh
-        : range === "week"
+        : period.kind === "week"
           ? summary.week.total_usage_kwh
-          : range === "month"
+          : period.kind === "month"
             ? summary.month.total_usage_kwh
             : null
   const plugKwh = data?.totals.plug_kwh ?? null
@@ -212,42 +232,69 @@ function UsagePage() {
         </div>
       }
     >
-        {status === "loading" && (
-          <div
-            className="min-h-64 animate-pulse rounded-lg bg-muted"
-            aria-hidden="true"
-          />
-        )}
-        {status === "error" && (
+        {!hasData ? (
           <p className="rounded-xl border bg-card p-4 text-sm text-muted-foreground">
-            Could not load appliance data. Try again in a moment.
+            No smart plug data for this period.
           </p>
-        )}
-        {status === "ok" && data !== null && (
+        ) : (
           <>
-            {data.appliances.length === 0 &&
-            data.totals.plug_kwh === 0 &&
-            data.hourly.length === 0 ? (
+            {status === "loading" && (
+              <div
+                className="min-h-64 animate-pulse rounded-lg bg-muted"
+                aria-hidden="true"
+              />
+            )}
+            {status === "error" && (
               <p className="rounded-xl border bg-card p-4 text-sm text-muted-foreground">
-                No appliance data yet. The first energy deltas appear after
-                the first completed appliance cycle{" \u2014 "}smart plugs
-                report their energy once a run finishes.
+                Could not load appliance data. Try again in a moment.
               </p>
-            ) : (
+            )}
+            {status === "ok" && data !== null && (
               <>
-                <ApplianceUsageWidget
-                  appliances={data.appliances}
-                  plugKwh={plugKwh}
-                  restOfHomeKwh={restOfHomeKwh}
-                />
-                {range === "today" && data.hourly.length > 0 && (
-                  <HourlyChart hourly={data.hourly} />
+                {data.appliances.length === 0 &&
+                data.totals.plug_kwh === 0 &&
+                data.hourly.length === 0 ? (
+                  <p className="rounded-xl border bg-card p-4 text-sm text-muted-foreground">
+                    No appliance data yet. The first energy deltas appear
+                    after the first completed appliance cycle
+                    {" \u2014 "}smart plugs report their energy once a run
+                    finishes.
+                  </p>
+                ) : (
+                  <>
+                    <ApplianceUsageWidget
+                      appliances={data.appliances}
+                      plugKwh={plugKwh}
+                      restOfHomeKwh={restOfHomeKwh}
+                    />
+                    {period.kind === "day" && data.hourly.length > 0 && (
+                      <HourlyChart
+                        hourly={data.hourly}
+                        title={
+                          isCurrent
+                            ? "Today per hour"
+                            : `${periodLabel(period)} per hour`
+                        }
+                      />
+                    )}
+                    {isCurrent && (
+                      <p className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <span className="rounded-full bg-muted px-2 py-0.5 font-medium">
+                          so far
+                        </span>
+                        This period is still in progress
+                      </p>
+                    )}
+                    <TotalsTable
+                      data={data}
+                      homeKwh={
+                        restOfHomeKwh !== null && plugKwh !== null
+                          ? restOfHomeKwh + plugKwh
+                          : null
+                      }
+                    />
+                  </>
                 )}
-                <TotalsTable data={data} homeKwh={
-                  restOfHomeKwh !== null && plugKwh !== null
-                    ? restOfHomeKwh + plugKwh
-                    : null
-                } />
               </>
             )}
           </>

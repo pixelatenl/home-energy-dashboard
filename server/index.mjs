@@ -39,6 +39,8 @@ import {
 import {
   localDateKey,
   localDayStartUtcMs,
+  nextDateKey,
+  periodDateKeys,
   resolvedTimezone,
 } from "./time.mjs";
 
@@ -313,16 +315,48 @@ app.get(
         error: "range must be one of today, week, month, year",
       });
     }
+    // Optional anchored window: filter to the concrete period containing
+    // the anchor day (period=day|week|month|year, date=YYYY-MM-DD). When
+    // the anchor params are absent the relative ranges below behave
+    // exactly as before.
+    const period = req.query.period;
+    const date = req.query.date;
+    let window = null;
+    if (period !== undefined || date !== undefined) {
+      if (typeof period !== "string" || typeof date !== "string") {
+        return res.status(400).json({
+          error:
+            "period and date must be provided together (period=day|week|month|year, date=YYYY-MM-DD)",
+        });
+      }
+      const keys = periodDateKeys(period, date);
+      if (keys === null) {
+        return res.status(400).json({
+          error:
+            "unknown period or invalid date (period=day|week|month|year, date=YYYY-MM-DD)",
+        });
+      }
+      window = {
+        fromMs: localDayStartUtcMs(keys.startKey),
+        // Exclusive end: the first ms after the period's last day.
+        toMs: localDayStartUtcMs(nextDateKey(keys.endKey, 1)),
+      };
+    }
     const nowMs = Date.now();
     const fromMs =
-      range === "today"
-        ? localDayStartUtcMs(localDateKey(new Date()))
-        : nowMs - APPLIANCE_RANGE_DAYS[range] * 24 * 60 * 60 * 1000;
+      window === null
+        ? range === "today"
+          ? localDayStartUtcMs(localDateKey(new Date()))
+          : nowMs - APPLIANCE_RANGE_DAYS[range] * 24 * 60 * 60 * 1000
+        : window.fromMs;
+    const toMs = window === null ? null : window.toMs;
+    // The hourly breakdown exists only for day windows (the today view,
+    // or an anchored day).
+    const isDayView = window === null ? range === "today" : period === "day";
     const [totalsRows, powerRows, hourlyRows] = await Promise.all([
-      applianceTotals(fromMs),
+      applianceTotals(fromMs, toMs),
       applianceLatestPower(),
-      // The hourly breakdown exists only for the today view.
-      range === "today" ? applianceHourly(fromMs) : Promise.resolve([]),
+      isDayView ? applianceHourly(fromMs, toMs) : Promise.resolve([]),
     ]);
     // One entry per appliance, from the energy totals, with the latest
     // power sample attached by normalized name; a plug that has power
@@ -366,7 +400,9 @@ app.get(
       }
     }
     res.json({
-      range,
+      // The anchored mode reuses the range vocabulary (the navigator's
+      // day is the API's "today") so the response shape is unchanged.
+      range: window === null ? range : period === "day" ? "today" : period,
       from: new Date(fromMs).toISOString(),
       appliances: [...appliances.values()].sort((a, b) =>
         a.appliance.localeCompare(b.appliance)

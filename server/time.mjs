@@ -82,6 +82,46 @@ export function nextDateKey(dateKey, days) {
   )}`;
 }
 
+// First and last calendar day of a day/week/month/year period containing
+// the anchor day, matching the frontend's period windows (ISO weeks
+// start Monday). Returns null for an unknown period or a date key that
+// is not a real calendar date.
+export function periodDateKeys(period, anchorKey) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(anchorKey)) {
+    return null;
+  }
+  const [year, month, day] = anchorKey.split("-").map(Number);
+  const utc = Date.UTC(year, month - 1, day);
+  // Reject impossible dates such as 2026-02-31.
+  if (new Date(utc).toISOString().slice(0, 10) !== anchorKey) {
+    return null;
+  }
+  const pad = (value) => String(value).padStart(2, "0");
+  if (period === "day") {
+    return { startKey: anchorKey, endKey: anchorKey };
+  }
+  if (period === "week") {
+    // ISO weekday: Monday-based offset (getUTCDay: 0 = Sunday).
+    const weekday = new Date(utc).getUTCDay();
+    const monday = nextDateKey(anchorKey, -((weekday + 6) % 7));
+    return { startKey: monday, endKey: nextDateKey(monday, 6) };
+  }
+  if (period === "month") {
+    const nextFirst =
+      month === 12
+        ? `${year + 1}-01-01`
+        : `${year}-${pad(month + 1)}-01`;
+    return {
+      startKey: `${year}-${pad(month)}-01`,
+      endKey: nextDateKey(nextFirst, -1),
+    };
+  }
+  if (period === "year") {
+    return { startKey: `${year}-01-01`, endKey: `${year}-12-31` };
+  }
+  return null;
+}
+
 // The local hour index (0-23) in Amsterdam.
 export function localHourIndex(date) {
   return Number(localHourKey(date).slice(11, 13));

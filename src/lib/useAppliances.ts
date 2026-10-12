@@ -1,15 +1,20 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import {
   fetchAppliances,
+  type ApplianceAnchor,
   type ApplianceRange,
   type ApplianceSummary,
 } from "@/lib/api"
 import { useDataRefreshListener } from "@/lib/useDataRefresh"
 
-// Fetches the appliance disaggregation for a range and joins the 5-minute
-// refresh cycle. A response that resolves after a range switch is
-// discarded, so a slow 'today' response can never overwrite 'week'.
-export function useAppliances(range: ApplianceRange): {
+// Fetches the appliance disaggregation for a range, optionally anchored
+// to a concrete period window, and joins the 5-minute refresh cycle. A
+// response that resolves after a range switch is discarded, so a slow
+// 'today' response can never overwrite 'week'.
+export function useAppliances(
+  range: ApplianceRange,
+  anchor?: ApplianceAnchor
+): {
   data: ApplianceSummary | null
   status: "loading" | "ok" | "error"
 } {
@@ -20,7 +25,7 @@ export function useAppliances(range: ApplianceRange): {
   const load = useCallback(async () => {
     const id = ++requestId.current
     try {
-      const value = await fetchAppliances(range)
+      const value = await fetchAppliances(range, anchor)
       if (id === requestId.current) {
         setData(value)
         setStatus("ok")
@@ -30,7 +35,7 @@ export function useAppliances(range: ApplianceRange): {
         setStatus("error")
       }
     }
-  }, [range])
+  }, [range, anchor])
 
   useEffect(() => {
     // eslint-disable-next-line react/set-state-in-effect

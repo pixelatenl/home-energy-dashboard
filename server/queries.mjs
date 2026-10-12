@@ -679,7 +679,9 @@ export async function getSummary() {
 // name, with the cost at the hourly dynamic price. Hours without a price
 // row count toward kWh but not toward cost (the LEFT JOIN nulls the
 // product, which sum skips).
-export async function applianceTotals(startMs) {
+// Appliance energy totals since a start timestamp, optionally bounded
+// by an exclusive end timestamp (null keeps the open-ended behaviour).
+export async function applianceTotals(startMs, endMs = null) {
   const { rows } = await pool.query(
     `SELECT e.name AS appliance,
             sum(d.delta_kwh) AS kwh,
@@ -690,15 +692,17 @@ export async function applianceTotals(startMs) {
       WHERE e.is_counter = true
         AND e.domain = 'plug'
         AND d.ts >= $1::timestamptz
+        AND ($2::timestamptz IS NULL OR d.ts < $2::timestamptz)
       GROUP BY e.name
       ORDER BY e.name`,
-    [new Date(startMs)]
+    [new Date(startMs), endMs === null ? null : new Date(endMs)]
   );
   return rows;
 }
 
-// Hourly kWh per appliance since a start timestamp, for the today view.
-export async function applianceHourly(startMs) {
+// Hourly kWh per appliance since a start timestamp, for the day views;
+// optionally bounded by an exclusive end timestamp.
+export async function applianceHourly(startMs, endMs = null) {
   const { rows } = await pool.query(
     `SELECT date_trunc('hour', d.ts) AS hour,
             e.name AS appliance,
@@ -708,9 +712,10 @@ export async function applianceHourly(startMs) {
       WHERE e.is_counter = true
         AND e.domain = 'plug'
         AND d.ts >= $1::timestamptz
+        AND ($2::timestamptz IS NULL OR d.ts < $2::timestamptz)
       GROUP BY date_trunc('hour', d.ts), e.name
       ORDER BY date_trunc('hour', d.ts), e.name`,
-    [new Date(startMs)]
+    [new Date(startMs), endMs === null ? null : new Date(endMs)]
   );
   return rows;
 }

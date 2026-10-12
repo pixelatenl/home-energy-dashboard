@@ -1,6 +1,8 @@
 // Typed client for the local data server (server/index.mjs). All fetch calls
 // for /api endpoints live here; components should import these functions.
 
+import type { PeriodKind } from "@/lib/period"
+
 export interface Entity {
   id: number
   ha_entity_id: string
@@ -192,6 +194,14 @@ export function fetchSummary(force = false): Promise<SummaryData> {
 // GET /api/appliances: smart plug disaggregation (domain = 'plug' only).
 export type ApplianceRange = "today" | "week" | "month" | "year"
 
+// Anchored window: the concrete period containing the date, as the
+// PeriodNavigator produces. When given, the server filters to that
+// period instead of the relative range.
+export interface ApplianceAnchor {
+  period: PeriodKind
+  date: string
+}
+
 export interface Appliance {
   appliance: string
   kwh: number | null
@@ -218,9 +228,17 @@ export interface ApplianceSummary {
 }
 
 export function fetchAppliances(
-  range: ApplianceRange
+  range: ApplianceRange,
+  anchor?: ApplianceAnchor
 ): Promise<ApplianceSummary> {
-  return getJson<ApplianceSummary>(withParams("/api/appliances", { range }))
+  return getJson<ApplianceSummary>(
+    withParams(
+      "/api/appliances",
+      anchor === undefined
+        ? { range }
+        : { period: anchor.period, date: anchor.date }
+    )
+  )
 }
 
 export type InsightActionType =
