@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { Badge } from "@/components/ui/badge"
+import NavBar from "@/components/NavBar"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -418,6 +419,9 @@ function DebugPage() {
           </div>
         </div>
       </header>
+      <div className="px-6 pt-4">
+        <NavBar />
+      </div>
       <main className="space-y-6 px-6 py-8">
         {ENDPOINTS.map((spec) => (
           <EndpointCard

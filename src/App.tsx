@@ -4,21 +4,16 @@ import ArchitecturePage from "@/components/ArchitecturePage"
 import BatteryPage from "@/components/BatteryPage"
 import DebugPage from "@/components/DebugPage"
 import HeatPage from "@/components/HeatPage"
-import NavBar from "@/components/NavBar"
 import SolarPage from "@/components/SolarPage"
 import TodayPage from "@/components/TodayPage"
 import UsagePage from "@/components/UsagePage"
 
-// Hub-and-spoke shell: the NavBar renders once above the routed page,
-// inside the app's px-6 padding rhythm. Each page owns its own header
-// and content below it.
+// Hub-and-spoke shell: pure routing. Each page owns its header, renders
+// the NavBar between the header and its content, and fills the body.
 function App() {
   return (
     <BrowserRouter>
       <div className="min-h-screen bg-background">
-        <div className="px-6 pt-4">
-          <NavBar />
-        </div>
         <Routes>
           <Route path="/" element={<TodayPage />} />
           <Route path="/usage" element={<UsagePage />} />

@@ -1,3 +1,4 @@
+import NavBar from "@/components/NavBar"
 import { Card, CardContent } from "@/components/ui/card"
 
 // Placeholder for the appliances spoke of the hub-and-spoke restructure.
@@ -9,6 +10,9 @@ function AppliancesPage() {
           <h1 className="text-xl font-semibold">Appliances</h1>
         </div>
       </header>
+      <div className="px-6 pt-4">
+        <NavBar />
+      </div>
       <main className="px-6 pt-4 pb-8">
         <Card>
           <CardContent className="text-sm text-muted-foreground">

@@ -1,5 +1,6 @@
 import { useState } from "react"
 import ApplianceUsageWidget from "@/components/ApplianceUsageWidget"
+import NavBar from "@/components/NavBar"
 import {
   Table,
   TableBody,
@@ -244,6 +245,10 @@ function UsagePage() {
           <RangeSelector range={range} onChange={setRange} />
         </div>
       </header>
+
+      <div className="px-6 pt-4">
+        <NavBar />
+      </div>
 
       <main className="space-y-6 px-6 pt-4 pb-8">
         {status === "loading" && (

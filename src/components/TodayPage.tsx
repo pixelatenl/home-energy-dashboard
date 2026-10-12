@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react"
 import ApplianceUsageToday from "@/components/ApplianceUsageToday"
 import BatteryPanel from "@/components/BatteryPanel"
 import LiveEnergyFlow from "@/components/LiveEnergyFlow"
+import NavBar from "@/components/NavBar"
 import PricesWidget from "@/components/PricesWidget"
 import StatsHeader from "@/components/StatsHeader"
 import SummaryInsight from "@/components/SummaryInsight"
@@ -132,6 +133,10 @@ function TodayPage() {
           </div>
         </div>
       </header>
+
+      <div className="px-6 pt-4">
+        <NavBar />
+      </div>
 
       <main className="space-y-6 px-6 pt-4 pb-8">
         <div className="grid gap-6 lg:grid-cols-2">
