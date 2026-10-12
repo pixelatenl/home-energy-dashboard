@@ -223,7 +223,7 @@ function SummaryInsight({
       <CardContent>
         {/* The blue-gradient AI panel sits inside the white card; the
             gradient is the visual identity of AI content. */}
-        <div className="rounded-xl bg-gradient-to-br from-blue-600 to-sky-500 p-4 text-white dark:from-blue-800 dark:to-sky-700">
+        <div className="rounded-xl bg-gradient-to-br from-blue-700 to-sky-600 p-4 text-white dark:from-blue-900 dark:to-sky-800">
           <SummaryText text={insight.summary} />
           {insight.stale && (
             <p className="mt-2 text-xs text-white/70">
