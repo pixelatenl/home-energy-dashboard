@@ -1,6 +1,7 @@
 import type { ReactNode } from "react"
 import { Link } from "react-router-dom"
 import NavBar from "@/components/NavBar"
+import { useModeSearch } from "@/lib/mode"
 
 // Shared page shell: the page header (title, subtitle, actions), the
 // tab row with a per-page toolbar on its right, the content area and
@@ -20,6 +21,9 @@ function PageLayout({
   toolbar?: ReactNode
   children: ReactNode
 }) {
+  // Footer links carry the mode param so the global mode survives
+  // navigation through the utility pages too.
+  const modeSearch = useModeSearch()
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b">
@@ -51,13 +55,13 @@ function PageLayout({
       <footer className="border-t">
         <div className="flex flex-wrap items-center gap-4 px-6 py-4 text-sm">
           <Link
-            to="/architecture"
+            to={`/architecture${modeSearch}`}
             className="text-muted-foreground transition-colors hover:text-foreground"
           >
             Architecture
           </Link>
           <Link
-            to="/debug"
+            to={`/debug${modeSearch}`}
             className="text-muted-foreground transition-colors hover:text-foreground"
           >
             API debug

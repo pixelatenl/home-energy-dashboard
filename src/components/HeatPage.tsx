@@ -1,3 +1,4 @@
+import ModeToggle from "@/components/ModeToggle"
 import PageLayout from "@/components/PageLayout"
 import PeriodNavigator from "@/components/PeriodNavigator"
 import { Card, CardContent } from "@/components/ui/card"
@@ -10,7 +11,12 @@ function HeatPage() {
     <PageLayout
       title="Heat"
       subtitle="Heating energy at a glance"
-      toolbar={<PeriodNavigator />}
+      toolbar={
+        <div className="flex flex-wrap items-center gap-2">
+          <PeriodNavigator />
+          <ModeToggle />
+        </div>
+      }
     >
       <Card>
         <CardContent className="text-sm text-muted-foreground">

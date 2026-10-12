@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { Badge } from "@/components/ui/badge"
 import PageLayout from "@/components/PageLayout"
+import { useModeSearch } from "@/lib/mode"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -264,6 +265,8 @@ function EndpointCard({
 
 function DebugPage() {
   const navigate = useNavigate()
+  // Carries the mode param back to the dashboard.
+  const modeSearch = useModeSearch()
   const [params, setParams] = useState<Record<string, number>>({})
   // Server build identifier from /api/summary, to confirm on screen that
   // the running process matches the current code.
@@ -412,7 +415,7 @@ function DebugPage() {
           </Button>
           <Button
             onClick={() => {
-              navigate("/")
+              navigate(`/${modeSearch}`)
             }}
           >
             Back to dashboard

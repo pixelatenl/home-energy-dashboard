@@ -30,25 +30,38 @@ export function usePeriod(): {
   const period = decodeParams(searchParams, now)
   const isCurrent = isCurrentPeriod(period, now)
 
+  // Writes period and date, merging into the existing params (mode)
+  // instead of replacing them.
+  const applyPeriod = useCallback(
+    (next: Period) => {
+      setSearchParams((prev) => {
+        const params = new URLSearchParams(prev)
+        const encoded = encodePeriod(next)
+        params.set("period", encoded.period)
+        params.set("date", encoded.date)
+        return params
+      })
+    },
+    [setSearchParams],
+  )
+
   const setKind = useCallback(
     (kind: PeriodKind) => {
-      setSearchParams(encodePeriod({ kind, date: period.date }))
+      applyPeriod({ kind, date: period.date })
     },
-    [period.date, setSearchParams],
+    [applyPeriod, period.date],
   )
 
   const shift = useCallback(
     (delta: number) => {
-      setSearchParams(encodePeriod(stepPeriod(period, delta)))
+      applyPeriod(stepPeriod(period, delta))
     },
-    [period, setSearchParams],
+    [applyPeriod, period],
   )
 
   const goToday = useCallback(() => {
-    setSearchParams(
-      encodePeriod({ kind: period.kind, date: todayString(new Date()) }),
-    )
-  }, [period.kind, setSearchParams])
+    applyPeriod({ kind: period.kind, date: todayString(new Date()) })
+  }, [applyPeriod, period.kind])
 
   return { period, setKind, shift, goToday, isCurrent }
 }

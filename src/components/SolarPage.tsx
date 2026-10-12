@@ -1,3 +1,4 @@
+import ModeToggle from "@/components/ModeToggle"
 import PageLayout from "@/components/PageLayout"
 import PeriodNavigator from "@/components/PeriodNavigator"
 import { Card, CardContent } from "@/components/ui/card"
@@ -8,7 +9,12 @@ function SolarPage() {
     <PageLayout
       title="Solar"
       subtitle="What your panels produce"
-      toolbar={<PeriodNavigator />}
+      toolbar={
+        <div className="flex flex-wrap items-center gap-2">
+          <PeriodNavigator />
+          <ModeToggle />
+        </div>
+      }
     >
       <Card>
         <CardContent className="text-sm text-muted-foreground">

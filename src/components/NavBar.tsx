@@ -1,4 +1,5 @@
 import { NavLink } from "react-router-dom"
+import { useModeSearch } from "@/lib/mode"
 
 const TABS = [
   { to: "/", label: "Today", end: true },
@@ -15,6 +16,9 @@ const TABS = [
 // the active route). Rendered by PageLayout on the tab row, left of
 // any per-page toolbar.
 function NavBar() {
+  // Links carry the mode param so the global mode survives tab
+  // navigation.
+  const modeSearch = useModeSearch()
   return (
     <nav
       aria-label="Main navigation"
@@ -23,7 +27,7 @@ function NavBar() {
       {TABS.map((tab) => (
         <NavLink
           key={tab.to}
-          to={tab.to}
+          to={`${tab.to}${modeSearch}`}
           end={tab.end}
           className={({ isActive }) =>
             `rounded-md px-4 py-1.5 text-sm font-medium transition-colors focus-visible:outline-none ${

@@ -1,4 +1,5 @@
 import ApplianceUsageWidget from "@/components/ApplianceUsageWidget"
+import ModeToggle from "@/components/ModeToggle"
 import PageLayout from "@/components/PageLayout"
 import PeriodNavigator from "@/components/PeriodNavigator"
 import {
@@ -204,7 +205,12 @@ function UsagePage() {
     <PageLayout
       title="Usage"
       subtitle="What your smart-plug appliances use"
-      toolbar={<PeriodNavigator />}
+      toolbar={
+        <div className="flex flex-wrap items-center gap-2">
+          <PeriodNavigator />
+          <ModeToggle />
+        </div>
+      }
     >
         {status === "loading" && (
           <div
