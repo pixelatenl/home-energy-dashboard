@@ -55,7 +55,7 @@
 }
 
 :root {
-    --background: oklch(1 0 0);
+    --background: oklch(0.975 0 0);
     /* Dark text and chart lines use the owner's slate tone. */
     --foreground: #344145;
     --card: oklch(1 0 0);
