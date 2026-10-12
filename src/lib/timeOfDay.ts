@@ -3,14 +3,12 @@ import { fetchWeatherDaily } from "@/lib/api"
 import { todayInAmsterdam } from "@/lib/time"
 
 // Time-of-day phase logic for the live energy flow widget's sky
-// background (see src/components/TimeOfDayBackground.tsx): sunrise and
-// sunset come from the weather API, seasonal defaults apply until it
-// loads or when it fails, and the phase is recomputed every minute.
+// background (see src/components/TimeOfDayBackground.tsx). Two phases
+// only: day runs from the actual sunrise to the actual sunset (from the
+// weather API, seasonal defaults until it loads or when it fails),
+// night is everything else. The phase is recomputed every minute.
 
-export type TimeOfDayPhase = "night" | "sunrise" | "day" | "sunset" | "dusk"
-
-// Phases whose sky is dark enough that the widget text turns light.
-const DARK_PHASES: TimeOfDayPhase[] = ["night", "sunset", "dusk"]
+export type TimeOfDayPhase = "day" | "night"
 
 // Fixed seasonal sunrise/sunset defaults for the Netherlands.
 const SEASONAL_DEFAULTS: { sunrise: string; sunset: string }[] = [
@@ -28,63 +26,32 @@ const SEASONAL_DEFAULTS: { sunrise: string; sunset: string }[] = [
   { sunrise: "08:50", sunset: "16:35" }, // December
 ]
 
-const MIN_MS = 60_000
-
-// Phase windows around sunrise and sunset: color arrives slightly
-// before the actual sunrise, the sunset phase leads the actual sunset,
-// and dusk fades into night about 100 minutes after it.
-const SUNRISE_LEAD_MIN = 20
-const SUNRISE_HOLD_MIN = 60
-const SUNSET_LEAD_MIN = 60
-const SUNSET_HOLD_MIN = 15
-const DUSK_HOLD_MIN = 90
-
 export function phaseFor(
   nowMs: number,
   sunriseMs: number,
   sunsetMs: number
 ): TimeOfDayPhase {
-  if (nowMs < sunriseMs - SUNRISE_LEAD_MIN * MIN_MS) {
-    return "night"
-  }
-  if (nowMs < sunriseMs + SUNRISE_HOLD_MIN * MIN_MS) {
-    return "sunrise"
-  }
-  if (nowMs < sunsetMs - SUNSET_LEAD_MIN * MIN_MS) {
-    return "day"
-  }
-  if (nowMs < sunsetMs + SUNSET_HOLD_MIN * MIN_MS) {
-    return "sunset"
-  }
-  if (nowMs < sunsetMs + (SUNSET_HOLD_MIN + DUSK_HOLD_MIN) * MIN_MS) {
-    return "dusk"
-  }
-  return "night"
+  return nowMs >= sunriseMs && nowMs < sunsetMs ? "day" : "night"
 }
 
-// Representative sun-arc positions when a phase is forced via the hash.
+// Representative sun-arc position when a phase is forced via the hash.
 const FORCED_SUN_PROGRESS: Record<TimeOfDayPhase, number | null> = {
-  night: null,
-  sunrise: 0.12,
   day: 0.5,
-  sunset: 0.88,
-  dusk: null,
+  night: null,
 }
 
-// Testing affordance in the app's hash idiom: "#flow-phase=night" (or
-// sunrise, day, sunset, dusk) forces that sky so every phase can be
-// inspected without waiting for the clock.
+// Testing affordance in the app's hash idiom: "#flow-phase=day" (or
+// "night") forces that sky so both can be inspected without waiting
+// for the clock.
 function forcedPhase(): TimeOfDayPhase | null {
-  const match = window.location.hash.match(
-    /flow-phase=(night|sunrise|day|sunset|dusk)/
-  )
+  const match = window.location.hash.match(/flow-phase=(day|night)/)
   return match ? (match[1] as TimeOfDayPhase) : null
 }
 
 // The current phase, recomputed every minute, plus the sun's progress
-// across the day arc (null while the sun is down). Sunrise and sunset
-// come from the weather API's daily forecast, guarded against a stale
-// day row; seasonal defaults apply until it loads or when it fails.
+// across the day arc (null at night). Sunrise and sunset come from the
+// weather API's daily forecast, guarded against a stale day row;
+// seasonal defaults apply until it loads or when it fails.
 export function useTimeOfDayPhase(): {
   phase: TimeOfDayPhase
   sunProgress: number | null
@@ -153,5 +120,5 @@ export function useTimeOfDayPhase(): {
           Math.max((nowMs - sunriseMs) / (sunsetMs - sunriseMs), 0),
           1
         )
-  return { phase, sunProgress, onDark: DARK_PHASES.includes(phase) }
+  return { phase, sunProgress, onDark: phase === "night" }
 }

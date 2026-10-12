@@ -1,26 +1,19 @@
 import type { TimeOfDayPhase } from "@/lib/timeOfDay"
 
 // Time-of-day sky for the live energy flow widget: a full-bleed abstract
-// background of CSS gradients with a sun, moon, stars and drifting
-// clouds. Sky colors follow the "CSS Animation: Time of Day" sky layers
-// (codepen.io/oliviale/pen/ELPvLM); only its colors and celestial
-// elements are taken, no scene props. All continuous animation is
-// transform/opacity only. The phase logic lives in
+// background of CSS gradients with the sun by day and the moon, stars
+// and drifting clouds, following the browser's local clock. Two phases
+// only, day and night; sky colors follow the "CSS Animation: Time of
+// Day" sky layers (codepen.io/oliviale/pen/ELPvLM); only its colors and
+// celestial elements are taken, no scene props. All continuous
+// animation is transform/opacity only. The phase logic lives in
 // src/lib/timeOfDay.ts.
 
-// One multi-stop sky per phase; light at the horizon except night and
-// dusk, which darken toward the top.
+// One sky per phase: light blue by day, deep blue to near-black at
+// night.
 const PHASE_GRADIENTS: Record<TimeOfDayPhase, string> = {
-  night:
-    "linear-gradient(to top, #17377f 0%, #0c1c46 45%, #050b1c 100%)",
-  sunrise:
-    "linear-gradient(to top, #ffbe1d 0%, #ffd26a 16%, #ffd4fe 38%, " +
-    "#b3efff 100%)",
   day: "linear-gradient(to top, #d9f4ff 0%, #b3efff 45%, #73addf 100%)",
-  sunset:
-    "linear-gradient(to top, #ffbe1d 0%, #ffcc33 22%, #ffd4fe 48%, " +
-    "#53346d 100%)",
-  dusk: "linear-gradient(to top, #870000 0%, #53346d 40%, #221546 100%)",
+  night: "linear-gradient(to top, #17377f 0%, #0c1c46 45%, #050b1c 100%)",
 }
 
 // The sun, soft-glowed as in the reference: a radial gradient from the
@@ -60,9 +53,10 @@ const STARS = [
 
 // The background proper: absolutely positioned inside the widget card,
 // behind all content (the caller keeps the content at a higher
-// z-index). Gradient layers cross-fade on phase changes; the sun rides
-// its arc low at sunrise/sunset and high at midday; clouds drift only by
-// day; the moon and twinkling stars appear at night.
+// z-index). The two gradient layers cross-fade on phase changes; the
+// sun rides its arc by day, low at the horizon at sunrise/sunset and
+// high at midday; clouds drift by day; the moon and twinkling stars
+// appear at night.
 function TimeOfDayBackground({
   phase,
   sunProgress,
@@ -70,16 +64,13 @@ function TimeOfDayBackground({
   phase: TimeOfDayPhase
   sunProgress: number | null
 }) {
-  const sunVisible =
-    sunProgress !== null && phase !== "night" && phase !== "dusk"
   // Arc across the widget: near the horizon at the ends, high at noon.
   const sunLeft = sunProgress !== null ? 8 + 84 * sunProgress : 50
   const sunTop =
     sunProgress !== null
       ? 78 - 60 * Math.sin(Math.PI * sunProgress)
       : 78
-  const nightSky = phase === "night"
-  const cloudsVisible = phase === "day"
+  const daySky = phase === "day"
 
   return (
     <div className="absolute inset-0 overflow-hidden" aria-hidden="true">
@@ -101,7 +92,7 @@ function TimeOfDayBackground({
           width: SUN_SIZE,
           height: SUN_SIZE,
           transform: "translate(-50%, -50%)",
-          opacity: sunVisible ? 1 : 0,
+          opacity: daySky ? 1 : 0,
           background:
             "radial-gradient(circle, #f9db5a 0%, rgba(255, 235, 222, " +
             "0.55) 34%, rgba(255, 236, 220, 0.22) 55%, rgba(255, 236, " +
@@ -119,7 +110,7 @@ function TimeOfDayBackground({
             height: cloud.height,
             background: "rgba(255, 255, 255, 0.9)",
             filter: "blur(14px)",
-            opacity: cloudsVisible ? 0.4 : 0,
+            opacity: daySky ? 0.4 : 0,
             animationDuration: `${cloud.duration}s`,
             animationDelay: `${cloud.delay}s`,
           }}
@@ -132,7 +123,7 @@ function TimeOfDayBackground({
           top: "14%",
           width: 42,
           height: 42,
-          opacity: nightSky ? 0.9 : 0,
+          opacity: daySky ? 0 : 0.9,
         }}
       >
         <div
@@ -146,14 +137,14 @@ function TimeOfDayBackground({
         <div
           key={index}
           className={`absolute rounded-full bg-white transition-opacity duration-[2500ms] ${
-            nightSky ? "star-twinkle" : ""
+            daySky ? "" : "star-twinkle"
           }`}
           style={{
             left: star.left,
             top: star.top,
             width: star.size,
             height: star.size,
-            opacity: nightSky ? 1 : 0,
+            opacity: daySky ? 0 : 1,
             animationDelay: `${star.delay}s`,
           }}
         />

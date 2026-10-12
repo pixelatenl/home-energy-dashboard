@@ -202,7 +202,7 @@ app.get(
 app.get(
   "/api/prices/context",
   asyncHandler(async (_req, res) => {
-    const { priceData, cheapestBlock } = await getPriceContextData();
+    const priceParts = await getPriceContextData();
     // Optional solar summary from the weather module; omitted when the
     // weather data is unavailable rather than failing the request.
     let solarDaily = null;
@@ -220,7 +220,7 @@ app.get(
     } catch {
       solarDaily = null;
     }
-    const result = await getPriceContext(priceData, cheapestBlock, solarDaily);
+    const result = await getPriceContext(priceParts, solarDaily);
     res.json({
       text: result.text,
       generated_at: result.generatedAt,

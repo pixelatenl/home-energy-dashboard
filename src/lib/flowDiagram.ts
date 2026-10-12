@@ -2,13 +2,17 @@ import { BatteryCharging, Home, Sun, UtilityPole } from "lucide-react"
 import type { CSSProperties, ComponentType } from "react"
 import type { SummaryData } from "@/lib/api"
 
-// Flow palette: solar warm yellow, battery charging green, battery
-// discharging amber, grid import blue, grid export violet.
-export const SOLAR_COLOR = "#fbbf24"
+// Flow palette - the colors of the animated dash overlays, the only
+// per-flow difference in the diagram: solar warm yellow, grid deep
+// indigo for both directions (the moving dashes carry the direction),
+// battery green for both directions (the widget's charging accent).
+// The base lines under the overlays are a shared neutral gray in the
+// render pass; the battery node keeps its state-dependent accent.
+export const SOLAR_COLOR = "#f8ae17"
 export const CHARGING_COLOR = "hsl(140 70% 45%)"
 export const DISCHARGING_COLOR = "#f59e0b"
-export const GRID_IMPORT_COLOR = "#3b82f6"
-export const GRID_EXPORT_COLOR = "#8b5cf6"
+export const GRID_IMPORT_COLOR = "#3b3fbf"
+export const GRID_EXPORT_COLOR = GRID_IMPORT_COLOR
 export const NEUTRAL_COLOR = "#94a3b8"
 
 // Diagram geometry in design units. The diagram box is aspect-locked and
@@ -120,11 +124,13 @@ export interface FlowNode {
   borderColor?: string
 }
 
-// A diagram flow: an SVG path made exclusively of straight segments with
-// corners at exactly 45 or 90 degrees, its total length (for dash
-// sizing), the live watt value, whether the flow is strong enough to
-// animate (above the 25 W threshold) and the position of its value chip.
-// Zero and unknown (null) flows render as faint static lines.
+// A diagram flow: an SVG path of straight orthogonal segments, its total
+// length (for dash sizing), the live watt value, whether the flow is
+// strong enough to animate (above the 25 W threshold), the color of its
+// animated dash overlay (the only per-flow styling; base lines and
+// contrast rings are shared in the render pass), and the position of its
+// value chip. Inactive and unknown (null) flows render as the shared
+// dimmed base line with no overlay.
 export interface FlowEdge {
   key: string
   path: string
@@ -240,12 +246,13 @@ export function buildFlowDiagram(summary: SummaryData | null): FlowData {
     gridToBattery,
     CHARGING_COLOR
   )
-  // The battery feeds the house from the lower left.
+  // The battery feeds the house from the lower left; both battery flows
+  // share the one green battery accent.
   addFlow(
     "battery_to_home",
     ROUTES.battery_to_home,
     batteryToHome,
-    DISCHARGING_COLOR
+    CHARGING_COLOR
   )
 
   // Balance rule: Home shows the sum of the visible incoming arrows, so

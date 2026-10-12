@@ -161,7 +161,8 @@ const ENDPOINTS: EndpointSpec[] = [
   },
 ]
 
-const DEFAULT_PARAMS: Record<string, number> = { days: 7, hours: 24 }
+// The per-endpoint fallback params (in each spec) are used on mount;
+// the shared params state only holds values the user has typed.
 function rowCount(data: unknown): number | null {
   return Array.isArray(data) ? data.length : null
 }
@@ -257,7 +258,7 @@ function EndpointCard({
 }
 
 function DebugPage() {
-  const [params, setParams] = useState<Record<string, number>>(DEFAULT_PARAMS)
+  const [params, setParams] = useState<Record<string, number>>({})
   // Server build identifier from /api/summary, to confirm on screen that
   // the running process matches the current code.
   const [serverInfo, setServerInfo] = useState<{
@@ -321,12 +322,16 @@ function DebugPage() {
   }, [load, markLoading, params])
 
   useEffect(() => {
-    // Load once on mount with the default params; manual reloads handle the rest.
-    // Results are set asynchronously (after await) inside load; oxlint's
-    // set-state-in-effect rule cannot see the await boundary here.
+    // Load once on mount, each endpoint with its own fallback params;
+    // manual reloads handle the rest. Results are set asynchronously
+    // (after await) inside load; oxlint's set-state-in-effect rule
+    // cannot see the await boundary here.
     for (const spec of ENDPOINTS) {
       // eslint-disable-next-line react/set-state-in-effect
-      void load(spec.key, DEFAULT_PARAMS)
+      void load(
+        spec.key,
+        Object.fromEntries(spec.params.map((param) => [param.key, param.fallback]))
+      )
     }
   }, [load])
 

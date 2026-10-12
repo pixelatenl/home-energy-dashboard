@@ -25,8 +25,9 @@ import { useSummary } from "@/lib/useSummary"
 // --- Render pass over the diagram data (see src/lib/flowDiagram.ts) ---
 // The home node is the house illustration from src/house.png, embedded
 // inside the SVG so the flow lines share its coordinate space; solar,
-// grid and battery stay circular nodes around it, connected by animated
-// dashed lines.
+// grid and battery stay circular nodes around it. Every connection uses
+// the shared base line styles; only the animated dash overlays carry
+// per-flow colors.
 
 // Line weight grows with power: 2 px at the flow threshold up to 8 px at
 // high power; the sqrt scaling keeps midrange values readable.
@@ -45,34 +46,50 @@ function flowDuration(value: number): number {
   return Math.min(12, Math.max(1, seconds))
 }
 
-// One flow line. Active flows are dashed and animated: the dashes travel
-// along the path in the direction it is drawn - every flow direction is
-// its own path, so a reversed flow (battery discharging, grid export)
-// simply travels its own line the other way. Line weight and dash speed
-// scale with power. Zero or unknown flows render as faint static lines.
+// --- Shared flow line style (the only definition; every connection
+// renders from it) ---
+// Every line, active and inactive, rides the same translucent white
+// band: on the light day sky the band lifts the dashes' contrast; on
+// the dark night sky it glows softly. The dashes on top are the only
+// difference: colored and animated for active flows (solar yellow,
+// grid deep indigo, battery green), soft light gray and static for
+// inactive ones. No borders anywhere.
+const FLOW_BAND = "rgba(255, 255, 255, 0.5)"
+const INACTIVE_DASH = "#b6c2d4"
+
+// One flow line: the shared white band, then the dashes - animated and
+// in the flow's color when it carries power, static light gray when it
+// does not. Dash speed and line weight scale with power; the dashes
+// travel along the path direction, so a reversed flow travels its own
+// line the other way.
 function FlowLine({ edge }: { edge: FlowEdge }) {
-  if (!edge.active || edge.value === null) {
-    return (
+  const active = edge.active && edge.value !== null
+  const value = edge.value ?? 0
+  const width = active ? flowWidth(value) : 2
+  return (
+    <g className="flow-shadow">
       <path
         d={edge.path}
         fill="none"
-        stroke={edge.color}
-        strokeWidth={2}
-        opacity={0.25}
+        stroke={FLOW_BAND}
+        strokeWidth={width + 3}
+        strokeLinecap="round"
       />
-    )
-  }
-  const value = edge.value
-  return (
-    <path
-      d={edge.path}
-      fill="none"
-      stroke={edge.color}
-      strokeWidth={flowWidth(value)}
-      strokeDasharray="10 14"
-      className="flow-dash"
-      style={{ animationDuration: `${flowDuration(value).toFixed(2)}s` }}
-    />
+      <path
+        d={edge.path}
+        fill="none"
+        stroke={active ? edge.color : INACTIVE_DASH}
+        strokeWidth={width}
+        strokeLinecap="round"
+        strokeDasharray="10 14"
+        className={active ? "flow-dash" : undefined}
+        style={
+          active
+            ? { animationDuration: `${flowDuration(value).toFixed(2)}s` }
+            : undefined
+        }
+      />
+    </g>
   )
 }
 
@@ -90,8 +107,14 @@ function HouseImage() {
   )
 }
 
-// A node: a circle carrying its icon, name and live figure. Body text
-// size, scaling with the diagram via container query units.
+// Responsive node typography: nothing falls below a readable size on
+// phones, nothing grows past the diagram's design size on desktop.
+const NODE_TEXT = "clamp(0.7rem, 2.5vw, 0.9rem)"
+const NODE_SUB_TEXT = "clamp(0.65rem, 2.3vw, 0.8rem)"
+const NODE_ICON = "clamp(0.9rem, 3vw, 1.15rem)"
+
+// A node: a circle with a solid card fill carrying its icon, name and
+// live figure, so it reads on any sky.
 function FlowNodeView({ node }: { node: FlowNode }) {
   const Icon = node.icon
   return (
@@ -107,25 +130,25 @@ function FlowNodeView({ node }: { node: FlowNode }) {
     >
       <Icon
         className="shrink-0"
-        style={{ width: "2.9cqw", height: "2.9cqw", color: node.iconColor }}
+        style={{ width: NODE_ICON, height: NODE_ICON, color: node.iconColor }}
         aria-hidden="true"
       />
       <span
         className="whitespace-nowrap font-medium leading-none"
-        style={{ fontSize: "max(0.8rem, 2.2cqw)" }}
+        style={{ fontSize: NODE_TEXT }}
       >
         {node.name}
       </span>
       <span
         className="whitespace-nowrap font-semibold leading-none tabular-nums"
-        style={{ fontSize: "max(0.8rem, 2.2cqw)" }}
+        style={{ fontSize: NODE_TEXT }}
       >
         {node.figure}
       </span>
       {node.sub && (
         <span
           className="whitespace-nowrap leading-none tabular-nums opacity-70"
-          style={{ fontSize: "max(0.7rem, 1.9cqw)" }}
+          style={{ fontSize: NODE_SUB_TEXT }}
         >
           {node.sub}
         </span>
@@ -135,7 +158,7 @@ function FlowNodeView({ node }: { node: FlowNode }) {
 }
 
 // The home node: the house illustration with its consumption figure in a
-// pill below the drawing.
+// solid pill below the drawing.
 function HomeLabel({ node }: { node: FlowNode }) {
   return (
     <div
@@ -143,7 +166,7 @@ function HomeLabel({ node }: { node: FlowNode }) {
       style={{
         left: `${(HOME_LABEL.x / DIAGRAM_WIDTH) * 100}%`,
         top: `${(HOME_LABEL.y / DIAGRAM_HEIGHT) * 100}%`,
-        fontSize: "max(0.8rem, 2.2cqw)",
+        fontSize: NODE_TEXT,
       }}
     >
       <span className="mr-1 font-medium opacity-70">{node.name}</span>
@@ -152,17 +175,16 @@ function HomeLabel({ node }: { node: FlowNode }) {
   )
 }
 
-// An edge value chip: the watt figure in a pill with the page card
-// background so the number reads clearly against the flow line.
+// An edge value chip: the watt figure in a solid pill with dark text on
+// the card background, so the number reads on any sky gradient.
 function FlowEdgeChip({ edge }: { edge: FlowEdge }) {
   return (
     <div
-      className="absolute -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded-full border border-border/70 bg-card font-semibold leading-none tabular-nums shadow-sm"
+      className="absolute -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded-full border border-border/70 bg-card px-2 py-0.5 font-semibold leading-none tabular-nums text-card-foreground shadow-sm"
       style={{
         left: `${(edge.chip.x / DIAGRAM_WIDTH) * 100}%`,
         top: `${(edge.chip.y / DIAGRAM_HEIGHT) * 100}%`,
-        fontSize: "max(0.75rem, 2.2cqw)",
-        padding: "0.2cqw 0.7cqw",
+        fontSize: NODE_TEXT,
       }}
     >
       {edge.value === null ? "\u2014" : `${edge.value} W`}
@@ -172,10 +194,16 @@ function FlowEdgeChip({ edge }: { edge: FlowEdge }) {
 
 // Renders the diagram data: the house and flow lines in SVG, nodes and
 // value chips as overlays, in an aspect-locked box that fills the widget
-// width. Chips only appear on active flows. On the dark night, sunset
-// and dusk skies the inherited currentColor turns light so the "no
-// active flow" note stays legible.
-function FlowDiagram({ data, onDark }: { data: FlowData; onDark: boolean }) {
+// width. Chips only appear on active flows. On the dark night sky the
+// inherited currentColor turns light so the "no active flow" note stays
+// legible.
+function FlowDiagram({
+  data,
+  onDark,
+}: {
+  data: FlowData
+  onDark: boolean
+}) {
   return (
     <div
       className="relative mx-auto w-full max-w-[720px]"
@@ -226,6 +254,40 @@ function FlowDiagram({ data, onDark }: { data: FlowData; onDark: boolean }) {
   )
 }
 
+// Simplified stacked layout for phone widths, where the diamond diagram
+// becomes cramped: one row per node with its live value in a chip.
+function StackedNodes({ data }: { data: FlowData }) {
+  return (
+    <div className="space-y-2">
+      {data.nodes.map((node) => {
+        const Icon = node.icon
+        return (
+          <div
+            key={node.key}
+            className="flex items-center gap-2.5 rounded-lg border-2 bg-card p-2.5"
+            style={{ borderColor: node.borderColor ?? "var(--color-border)" }}
+          >
+            <Icon
+              className="size-5 shrink-0"
+              style={{ color: node.iconColor }}
+              aria-hidden="true"
+            />
+            <span className="text-sm font-medium">{node.name}</span>
+            {node.sub && (
+              <span className="text-xs text-muted-foreground tabular-nums">
+                {node.sub}
+              </span>
+            )}
+            <span className="ml-auto shrink-0 rounded-full bg-muted px-2 py-0.5 text-sm font-semibold tabular-nums">
+              {node.figure}
+            </span>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 // The live energy flow widget: the flow snapshot from /api/summary drawn
 // around the house illustration - Solar top left, Battery bottom left,
 // Grid bottom right - with orthogonal animated dashed flow lines and
@@ -242,6 +304,8 @@ function LiveEnergyFlow() {
       />
     )
   }
+
+  const diagram = buildFlowDiagram(summary)
 
   return (
     <Card className="relative">
@@ -268,7 +332,14 @@ function LiveEnergyFlow() {
         </div>
       </CardHeader>
       <CardContent className="relative z-10 flex justify-center">
-        <FlowDiagram data={buildFlowDiagram(summary)} onDark={onDark} />
+        {/* The diamond diagram on wider screens; a simplified stacked
+            list below 400 px, where the diagram gets cramped. */}
+        <div className="hidden w-full min-[400px]:block">
+          <FlowDiagram data={diagram} onDark={onDark} />
+        </div>
+        <div className="w-full min-[400px]:hidden">
+          <StackedNodes data={diagram} />
+        </div>
       </CardContent>
     </Card>
   )

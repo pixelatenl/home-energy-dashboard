@@ -139,7 +139,7 @@ function ChartLegend() {
         Cloud cover
       </span>
       <span className="flex items-center gap-1.5">
-        <span className="size-3 rounded-sm bg-[#fbbf24]" />
+        <span className="size-3 rounded-sm bg-[#f8ae17]" />
         PV estimate (Wh)
       </span>
     </div>
@@ -327,7 +327,7 @@ function HourlyChart({ hours }: { hours: WeatherHour[] }) {
                     width={slot * 0.6}
                     height={pvHeight}
                     rx={2}
-                    fill="#fbbf24"
+                    fill="#f8ae17"
                   />
                 </g>
               )

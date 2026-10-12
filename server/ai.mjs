@@ -32,11 +32,14 @@ const PRICE_SYSTEM_PROMPT =
   "You are the assistant of a home energy dashboard in the Netherlands " +
   "with a dynamic electricity contract and solar panels. Given price and " +
   "production data, reply in 2 to 3 short sentences: how grid prices " +
-  "develop between today and tomorrow, when the cheapest window is, and " +
-  "one practical tip that combines cheap grid hours with the sun's " +
-  "production peak (self-consumption is free). Never invent or " +
-  "extrapolate prices; if data for a period is unavailable, do not make " +
-  "claims about that period. Be concrete, no marketing tone, no emoji.";
+  "develop between today and tomorrow (only when the context contains " +
+  "tomorrow's prices; otherwise focus on today and today's remaining " +
+  "hours), when the cheapest window is, and one practical tip that " +
+  "combines cheap grid hours with the sun's production peak " +
+  "(self-consumption is free). Only state numbers that are present in " +
+  "the provided context. If data for a period is unavailable, do not " +
+  "reference that period, do not estimate, and do not invent values. " +
+  "Be concrete, no marketing tone, no emoji.";
 
 // Primary prompt: the model returns structured actions the frontend
 // renders as designed rows (day chip, window, icon, title, reason,
@@ -152,24 +155,122 @@ export function buildWeatherContext(daily, hourlyResult) {
 // by server/time.mjs (localHourLabel).
 
 // Compact price summary for the model. solarDaily is optional and omitted
-// when the weather data is unavailable.
-export function buildPriceContext(priceData, cheapestBlock, solarDaily) {
+// when the weather data is unavailable. Tomorrow's price section exists
+// only when tomorrow's prices are genuinely published (rows in the
+// merged curve); otherwise the context carries the explicit unpublished
+// note instead, so the model is never offered a tomorrow slot to fill.
+export function buildPriceContext(priceParts, solarDaily) {
+  const priceData = priceParts?.priceData ?? null;
+  const cheapestBlock = priceParts?.cheapestBlock ?? null;
+  const tomorrowAvailable = priceParts?.tomorrowPricesAvailable === true;
   const context = {
     current_price: priceData?.current_price ?? null,
     today: priceData?.today ?? null,
-    tomorrow: priceData?.tomorrow ?? null,
     cheapest_window: cheapestBlock
       ? {
+          day: localDateKey(new Date(cheapestBlock.start)),
           start_hour: localHourLabel(cheapestBlock.start),
           end_hour: localHourLabel(cheapestBlock.end),
           average_price: cheapestBlock.average_price,
         }
       : null,
   };
+  if (tomorrowAvailable) {
+    context.tomorrow = {
+      available: true,
+      average: priceData?.tomorrow?.average ?? null,
+      min: priceData?.tomorrow?.min ?? null,
+      max: priceData?.tomorrow?.max ?? null,
+    };
+  } else {
+    context.tomorrow_note =
+      "Tomorrow's prices are not published yet; they become available " +
+      "around 18:00. Do not mention or estimate tomorrow's prices.";
+  }
   if (solarDaily) {
     context.solar_today = solarDaily;
   }
   return context;
+}
+
+// Detects claims about tomorrow that must not be made while tomorrow's
+// prices are unpublished: a sentence mentioning tomorrow that carries a
+// specific price figure (with or without a currency marker - models
+// drop the "EUR" often) or claims a cheapest window for it. Sentences
+// about tomorrow being not yet published are the legitimate exception.
+export function claimsTomorrowPrices(text) {
+  const pending =
+    /not (yet )?(published|available)|pending|becomes? available|become available/i;
+  const price =
+    /(\beur\b\s?[\d.,]+|€\s?[\d.,]+|[\d.,]+\s?(?:eur|€|\/kwh)|\d+\.\d{2,})/i;
+  const windowClaim = /cheapest|window/i;
+  const sentences = text.split(/(?<=[.!?])\s+/);
+  for (const sentence of sentences) {
+    if (!/tomorrow/i.test(sentence)) {
+      continue;
+    }
+    if (pending.test(sentence)) {
+      continue;
+    }
+    if (price.test(sentence) || windowClaim.test(sentence)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// Detects a false denial of today's cheapest window while it exists in
+// the context - the model sometimes claims the window is unavailable,
+// right after being told that tomorrow's prices are not published.
+export function deniesCheapestWindow(text) {
+  return (
+    /cheapest[^.!?]{0,80}(not available|unavailable|not (?:be )?determin|missing|cannot)/i.test(
+      text
+    ) || /no cheapest (window|hours?)/i.test(text)
+  );
+}
+
+// Deterministic price insight from the merged data, served when the
+// model output fails validation or the upstream is unavailable: plain
+// today-only facts, never contradicting the price widget.
+export function priceFallbackText(priceParts) {
+  const priceData = priceParts?.priceData ?? null;
+  if (!priceData) {
+    return null;
+  }
+  const tomorrowAvailable = priceParts?.tomorrowPricesAvailable === true;
+  const eur = (value) =>
+    value === null || value === undefined
+      ? null
+      : `EUR ${(Math.round(value * 1000) / 1000).toFixed(3)}/kWh`;
+  const sentences = [];
+  if (priceData.current_price != null) {
+    sentences.push(`The current grid price is ${eur(priceData.current_price)}.`);
+  }
+  if (priceData.today?.average != null) {
+    sentences.push(
+      `Today's average is ${eur(priceData.today.average)}` +
+        (priceData.today.peak_hour
+          ? `, peaking around ${priceData.today.peak_hour}`
+          : "") +
+        "."
+    );
+  }
+  const block = priceParts?.cheapestBlock;
+  if (block) {
+    sentences.push(
+      `The cheapest window is ${localHourLabel(block.start)}-` +
+        `${localHourLabel(block.end)} on ` +
+        `${dayLabel(localDateKey(new Date(block.start)))} at ` +
+        `${eur(block.average_price)} on average.`
+    );
+  }
+  sentences.push(
+    tomorrowAvailable
+      ? "Tomorrow's prices are published."
+      : "Tomorrow's prices are not published yet; they become available around 18:00."
+  );
+  return sentences.filter(Boolean).join(" ");
 }
 
 // "Sat 11 Oct" for a local "YYYY-MM-DD" date key. Parsed and formatted at
@@ -364,9 +465,16 @@ function dailyLimitReached() {
 // shared daily cap and the per-insight 30-minute throttle, and degrades to
 // { text: null, parsed: null, error } on any upstream failure. With
 // options.json the model output must parse as a JSON object; a parse
-// failure is retried once before degrading.
+// failure is retried once before degrading. With options.validate the
+// plain-text answer is checked: a failure is retried once with
+// options.corrective appended to the prompt and repeated in the context,
+// and a second failure returns error "validation_failed" - the caller
+// decides the fallback. Retries count against the shared daily cap.
 async function getInsight(namespace, systemPrompt, cacheKey, context, options = {}) {
   const asJson = options.json === true;
+  const validate = typeof options.validate === "function" ? options.validate : null;
+  const corrective =
+    typeof options.corrective === "string" ? options.corrective : null;
   const cached = insightCaches.get(namespace);
   if (cached && cached.key === cacheKey) {
     return asJson
@@ -374,7 +482,7 @@ async function getInsight(namespace, systemPrompt, cacheKey, context, options = 
       : { text: cached.text, generatedAt: cached.generatedAt, error: null };
   }
 
-  const attempts = asJson ? 2 : 1;
+  const attempts = asJson || validate ? 2 : 1;
   for (let attempt = 0; attempt < attempts; attempt++) {
     // Daily call guard (in-memory; resets on the next UTC day). Shared by
     // all insights; retries also count.
@@ -395,7 +503,13 @@ async function getInsight(namespace, systemPrompt, cacheKey, context, options = 
     lastCallAt.set(namespace, Date.now());
     callsPerUtcDay.set(utcDay, (callsPerUtcDay.get(utcDay) ?? 0) + 1);
     try {
-      const text = await callMistral(systemPrompt, context);
+      const prompt =
+        attempt > 0 && corrective
+          ? `${systemPrompt} ${corrective}`
+          : systemPrompt;
+      const payload =
+        attempt > 0 && corrective ? { ...context, correction: corrective } : context;
+      const text = await callMistral(prompt, payload);
       const generatedAt = new Date().toISOString();
       if (asJson) {
         const parsed = parseInsightJson(text);
@@ -404,6 +518,16 @@ async function getInsight(namespace, systemPrompt, cacheKey, context, options = 
         }
         insightCaches.set(namespace, { key: cacheKey, text, parsed, generatedAt });
         return { parsed, generatedAt, error: null };
+      }
+      if (validate && !validate(text)) {
+        if (attempt < attempts - 1) {
+          console.warn(
+            `${namespace} insight failed validation; retrying with a corrective instruction`
+          );
+          continue;
+        }
+        console.warn(`${namespace} insight failed validation twice; degrading`);
+        return { text: null, parsed: null, generatedAt: null, error: "validation_failed" };
       }
       insightCaches.set(namespace, { key: cacheKey, text, generatedAt });
       return { text, generatedAt, error: null };
@@ -430,16 +554,54 @@ export async function getWeatherContext(daily, todayHourly) {
   );
 }
 
-export async function getPriceContext(priceData, cheapestBlock, solarDaily) {
-  const cacheKey = hashString(
-    `${JSON.stringify(priceData)}|${JSON.stringify(cheapestBlock)}|${JSON.stringify(solarDaily)}`
-  );
-  return getInsight(
-    "prices",
-    PRICE_SYSTEM_PROMPT,
-    cacheKey,
-    buildPriceContext(priceData, cheapestBlock, solarDaily)
-  );
+export async function getPriceContext(priceParts, solarDaily) {
+  const context = buildPriceContext(priceParts, solarDaily);
+  // The cache key follows the context, so it changes the moment
+  // tomorrow's prices are published and the insight can legitimately
+  // start referencing them.
+  const cacheKey = hashString(JSON.stringify(context));
+  const tomorrowAvailable = priceParts?.tomorrowPricesAvailable === true;
+  const cheapestExists = priceParts?.cheapestBlock != null;
+  // The answer is checked against what the context actually contains:
+  // while tomorrow is unpublished, tomorrow price claims are rejected;
+  // while today's cheapest window exists, denials of it are rejected.
+  // A failure is re-asked once with the corrective instruction; a second
+  // failure degrades to the deterministic fallback below, never
+  // contradicting the widget.
+  const validators = [];
+  const correctionNotes = [];
+  if (!tomorrowAvailable) {
+    validators.push((text) => !claimsTomorrowPrices(text));
+    correctionNotes.push(
+      "Tomorrow's prices are not published and must never be mentioned " +
+        "or estimated; you may note that tomorrow's prices are not " +
+        "published yet."
+    );
+  }
+  if (cheapestExists) {
+    validators.push((text) => !deniesCheapestWindow(text));
+    correctionNotes.push(
+      "Today's cheapest window is present in the context; state it " +
+        "exactly as given."
+    );
+  }
+  const result = await getInsight("prices", PRICE_SYSTEM_PROMPT, cacheKey, context, {
+    validate:
+      validators.length > 0
+        ? (text) => validators.every((check) => check(text))
+        : null,
+    corrective:
+      correctionNotes.length > 0
+        ? `Your previous answer was rejected. ${correctionNotes.join(" ")} Answer again using only the provided context.`
+        : null,
+  });
+  if (result.error) {
+    const fallback = priceFallbackText(priceParts);
+    if (fallback) {
+      return { text: fallback, generatedAt: null, error: null };
+    }
+  }
+  return result;
 }
 
 // Compact battery context for the model: the snapshot, the range

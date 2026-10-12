@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useState } from "react"
 import ApplianceUsageToday from "@/components/ApplianceUsageToday"
+import ArchitecturePage from "@/components/ArchitecturePage"
 import BatteryPanel from "@/components/BatteryPanel"
 import DebugPage from "@/components/DebugPage"
 import LiveEnergyFlow from "@/components/LiveEnergyFlow"
+import MainTabs from "@/components/MainTabs"
 import PricesWidget from "@/components/PricesWidget"
 import StatsHeader from "@/components/StatsHeader"
 import SummaryInsight from "@/components/SummaryInsight"
@@ -13,7 +15,7 @@ import { fetchDailyInsight, type DailyInsight } from "@/lib/api"
 import { greetingFor } from "@/lib/time"
 import { Button } from "@/components/ui/button"
 
-type View = "dashboard" | "debug" | "usage"
+type View = "dashboard" | "debug" | "usage" | "architecture"
 
 // Hash-based view switch, mirroring the existing #debug page: no router,
 // just the URL hash.
@@ -23,6 +25,9 @@ function viewFromHash(): View {
   }
   if (window.location.hash === "#usage") {
     return "usage"
+  }
+  if (window.location.hash === "#architecture") {
+    return "architecture"
   }
   return "dashboard"
 }
@@ -75,10 +80,14 @@ function App() {
     return <UsagePage />
   }
 
+  if (view === "architecture") {
+    return <ArchitecturePage />
+  }
+
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b">
-        <div className="flex items-center justify-between px-6 py-4">
+        <div className="flex flex-wrap items-center justify-between gap-4 px-6 py-4">
           <div>
             <h1 className="text-xl font-semibold">{greetingFor(nowTick)}</h1>
             <p className="text-sm text-muted-foreground">
@@ -112,14 +121,6 @@ function App() {
             <Button
               variant="outline"
               onClick={() => {
-                window.location.hash = "usage"
-              }}
-            >
-              Usage
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() => {
                 window.location.hash = "debug"
               }}
             >
@@ -129,7 +130,11 @@ function App() {
         </div>
       </header>
 
-      <main className="space-y-6 px-6 py-8">
+      <div className="px-6 pt-4">
+        <MainTabs active="home" />
+      </div>
+
+      <main className="space-y-6 px-6 pt-4 pb-8">
         <div className="grid gap-6 lg:grid-cols-2">
           <StatsHeader />
           <SummaryInsight insight={insight} loading={insightLoading} />

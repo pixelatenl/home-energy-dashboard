@@ -1,6 +1,6 @@
 import { useState } from "react"
 import ApplianceUsageWidget from "@/components/ApplianceUsageWidget"
-import { Button } from "@/components/ui/button"
+import MainTabs from "@/components/MainTabs"
 import {
   Table,
   TableBody,
@@ -242,21 +242,15 @@ function UsagePage() {
               What your smart-plug appliances use
             </p>
           </div>
-          <div className="flex items-center gap-3">
-            <RangeSelector range={range} onChange={setRange} />
-            <Button
-              variant="outline"
-              onClick={() => {
-                window.location.hash = ""
-              }}
-            >
-              Dashboard
-            </Button>
-          </div>
+          <RangeSelector range={range} onChange={setRange} />
         </div>
       </header>
 
-      <main className="space-y-6 px-6 py-8">
+      <div className="px-6 pt-4">
+        <MainTabs active="usage" />
+      </div>
+
+      <main className="space-y-6 px-6 pt-4 pb-8">
         {status === "loading" && (
           <div
             className="min-h-64 animate-pulse rounded-lg bg-muted"
