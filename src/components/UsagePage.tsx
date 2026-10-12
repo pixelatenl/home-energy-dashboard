@@ -1,6 +1,6 @@
-import { useState } from "react"
 import ApplianceUsageWidget from "@/components/ApplianceUsageWidget"
 import PageLayout from "@/components/PageLayout"
+import PeriodNavigator from "@/components/PeriodNavigator"
 import {
   Table,
   TableBody,
@@ -13,44 +13,8 @@ import type { ApplianceHour, ApplianceRange, ApplianceSummary } from "@/lib/api"
 import { applianceColor } from "@/lib/applianceColors"
 import { localHourOf } from "@/lib/time"
 import { useAppliances } from "@/lib/useAppliances"
+import { usePeriod } from "@/lib/usePeriod"
 import { useSummary } from "@/lib/useSummary"
-
-const RANGES: { value: ApplianceRange; label: string }[] = [
-  { value: "today", label: "Today" },
-  { value: "week", label: "Week" },
-  { value: "month", label: "Month" },
-  { value: "year", label: "Year" },
-]
-
-// Segmented range selector in the shadcn style: one pill, the active
-// segment lifted onto the card background.
-function RangeSelector({
-  range,
-  onChange,
-}: {
-  range: ApplianceRange
-  onChange: (range: ApplianceRange) => void
-}) {
-  return (
-    <div className="inline-flex rounded-lg border bg-muted p-1">
-      {RANGES.map(({ value, label }) => (
-        <button
-          key={value}
-          type="button"
-          aria-pressed={range === value}
-          onClick={() => onChange(value)}
-          className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors focus-visible:outline-none ${
-            range === value
-              ? "bg-background text-foreground shadow-sm"
-              : "text-muted-foreground hover:text-foreground"
-          }`}
-        >
-          {label}
-        </button>
-      ))}
-    </div>
-  )
-}
 
 interface HourSlot {
   totalKwh: number
@@ -206,13 +170,17 @@ function TotalsTable({
   )
 }
 
-// The appliance usage view: range selector in the header, the full usage
-// widget on top, today's hourly stacked chart and the totals table
-// beneath. Home usage comes from the summary the dashboard already
-// fetches (import + PV - export - net battery); the year range has no
-// summary equivalent, so percentages read as unavailable there.
+// The appliance usage view: the shared period navigator in the tab
+// row, the full usage widget on top, today's hourly stacked chart and
+// the totals table beneath. Home usage comes from the summary the
+// dashboard already fetches (import + PV - export - net battery); the
+// year range has no summary equivalent, so percentages read as
+// unavailable there. The appliance API has no date parameter yet, so
+// the fetch rides the period kind only (the navigator's day reads as
+// the API's "today").
 function UsagePage() {
-  const [range, setRange] = useState<ApplianceRange>("today")
+  const { period } = usePeriod()
+  const range: ApplianceRange = period.kind === "day" ? "today" : period.kind
   const { data, status } = useAppliances(range)
   const { summary } = useSummary()
 
@@ -236,7 +204,7 @@ function UsagePage() {
     <PageLayout
       title="Usage"
       subtitle="What your smart-plug appliances use"
-      toolbar={<RangeSelector range={range} onChange={setRange} />}
+      toolbar={<PeriodNavigator />}
     >
         {status === "loading" && (
           <div
