@@ -8,7 +8,6 @@ import {
   Plug,
   Server,
 } from "lucide-react"
-import MainTabs from "@/components/MainTabs"
 import {
   Card,
   CardContent,
@@ -71,10 +70,6 @@ function ArchitecturePage() {
           </div>
         </div>
       </header>
-
-      <div className="px-6 pt-4">
-        <MainTabs active="architecture" />
-      </div>
 
       <main className="space-y-6 px-6 pt-4 pb-8">
         <Card>

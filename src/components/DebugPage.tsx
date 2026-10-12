@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react"
+import { useNavigate } from "react-router-dom"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -261,6 +262,7 @@ function EndpointCard({
 }
 
 function DebugPage() {
+  const navigate = useNavigate()
   const [params, setParams] = useState<Record<string, number>>({})
   // Server build identifier from /api/summary, to confirm on screen that
   // the running process matches the current code.
@@ -408,7 +410,7 @@ function DebugPage() {
             </Button>
             <Button
               onClick={() => {
-                window.location.hash = ""
+                navigate("/")
               }}
             >
               Back to dashboard
