@@ -1045,13 +1045,71 @@ export async function gasDaily(entityIds, fromMs, toMs) {
   return rows;
 }
 
+// Month intervals for the year granularity, priced bottom-up: each
+// day's gas volume is costed at that day's last-known price (the last
+// gas_price row on or before the day, forward-filled), and the month
+// cost is the sum over its days. The caller derives the month's
+// price_eur_per_m3 as cost / volume (null when the volume is zero) and
+// flags unknown price when a day with non-zero volume has no known
+// price at all. Days without data contribute nothing.
+export function gasMonthIntervals(dailyRows, priceRows) {
+  const byMonth = new Map();
+  let index = 0;
+  let price = null;
+  const buckets = [...dailyRows].sort(
+    (a, b) => a.bucket.getTime() - b.bucket.getTime()
+  );
+  for (const row of buckets) {
+    const bucketMs = row.bucket.getTime();
+    const volume = Number(row.kwh); // m3 for the gas counter
+    const day = localDateKey(new Date(bucketMs));
+    while (index < priceRows.length && priceRows[index].day <= day) {
+      price = Number(priceRows[index].price_eur_per_m3);
+      index += 1;
+    }
+    const monthStart = Date.UTC(
+      new Date(bucketMs).getUTCFullYear(),
+      new Date(bucketMs).getUTCMonth(),
+      1
+    );
+    const entry =
+      byMonth.get(monthStart) ?? { volume: 0, cost: 0, unknownPrice: false };
+    entry.volume += volume;
+    if (price === null) {
+      if (volume > 0) {
+        entry.unknownPrice = true;
+      }
+    } else {
+      entry.cost += volume * price;
+    }
+    byMonth.set(monthStart, entry);
+  }
+  return [...byMonth.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([monthMs, entry]) => ({
+      tsMs: monthMs,
+      volume: entry.volume,
+      cost: entry.cost,
+      unknownPrice: entry.unknownPrice,
+    }));
+}
+
 // GET /api/heat/gas data: gas consumption per interval with the
 // applicable price and cost. granularity "hour" reads energy_hourly,
 // "day" energy_daily, "month" rolls energy_daily up per UTC calendar
 // month; all three read the shared delta column whose name says kWh
-// but holds m3 for the gas counter. The price for an interval is the
-// last known gas_price on or before its local day; cost is m3 * price,
-// and null (never 0) only when no price row exists at all.
+// but holds m3 for the gas counter.
+//
+// Pricing: hour and day intervals take the last known gas_price on or
+// before the interval's local day (one price query per series,
+// forward-filled by day); cost is m3 * price, and null (never 0) only
+// when no price row exists at all. Month intervals price bottom-up
+// instead: each day's volume is costed at that day's last-known price,
+// the month cost is the sum over its days, and the month's price is
+// the volume-weighted effective price (cost / volume, null when the
+// volume is zero). hasUnknownPrice is true when any hour or day
+// interval lacks a known price; for months only when a day with
+// non-zero volume does.
 export async function getGasUsage(fromMs, toMs, granularity) {
   if (localDateKey(new Date(toMs - 1)) < GAS_DATA_START) {
     return {
@@ -1061,56 +1119,72 @@ export async function getGasUsage(fromMs, toMs, granularity) {
     };
   }
 
-  // One interval per bucket; multiple gas counters (none today) would
-  // sum into the same bucket.
-  const intervals = new Map();
   const entityIds = await gasCounterEntityIds();
-  if (entityIds.length > 0) {
-    const rows =
-      granularity === "hour"
-        ? await gasHourly(entityIds, fromMs, toMs)
-        : await gasDaily(entityIds, fromMs, toMs);
-    for (const row of rows) {
-      const tsMs =
-        granularity === "month"
-          ? Date.UTC(
-              row.bucket.getUTCFullYear(),
-              row.bucket.getUTCMonth(),
-              1
-            )
-          : row.bucket.getTime();
-      intervals.set(tsMs, (intervals.get(tsMs) ?? 0) + Number(row.kwh));
-    }
-  }
-
-  // One price query for the whole series, forward-filled by day.
   const prices = await gasPrices(localDateKey(new Date(toMs - 1)));
+
   const series = [];
-  let index = 0;
-  let price = null;
   let totalM3 = 0;
   let totalCost = 0;
   let hasUnknownPrice = false;
-  for (const tsMs of [...intervals.keys()].sort((a, b) => a - b)) {
-    const day = localDateKey(new Date(tsMs));
-    while (index < prices.length && prices[index].day <= day) {
-      price = Number(prices[index].price_eur_per_m3);
-      index += 1;
-    }
-    const m3 = Math.round(intervals.get(tsMs) * 1000) / 1000;
-    const cost = price === null ? null : Math.round(m3 * price * 100) / 100;
-    if (cost === null) {
-      hasUnknownPrice = true;
-    } else {
+
+  if (granularity === "month") {
+    const dailyRows =
+      entityIds.length > 0 ? await gasDaily(entityIds, fromMs, toMs) : [];
+    for (const month of gasMonthIntervals(dailyRows, prices)) {
+      const m3 = Math.round(month.volume * 1000) / 1000;
+      const cost = Math.round(month.cost * 100) / 100;
+      totalM3 += m3;
       totalCost += cost;
+      if (month.unknownPrice) {
+        hasUnknownPrice = true;
+      }
+      series.push({
+        ts: new Date(month.tsMs).toISOString(),
+        m3,
+        price_eur_per_m3:
+          month.volume === 0
+            ? null
+            : Math.round((month.cost / month.volume) * 1_000_000) / 1_000_000,
+        cost_eur: cost,
+      });
     }
-    totalM3 += m3;
-    series.push({
-      ts: new Date(tsMs).toISOString(),
-      m3,
-      price_eur_per_m3: price,
-      cost_eur: cost,
-    });
+  } else {
+    // One interval per bucket; multiple gas counters (none today) would
+    // sum into the same bucket.
+    const intervals = new Map();
+    if (entityIds.length > 0) {
+      const rows =
+        granularity === "hour"
+          ? await gasHourly(entityIds, fromMs, toMs)
+          : await gasDaily(entityIds, fromMs, toMs);
+      for (const row of rows) {
+        const tsMs = row.bucket.getTime();
+        intervals.set(tsMs, (intervals.get(tsMs) ?? 0) + Number(row.kwh));
+      }
+    }
+    let index = 0;
+    let price = null;
+    for (const tsMs of [...intervals.keys()].sort((a, b) => a - b)) {
+      const day = localDateKey(new Date(tsMs));
+      while (index < prices.length && prices[index].day <= day) {
+        price = Number(prices[index].price_eur_per_m3);
+        index += 1;
+      }
+      const m3 = Math.round(intervals.get(tsMs) * 1000) / 1000;
+      const cost = price === null ? null : Math.round(m3 * price * 100) / 100;
+      if (cost === null) {
+        hasUnknownPrice = true;
+      } else {
+        totalCost += cost;
+      }
+      totalM3 += m3;
+      series.push({
+        ts: new Date(tsMs).toISOString(),
+        m3,
+        price_eur_per_m3: price,
+        cost_eur: cost,
+      });
+    }
   }
 
   return {
