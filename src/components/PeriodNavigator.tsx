@@ -11,14 +11,17 @@ const KINDS: { value: PeriodKind; label: string }[] = [
 ]
 
 // Shared period navigation for analytical pages: a compact inline
-// group for the tab row's right side - prev/next arrows, an
-// always-visible period label, a Today button when the period moved,
-// a "so far" chip on the current period, then the Day/Week/Month/Year
-// segmented control. Keyboard, on any page that renders this:
-// ArrowLeft/ArrowRight step prev/next (next blocked on the current
-// period), T jumps to today, D/W/M/Y switch granularity. Shortcuts
-// are ignored while typing in an input, textarea or select, and when
-// modifier keys are held.
+// group for the tab row's right side - the period label first (with
+// a "so far" chip on the current period), a Today button when the
+// period moved, then prev/next arrows as icon segments directly
+// beside the Day/Week/Month/Year segmented control, one navigation
+// unit that wraps as a row. The label takes its natural width, so
+// with the group right-aligned only its left edge moves between
+// periods. Keyboard, on any page that renders this: ArrowLeft/
+// ArrowRight step prev/next (next blocked on the current period), T
+// jumps to today, D/W/M/Y switch granularity. Shortcuts are ignored
+// while typing in an input, textarea or select, and when modifier
+// keys are held.
 function PeriodNavigator() {
   const { period, setKind, shift, goToday, isCurrent } = usePeriod()
 
@@ -70,63 +73,69 @@ function PeriodNavigator() {
     return () => window.removeEventListener("keydown", onKeyDown)
   }, [shift, setKind, goToday, isCurrent])
 
-  const iconButton =
-    "rounded-full text-muted-foreground transition-colors hover:text-foreground focus-visible:text-foreground focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-40"
+  // Icon segments use the segment box height (px-3 py-1.5 around a
+  // 20px text line = 32px) so the arrows match the segments exactly.
+  const segmentBase =
+    "inline-flex items-center justify-center rounded-md px-3 py-1.5 h-8 text-sm font-medium transition-colors focus-visible:outline-none"
 
   return (
     <div className="flex flex-wrap items-center gap-x-2 gap-y-2">
-      <div className="flex items-center gap-2">
-        <button
-          type="button"
-          aria-label="Previous period"
-          onClick={() => shift(-1)}
-          className={iconButton}
-        >
-          <ChevronLeft className="size-3.5" aria-hidden="true" />
-        </button>
-        <span className="flex items-center gap-2 text-sm font-medium tabular-nums">
-          {periodLabel(period)}
-          {isCurrent && (
-            <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
-              so far
-            </span>
-          )}
-        </span>
-        <button
-          type="button"
-          aria-label="Next period"
-          disabled={isCurrent}
-          onClick={() => shift(1)}
-          className={iconButton}
-        >
-          <ChevronRight className="size-3.5" aria-hidden="true" />
-        </button>
-        {!isCurrent && (
-          <button
-            type="button"
-            onClick={goToday}
-            className="rounded-full border px-3 py-1 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none"
-          >
-            Today
-          </button>
+      <span className="flex items-center gap-2 text-sm font-medium tabular-nums">
+        {periodLabel(period)}
+        {isCurrent && (
+          <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
+            so far
+          </span>
         )}
-      </div>
-      <div className="ml-2 inline-flex rounded-lg border bg-muted p-1">
-        {KINDS.map(({ value, label }) => (
+      </span>
+      {!isCurrent && (
+        <button
+          type="button"
+          onClick={goToday}
+          className="rounded-full border px-3 py-1 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none"
+        >
+          Today
+        </button>
+      )}
+      {/* Arrows and segments form one navigation unit: they sit
+          directly adjacent and wrap to the next row together. */}
+      <div className="flex items-center gap-1">
+        <div className="inline-flex rounded-lg border bg-muted p-1">
           <button
-            key={value}
             type="button"
-            aria-pressed={period.kind === value}
-            onClick={() => setKind(value)}
-            className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors focus-visible:outline-none ${
-              period.kind === value
-                ? "bg-background text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
+            aria-label="Previous period"
+            onClick={() => shift(-1)}
+            className={`${segmentBase} text-muted-foreground hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40`}
           >
-            {label}
+            <ChevronLeft className="size-3.5" aria-hidden="true" />
           </button>
-        ))}
+          <button
+            type="button"
+            aria-label="Next period"
+            disabled={isCurrent}
+            onClick={() => shift(1)}
+            className={`${segmentBase} text-muted-foreground hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40`}
+          >
+            <ChevronRight className="size-3.5" aria-hidden="true" />
+          </button>
+        </div>
+        <div className="inline-flex rounded-lg border bg-muted p-1">
+          {KINDS.map(({ value, label }) => (
+            <button
+              key={value}
+              type="button"
+              aria-pressed={period.kind === value}
+              onClick={() => setKind(value)}
+              className={`${segmentBase} ${
+                period.kind === value
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
     </div>
   )
