@@ -179,31 +179,82 @@ export interface FlowData {
 const isShown = (value: number | null): value is number =>
   value !== null && value > 25
 
-// Data logic: turns the flow snapshot into nodes and flows. The flow
-// mappings are strict so nothing is double-counted; a flow at or below
-// 25 W (or unknown) renders as a faint static line. The Home figure is
-// the sum of the active incoming flows, so the diagram always balances
-// visually regardless of the individual series' refresh moments.
+// Clamps a nullable watt figure to a non-negative value; null stays null
+// so absent sensors keep rendering as the shared inactive line.
+function clampW(value: number | null): number | null {
+  return value === null ? null : Math.max(0, value)
+}
+
+// Subtracts a nullable subtrahend, treating null as 0, and clamps at 0.
+function subtractClamped(
+  value: number | null,
+  sub: number | null
+): number | null {
+  if (value === null) return null
+  return Math.max(0, value - (sub ?? 0))
+}
+
+// Data logic: turns the flow snapshot into nodes and flows.
+//
+// Balance model (all instantaneous, in W):
+//   home_load = solar_to_home + grid_to_home + battery_to_home
+//
+// The P1 grid figures (grid_import_w / grid_export_w) are NET values
+// measured at the meter; the Anker battery_charge_w is a GROSS value on
+// the AC side of the unit and includes its conversion losses. The grid
+// share of the charging is therefore capped at the net import (a few
+// percent of gross exceeds net), and every derived flow is clamped at
+// zero, so the arrows can never contradict each other. A flow at or
+// below 25 W (or unknown) renders as a faint static line. The Home
+// figure is the sum of the active incoming flows, so the diagram always
+// balances visually regardless of the individual series' refresh
+// moments.
+//
+// Known limitation: with simultaneous import and export the P1 net
+// figures hide both gross streams, so a negative grid_to_home is
+// rendered as inactive rather than split into import and export.
 export function buildFlowDiagram(summary: SummaryData | null): FlowData {
   const flow = summary?.flow
-  const solarToBattery = flow?.battery_solar_in_w ?? null
-  // Grid share of the charging power (solar share deducted).
+
+  // Raw sensor values. grid_import_w and grid_export_w are net P1
+  // figures; battery_charge_w is the gross AC-side charging power.
+  const pvW = flow?.pv_w ?? null
+  const gridImportW = flow?.grid_import_w ?? null
+  const gridExportW = flow?.grid_export_w ?? null
+  const batterySolarInW = flow?.battery_solar_in_w ?? null
+  const batteryChargeW = flow?.battery_charge_w ?? null
+  const batteryDischargeW = flow?.battery_discharge_w ?? null
+
+  // 1. Solar split: the panels that feed the Anker directly charge the
+  // battery first; only their excess (and the rooftop inverter's share)
+  // reaches the home. The direct solar input can never exceed PV
+  // production, so it is capped.
+  const solarToBattery =
+    pvW !== null && batterySolarInW !== null
+      ? Math.min(pvW, batterySolarInW)
+      : batterySolarInW
+  const solarToHome = subtractClamped(pvW, solarToBattery)
+
+  // 2. Grid share of the battery charging: gross charging power minus the
+  // solar share covered above, never negative, and never more than the
+  // net grid import can supply (losses make gross exceed net by a few
+  // percent; the cap absorbs that without double counting).
+  const gridToBatteryUncapped = subtractClamped(batteryChargeW, solarToBattery)
   const gridToBattery =
-    flow?.battery_charge_w != null
-      ? flow.battery_charge_w - (solarToBattery ?? 0)
-      : null
-  // Household PV: PV production minus what charges the battery directly.
-  const solarToHome =
-    flow?.pv_w != null ? flow.pv_w - (solarToBattery ?? 0) : null
-  // Household grid import: import minus the battery's grid charging share.
-  const gridToHome =
-    flow?.grid_import_w != null
-      ? flow.grid_import_w -
-        (gridToBattery !== null && gridToBattery > 25 ? gridToBattery : 0)
-      : null
-  const homeToGrid = flow?.grid_export_w ?? null
-  // The battery only feeds the house; its charging never renders here.
-  const batteryToHome = flow?.battery_discharge_w ?? null
+    gridToBatteryUncapped !== null && gridImportW !== null
+      ? Math.min(gridToBatteryUncapped, gridImportW)
+      : gridToBatteryUncapped
+
+  // 3. The grid import that is not charging the battery feeds the home.
+  // After the cap this can never go negative.
+  const gridToHome = subtractClamped(gridImportW, gridToBattery)
+
+  // 4. The battery discharges only into the home; charging never renders
+  // on this edge.
+  const batteryToHome = clampW(batteryDischargeW)
+
+  // 5. Export to the grid passes through unchanged.
+  const homeToGrid = gridExportW
 
   const edges: FlowEdge[] = []
   // Adds a flow from its fixed orthogonal route; every connection always
@@ -268,13 +319,12 @@ export function buildFlowDiagram(summary: SummaryData | null): FlowData {
     )
   )
 
-  const gridImport = flow?.grid_import_w ?? null
-  const gridExport = flow?.grid_export_w ?? null
   const gridFigure =
-    gridImport !== null && (gridExport === null || gridImport >= gridExport)
-      ? `${gridImport} W`
-      : gridExport !== null
-        ? `${gridExport} W`
+    gridImportW !== null &&
+    (gridExportW === null || gridImportW >= gridExportW)
+      ? `${gridImportW} W`
+      : gridExportW !== null
+        ? `${gridExportW} W`
         : "\u2014"
   const soc = summary?.battery_soc_pct
   const batteryPowerW = summary?.battery_power_w ?? null
@@ -291,7 +341,7 @@ export function buildFlowDiagram(summary: SummaryData | null): FlowData {
       key: "sun",
       ...FLOW_POSITIONS.sun,
       name: "Solar",
-      figure: flow?.pv_w != null ? `${flow.pv_w} W` : "\u2014",
+      figure: pvW != null ? `${pvW} W` : "\u2014",
       icon: Sun,
       iconColor: SOLAR_COLOR,
     },
