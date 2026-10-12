@@ -22,6 +22,7 @@ import {
   type PriceSource,
 } from "@/lib/api"
 import { useAiContext } from "@/lib/useAiContext"
+import { useDataRefreshListener } from "@/lib/useDataRefresh"
 import {
   amsterdamNow,
   localDateOf,
@@ -352,6 +353,9 @@ function PricesWidget() {
     // eslint-disable-next-line react/set-state-in-effect
     void load()
   }, [load])
+
+  // Re-fetch immediately when the header refresh button fires.
+  useDataRefreshListener(load)
 
   const today = todayInAmsterdam()
   const tomorrow = localDateOf(new Date(nowTick + 24 * 3_600_000).toISOString())

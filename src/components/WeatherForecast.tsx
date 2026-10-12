@@ -39,6 +39,7 @@ import {
   type WeatherHour,
 } from "@/lib/api"
 import { useAiContext } from "@/lib/useAiContext"
+import { useDataRefreshListener } from "@/lib/useDataRefresh"
 import { amsterdamNow, todayInAmsterdam } from "@/lib/time"
 
 type IconComponent = ComponentType<{ className?: string }>
@@ -606,6 +607,11 @@ function WeatherForecast() {
     // eslint-disable-next-line react/set-state-in-effect
     void loadDaily(false)
   }, [loadDaily])
+
+  // Re-fetch immediately when the header refresh button fires. This resets
+  // to the first day, like the retry button does.
+  const refreshDaily = useCallback(() => void loadDaily(true), [loadDaily])
+  useDataRefreshListener(refreshDaily)
 
   const selectDay = useCallback(
     (date: string) => {

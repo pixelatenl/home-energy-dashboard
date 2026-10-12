@@ -11,9 +11,10 @@ import SummaryInsight from "@/components/SummaryInsight"
 import UsagePage from "@/components/UsagePage"
 import WeatherForecast from "@/components/WeatherForecast"
 import { RefreshCw } from "lucide-react"
-import { fetchDailyInsight, type DailyInsight } from "@/lib/api"
+import { fetchSummary, type SummaryInsight as SummaryInsightData } from "@/lib/api"
 import { greetingFor } from "@/lib/time"
 import { triggerAiRefresh } from "@/lib/useAiContext"
+import { triggerDataRefresh, useRefetchOnWake } from "@/lib/useDataRefresh"
 import { Button } from "@/components/ui/button"
 
 type View = "dashboard" | "debug" | "usage" | "architecture"
@@ -37,13 +38,18 @@ function App() {
   const [view, setView] = useState<View>(() => viewFromHash())
   // Ticks once a minute so the greeting follows the local time of day.
   const [nowTick, setNowTick] = useState(() => Date.now())
-  const [insight, setInsight] = useState<DailyInsight | null>(null)
+  const [insight, setInsight] = useState<SummaryInsightData | null>(null)
+  const [remainingCalls, setRemainingCalls] = useState<number | null>(null)
   const [insightLoading, setInsightLoading] = useState(true)
 
+  // The insight rides the /api/summary response together with its
+  // signature and the Mistral budget, so one refetch refreshes data and
+  // insight in step.
   const loadInsight = useCallback(async (force = false) => {
     try {
-      const value = await fetchDailyInsight(force)
-      setInsight(value)
+      const value = await fetchSummary(force)
+      setInsight(value.insight)
+      setRemainingCalls(value.remaining_calls)
     } catch {
       setInsight(null)
     }
@@ -61,6 +67,11 @@ function App() {
     const id = setInterval(() => void loadInsight(), 5 * 60_000)
     return () => clearInterval(id)
   }, [loadInsight])
+
+  // Catch up immediately when the kiosk tab wakes up (focus) or the
+  // network connection returns (online).
+  const reloadInsight = useCallback(() => void loadInsight(), [loadInsight])
+  useRefetchOnWake(reloadInsight)
 
   useEffect(() => {
     const onHashChange = () => setView(viewFromHash())
@@ -85,6 +96,20 @@ function App() {
     return <ArchitecturePage />
   }
 
+  const budgetExhausted = remainingCalls !== null && remainingCalls <= 0
+  const hasInsightText = insight?.summary != null
+  // The refresh button only makes sense when the insight lags the data
+  // (stale) and the shared AI budget still has room.
+  const refreshDisabled =
+    budgetExhausted || (hasInsightText && insight?.stale === false)
+  const insightFrom =
+    insight?.insight_as_of != null
+      ? new Date(insight.insight_as_of).toLocaleTimeString("en-GB", {
+          hour: "2-digit",
+          minute: "2-digit",
+        })
+      : null
+
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b">
@@ -96,32 +121,40 @@ function App() {
             </p>
           </div>
           <div className="flex items-center gap-3">
-            {insight?.as_of && (
-              <span className="flex items-center gap-2">
-                <span className="text-xs text-muted-foreground tabular-nums">
-                  Based on data from{" "}
-                  {new Date(insight.as_of).toLocaleString("en-GB", {
-                    weekday: "short",
-                    day: "numeric",
-                    month: "short",
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })}
-                </span>
-                <button
-                  type="button"
-                  aria-label="Refresh AI insights"
-                  title="Regenerate all AI insights now"
-                  onClick={() => {
-                    void loadInsight(true)
-                    triggerAiRefresh()
-                  }}
-                  className="rounded-full text-muted-foreground transition-colors hover:text-foreground focus-visible:text-foreground"
-                >
-                  <RefreshCw className="size-3.5" aria-hidden="true" />
-                </button>
+            <span className="flex items-center gap-2">
+              <span className="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-sm font-medium tabular-nums">
+                {insightFrom ? (
+                  <>Insight from {insightFrom}</>
+                ) : (
+                  <span className="font-normal text-muted-foreground">
+                    No insight yet
+                  </span>
+                )}
+                {insight?.stale && hasInsightText && (
+                  <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold uppercase tracking-wide text-amber-900 dark:bg-amber-500/20 dark:text-amber-300">
+                    stale
+                  </span>
+                )}
               </span>
-            )}
+              <button
+                type="button"
+                aria-label="Refresh dashboard"
+                title={
+                  budgetExhausted
+                    ? "Daily AI budget exhausted; the insight refreshes tomorrow"
+                    : "Regenerate all AI insights and refresh widget data now"
+                }
+                disabled={refreshDisabled}
+                onClick={() => {
+                  void loadInsight(true)
+                  triggerAiRefresh()
+                  triggerDataRefresh()
+                }}
+                className="rounded-full text-muted-foreground transition-colors hover:text-foreground focus-visible:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <RefreshCw className="size-3.5" aria-hidden="true" />
+              </button>
+            </span>
             <Button
               variant="outline"
               onClick={() => {

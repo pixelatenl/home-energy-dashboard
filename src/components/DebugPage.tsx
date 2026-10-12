@@ -25,6 +25,8 @@ import {
   getEntities,
   getHourlySeries,
   getHourlyTotals,
+  type DebugHaFetch,
+  type DebugMistral,
 } from "@/lib/api"
 
 interface EndpointResult {
@@ -55,7 +57,7 @@ const ENDPOINTS: EndpointSpec[] = [
     key: "debug-time",
     label: "GET /api/debug/time",
     description:
-      "Server clock, timezone and the local Amsterdam buckets it computes, with raw rows",
+      "Server clock, timezone and the local Amsterdam buckets it computes, with raw rows, HA price fetch state and the Mistral budget",
     params: [],
     run: () => fetchDebugTime(),
   },
@@ -69,7 +71,8 @@ const ENDPOINTS: EndpointSpec[] = [
   {
     key: "summary",
     label: "GET /api/summary",
-    description: "Today, this week and this month headline metrics",
+    description:
+      "Today, this week and this month headline metrics, with the context signature, the AI insight and the remaining Mistral budget",
     params: [],
     run: () => fetchSummary(),
   },
@@ -265,6 +268,12 @@ function DebugPage() {
     version: string | null
     loaded: boolean
   }>({ version: null, loaded: false })
+  // Observability from /api/debug/time, shown as a compact line: HA
+  // price fetch health, forecast age and the Mistral budget.
+  const [observability, setObservability] = useState<{
+    haFetch: DebugHaFetch | null
+    mistral: DebugMistral | null
+  }>({ haFetch: null, mistral: null })
   useEffect(() => {
     // eslint-disable-next-line react/set-state-in-effect
     void fetchSummary()
@@ -272,6 +281,14 @@ function DebugPage() {
         setServerInfo({ version: summary.server_version ?? null, loaded: true })
       )
       .catch(() => setServerInfo({ version: null, loaded: true }))
+    void fetchDebugTime()
+      .then((data) =>
+        setObservability({
+          haFetch: data.ha_fetch ?? null,
+          mistral: data.mistral ?? null,
+        })
+      )
+      .catch(() => {})
   }, [])
   const [results, setResults] = useState<Record<string, EndpointResult>>(
     () =>
@@ -368,6 +385,22 @@ function DebugPage() {
                   it to load the current code.
                 </p>
               ))}
+            {observability.haFetch && observability.mistral && (
+              <p className="mt-1 text-xs text-muted-foreground">
+                HA price fetch:{" "}
+                {observability.haFetch.price_entity_ok === null
+                  ? "not fetched yet"
+                  : observability.haFetch.price_entity_ok
+                    ? "ok"
+                    : "failed"}
+                {" · "}forecast age:{" "}
+                {observability.haFetch.price_forecast_age_min ?? "?"} min
+                {" · "}Mistral budget:{" "}
+                {observability.mistral.remaining_calls}/
+                {observability.mistral.daily_limit} left (
+                {observability.mistral.calls_today} today)
+              </p>
+            )}
           </div>
           <div className="flex gap-2">
             <Button variant="outline" onClick={loadAll}>

@@ -15,11 +15,11 @@ import {
 } from "@/components/ui/card"
 import {
   isStructuredAction,
-  type DailyInsight,
   type InsightAction,
   type InsightActionType,
   type LegacyInsightAction,
   type StructuredInsightAction,
+  type SummaryInsight as SummaryInsightData,
 } from "@/lib/api"
 import { dateKeyPlus, todayInAmsterdam } from "@/lib/time"
 
@@ -160,13 +160,14 @@ function LegacyActionRow({ action }: { action: LegacyInsightAction }) {
 // tag), grouped under day headings when actions span multiple days. The
 // nearest upcoming action carries a "next" badge. Prose actions (the
 // server fallback format) render as a simple list. The data is owned by
-// App, which refreshes it on the 5-minute panel cycle; the as_of stamp
-// and force-refresh control live in the page header.
+// App, which refreshes it on the 5-minute panel cycle; the "insight from"
+// stamp, the stale marker and the force-refresh control live in the page
+// header.
 function SummaryInsight({
   insight,
   loading,
 }: {
-  insight: DailyInsight | null
+  insight: SummaryInsightData | null
   loading: boolean
 }) {
   if (loading) {
@@ -225,8 +226,8 @@ function SummaryInsight({
           <SummaryText text={insight.summary} />
           {insight.stale && (
             <p className="mt-2 text-xs text-muted-foreground">
-              Live updates paused (daily AI limit reached); the insight may
-              lag
+              This insight is older than the live data; it refreshes when
+              the AI budget allows
             </p>
           )}
       {groups.length > 0 && (

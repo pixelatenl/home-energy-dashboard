@@ -19,7 +19,9 @@ const MISTRAL_MODEL = "mistral-small-latest";
 const REQUEST_TIMEOUT_MS = 15_000;
 // At most one upstream call per 30 minutes per insight.
 const MIN_CALL_INTERVAL_MS = 30 * 60 * 1000;
-const DEFAULT_DAILY_LIMIT = 20;
+// Shared daily cap for every insight widget; overridden by
+// MISTRAL_DAILY_CALL_LIMIT in the environment (the current plan allows 100).
+const DEFAULT_DAILY_LIMIT = 100;
 
 const WEATHER_SYSTEM_PROMPT =
   "You are the assistant of a home energy dashboard in the Netherlands. " +
@@ -455,7 +457,11 @@ function parseInsightJson(text) {
   }
 }
 
-function dailyLimitReached() {
+// Shared daily budget for every insight widget against
+// MISTRAL_DAILY_CALL_LIMIT (read from the environment, default 100). The
+// counter is per UTC day and in-memory; all four insight widgets (summary,
+// prices, weather, battery) draw from the same budget.
+export function getMistralBudget() {
   const utcDay = new Date().toISOString().slice(0, 10);
   const rawLimit = Number.parseInt(
     process.env.MISTRAL_DAILY_CALL_LIMIT ?? "",
@@ -465,14 +471,41 @@ function dailyLimitReached() {
     Number.isFinite(rawLimit) && rawLimit >= 0
       ? rawLimit
       : DEFAULT_DAILY_LIMIT;
-  return (callsPerUtcDay.get(utcDay) ?? 0) >= dailyLimit;
+  const callsToday = callsPerUtcDay.get(utcDay) ?? 0;
+  return {
+    daily_limit: dailyLimit,
+    calls_today: callsToday,
+    remaining_calls: Math.max(0, dailyLimit - callsToday),
+  };
+}
+
+function dailyLimitReached() {
+  return getMistralBudget().remaining_calls <= 0;
+}
+
+// One structured line per Mistral call decision, with the widget, the
+// context signature the call was made against, the trigger reason
+// (signature_change, throttle_expiry, force) and the outcome - so the
+// call volume and its causes stay observable in the server log. Never
+// logs the API key, the prompt or the context.
+function logMistral(widget, signature, reason, outcome) {
+  console.log(
+    `[mistral] widget=${widget} signature=${signature} reason=${reason} outcome=${outcome}`
+  );
+}
+
+// Compact single-line error text for the outcome field.
+function shortError(err) {
+  return String(err?.message ?? err).replace(/\s+/g, " ").slice(0, 80);
 }
 
 // Serves the cached insight when the payload has not changed, enforces the
 // shared daily cap and the per-insight 30-minute throttle, and degrades to
-// { text: null, parsed: null, error } on any upstream failure. With
-// options.json the model output must parse as a JSON object; a parse
-// failure is retried once before degrading. With options.validate the
+// { text: null, parsed: null, error } on any upstream failure. The primary
+// gate is the cache key (the hash over the materialized context); Mistral
+// is called only when it changed since the last generated insight, or on
+// force. With options.json the model output must parse as a JSON object; a
+// parse failure is retried once before degrading. With options.validate the
 // plain-text answer is checked: a failure is retried once with
 // options.corrective appended to the prompt and repeated in the context,
 // and a second failure returns error "validation_failed" - the caller
@@ -489,12 +522,19 @@ async function getInsight(namespace, systemPrompt, cacheKey, context, options = 
       ? { parsed: cached.parsed ?? null, generatedAt: cached.generatedAt, error: null }
       : { text: cached.text, generatedAt: cached.generatedAt, error: null };
   }
+  const reason =
+    force
+      ? "force"
+      : !cached || cached.key !== cacheKey
+        ? "signature_change"
+        : "throttle_expiry";
 
   const attempts = asJson || validate ? 2 : 1;
   for (let attempt = 0; attempt < attempts; attempt++) {
     // Daily call guard (in-memory; resets on the next UTC day). Shared by
     // all insights; retries also count.
     if (dailyLimitReached()) {
+      logMistral(namespace, cacheKey, reason, "skipped_daily_limit");
       return { text: null, parsed: null, generatedAt: null, error: "daily_limit_reached" };
     }
     // At most one upstream call per 30 minutes regardless of cache keys; a
@@ -506,6 +546,7 @@ async function getInsight(namespace, systemPrompt, cacheKey, context, options = 
       !force &&
       Date.now() - (lastCallAt.get(namespace) ?? 0) < MIN_CALL_INTERVAL_MS
     ) {
+      logMistral(namespace, cacheKey, reason, "skipped_throttle");
       if (cached) {
         return asJson
           ? { parsed: cached.parsed ?? null, generatedAt: cached.generatedAt, error: null }
@@ -530,22 +571,27 @@ async function getInsight(namespace, systemPrompt, cacheKey, context, options = 
         if (!parsed) {
           throw new Error("model returned invalid JSON");
         }
+        logMistral(namespace, cacheKey, reason, "ok");
         insightCaches.set(namespace, { key: cacheKey, text, parsed, generatedAt });
         return { parsed, generatedAt, error: null };
       }
       if (validate && !validate(text)) {
         if (attempt < attempts - 1) {
+          logMistral(namespace, cacheKey, reason, "validation_failed_retry");
           console.warn(
             `${namespace} insight failed validation; retrying with a corrective instruction`
           );
           continue;
         }
+        logMistral(namespace, cacheKey, reason, "validation_failed");
         console.warn(`${namespace} insight failed validation twice; degrading`);
         return { text: null, parsed: null, generatedAt: null, error: "validation_failed" };
       }
+      logMistral(namespace, cacheKey, reason, "ok");
       insightCaches.set(namespace, { key: cacheKey, text, generatedAt });
       return { text, generatedAt, error: null };
     } catch (err) {
+      logMistral(namespace, cacheKey, reason, `error:${shortError(err)}`);
       if (attempt === attempts - 1) {
         console.warn(
           `AI context generation failed for ${namespace}: ${err?.message ?? err}`
@@ -731,6 +777,14 @@ export function buildSummarySignature(summary, weatherDaily, priceParts) {
   return parts.join("|");
 }
 
+// Stable hash over the materialized context fields: the bucketed
+// signature string above, hashed so /api/summary can expose a compact
+// `signature` the kiosk compares against the signature the cached
+// insight was generated from.
+export function summarySignature(summary, weatherDaily, priceParts) {
+  return hashString(buildSummarySignature(summary, weatherDaily, priceParts));
+}
+
 // Records one upstream call against the shared daily cap.
 function recordApiCall() {
   const utcDay = new Date().toISOString().slice(0, 10);
@@ -825,23 +879,53 @@ export function filterPastActions(actions, asOfMs) {
   });
 }
 
-// Daily summary insight: cached against the bucketed context signature
-// and regenerated as soon as the signature changes (or on force), so the
-// text tracks the live panels. When the shared daily cap is exhausted (or
-// the upstream fails), the cached text is served and marked stale.
-let summaryInsightCache = null; // { signature, asOf, result }
+// The insight must not reference tomorrow's prices while they are
+// unpublished (the publication status entity has not confirmed them):
+// price claims about tomorrow in the text, or actions dated tomorrow
+// that carry a price tag, invalidate the model output.
+function insightClaimsUnpublishedTomorrow(validated, priceParts) {
+  if (priceParts?.tomorrowPricesAvailable === true) {
+    return false;
+  }
+  const tomorrowKey = nextDateKey(localDateKey(new Date()), 1);
+  for (const action of validated.actions) {
+    if (action.date === tomorrowKey && action.price_eur !== null) {
+      return true;
+    }
+  }
+  const texts = [
+    validated.oneLiner,
+    validated.summary,
+    ...validated.actions.map((action) => `${action.title} ${action.reason}`),
+  ];
+  return texts.some(
+    (text) => typeof text === "string" && claimsTomorrowPrices(text)
+  );
+}
 
-export async function getSummaryInsight(
-  summary,
-  weatherDaily,
-  priceParts,
-  options = {}
-) {
+// Daily summary insight: gated by the context signature. The signature is
+// the primary gate - Mistral is called only when it changed since the
+// last generated insight, or on force - with the 30-minute minimum
+// interval per widget underneath. The cache stores the signature the
+// text was generated from and is served until the signature changes.
+// When the interval has not expired, the shared daily cap is exhausted
+// or generation fails, the previous insight is served with a stale
+// marker (fail soft) rather than an unverified text. Concurrent callers
+// (the kiosk polls /api/summary from several widgets) join one
+// in-flight generation.
+let summaryInsightCache = null; // { signature, asOf, result }
+let summaryLastCallAt = 0;
+let summaryInFlight = null; // { signature, promise }
+
+export async function getSummaryInsight(snapshot, options = {}) {
+  const { summary, weatherDaily, priceParts, signature, asOf } = snapshot;
   const force = options.force === true;
-  const signature = buildSummarySignature(summary, weatherDaily, priceParts);
-  const asOf = summary?.summary_as_of ?? null;
   const asOfMs = asOf !== null ? Date.parse(asOf) : Date.now();
   const cached = summaryInsightCache;
+  const tomorrowAvailable = priceParts?.tomorrowPricesAvailable === true;
+  const context = buildSummaryContext(summary, weatherDaily, priceParts);
+  const reason = force ? "force" : "signature_change";
+
   // Advice for the past is never shown: the filter runs on every
   // response, including cached ones.
   const serve = (result, stale) => ({
@@ -851,94 +935,136 @@ export async function getSummaryInsight(
     stale,
     error: null,
   });
+  const empty = (error) => ({
+    oneLiner: null,
+    summary: null,
+    actions: [],
+    generatedAt: null,
+    asOf,
+    stale: false,
+    error,
+  });
+  const degrade = (error) =>
+    cached ? serve(cached.result, true) : empty(error);
 
+  // Cache hit: the cached insight was generated from this exact signature.
   if (!force && cached && cached.signature === signature) {
     return serve(cached.result, false);
   }
 
-  const degrade = (error) => {
-    if (cached) {
-      return serve(cached.result, true);
-    }
-    return {
-      oneLiner: null,
-      summary: null,
-      actions: [],
-      generatedAt: null,
-      asOf,
-      stale: error === "daily_limit_reached",
-      error,
-    };
-  };
-
-  if (dailyLimitReached()) {
-    return degrade("daily_limit_reached");
+  if (summaryInFlight && summaryInFlight.signature === signature) {
+    return summaryInFlight.promise;
   }
 
-  const context = buildSummaryContext(summary, weatherDaily, priceParts);
-
-  // Structured output first; retried once on invalid JSON, then a single
-  // prose fallback call so the dashboard never breaks. Every attempt
-  // counts against the shared daily cap.
-  let result = null;
-  for (let attempt = 0; attempt < 2 && !result; attempt++) {
+  const generate = async () => {
+    // Force bypasses the 30-minute interval but never the shared daily
+    // cap, and still counts.
     if (dailyLimitReached()) {
+      logMistral("summary", signature, reason, "skipped_daily_limit");
       return degrade("daily_limit_reached");
     }
-    recordApiCall();
-    try {
-      const text = await callMistral(SUMMARY_SYSTEM_PROMPT_STRUCTURED, context);
-      const validated = validateStructuredInsight(parseInsightJson(text));
-      if (!validated) {
-        throw new Error("model returned invalid structured JSON");
-      }
-      result = {
-        oneLiner: validated.oneLiner,
-        summary: validated.summary,
-        actions: validated.actions,
-        generatedAt: new Date().toISOString(),
-      };
-    } catch (err) {
-      // Retried on the next loop iteration, prose fallback after it. The
-      // reason is logged so schema misses stay diagnosable.
-      console.warn(
-        `Structured insight validation failed: ${err?.message ?? err}`
-      );
+    if (!force && Date.now() - summaryLastCallAt < MIN_CALL_INTERVAL_MS) {
+      logMistral("summary", signature, reason, "skipped_throttle");
+      return degrade("throttled");
     }
-  }
-  if (!result && !dailyLimitReached()) {
-    recordApiCall();
-    try {
-      const text = await callMistral(SUMMARY_SYSTEM_PROMPT_PROSE, context);
-      const parsed = parseInsightJson(text);
-      if (!parsed || typeof parsed.summary !== "string") {
-        throw new Error("model returned invalid JSON");
-      }
-      const actions = Array.isArray(parsed.actions)
-        ? parsed.actions
-            .filter((action) => action && typeof action.text === "string")
-            .slice(0, 3)
-            .map((action) => ({
-              text: action.text,
-              window: typeof action.window === "string" ? action.window : "",
-              reason: typeof action.reason === "string" ? action.reason : "",
-            }))
-        : [];
-      result = {
-        oneLiner:
-          typeof parsed.one_liner === "string" ? parsed.one_liner : null,
-        summary: parsed.summary,
-        actions,
-        generatedAt: new Date().toISOString(),
-      };
-    } catch {
-      // Degraded below.
-    }
-  }
-  if (!result) {
-    return degrade("ai_unavailable");
-  }
+    // Context integrity: while tomorrow's prices are unpublished, the
+    // output must not claim them.
+    const contextOk = (validated) =>
+      tomorrowAvailable || !insightClaimsUnpublishedTomorrow(validated, priceParts);
 
-  summaryInsightCache = { signature, asOf, result };
-  return serve(result, false);
+    // Structured output first; retried once on invalid JSON or an
+    // integrity failure, then a single prose fallback call so the
+    // dashboard never breaks. Every attempt counts against the shared
+    // daily cap.
+    let result = null;
+    for (let attempt = 0; attempt < 2 && !result; attempt++) {
+      if (dailyLimitReached()) {
+        logMistral("summary", signature, reason, "skipped_daily_limit");
+        return degrade("daily_limit_reached");
+      }
+      summaryLastCallAt = Date.now();
+      recordApiCall();
+      try {
+        const text = await callMistral(SUMMARY_SYSTEM_PROMPT_STRUCTURED, context);
+        const validated = validateStructuredInsight(parseInsightJson(text));
+        if (!validated) {
+          throw new Error("model returned invalid structured JSON");
+        }
+        if (!contextOk(validated)) {
+          throw new Error(
+            "model referenced tomorrow's unpublished prices"
+          );
+        }
+        logMistral("summary", signature, reason, "ok");
+        result = {
+          oneLiner: validated.oneLiner,
+          summary: validated.summary,
+          actions: validated.actions,
+          generatedAt: new Date().toISOString(),
+        };
+      } catch (err) {
+        logMistral("summary", signature, reason, `error:${shortError(err)}`);
+        // Retried on the next loop iteration, prose fallback after it.
+        // The reason is logged so schema misses stay diagnosable.
+        console.warn(
+          `Structured insight validation failed: ${err?.message ?? err}`
+        );
+      }
+    }
+    if (!result && !dailyLimitReached()) {
+      summaryLastCallAt = Date.now();
+      recordApiCall();
+      try {
+        const text = await callMistral(SUMMARY_SYSTEM_PROMPT_PROSE, context);
+        const parsed = parseInsightJson(text);
+        if (!parsed || typeof parsed.summary !== "string") {
+          throw new Error("model returned invalid JSON");
+        }
+        if (
+          !tomorrowAvailable &&
+          claimsTomorrowPrices(
+            `${parsed.one_liner ?? ""} ${parsed.summary}`
+          )
+        ) {
+          throw new Error("model referenced tomorrow's unpublished prices");
+        }
+        const actions = Array.isArray(parsed.actions)
+          ? parsed.actions
+              .filter((action) => action && typeof action.text === "string")
+              .slice(0, 3)
+              .map((action) => ({
+                text: action.text,
+                window: typeof action.window === "string" ? action.window : "",
+                reason: typeof action.reason === "string" ? action.reason : "",
+              }))
+          : [];
+        logMistral("summary", signature, reason, "ok");
+        result = {
+          oneLiner:
+            typeof parsed.one_liner === "string" ? parsed.one_liner : null,
+          summary: parsed.summary,
+          actions,
+          generatedAt: new Date().toISOString(),
+        };
+      } catch (err) {
+        logMistral("summary", signature, reason, `error:${shortError(err)}`);
+      }
+    }
+    if (!result) {
+      return degrade("ai_unavailable");
+    }
+
+    summaryInsightCache = { signature, asOf, result };
+    return serve(result, false);
+  };
+
+  const promise = generate();
+  summaryInFlight = { signature, promise };
+  try {
+    return await promise;
+  } finally {
+    if (summaryInFlight?.promise === promise) {
+      summaryInFlight = null;
+    }
+  }
 }

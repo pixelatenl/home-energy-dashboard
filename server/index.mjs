@@ -6,13 +6,16 @@ import express from "express";
 import { shutdown } from "./db.mjs";
 import {
   getBatteryContext,
+  getMistralBudget,
   getPriceContext,
   getSummaryInsight,
   getWeatherContext,
   topProductionHours,
 } from "./ai.mjs";
+import { buildContextSnapshot } from "./context.mjs";
 import {
   getCheapestBlock,
+  getHaFetchInfo,
   getPriceContextData,
   getPriceSummary,
 } from "./prices.mjs";
@@ -233,14 +236,60 @@ app.get(
 app.get(
   "/api/debug/time",
   asyncHandler(async (_req, res) => {
-    res.json(await getDebugTimeData());
+    const data = await getDebugTimeData();
+    // Freshen the merged price curve so ha_fetch reports the current
+    // fetch state instead of "never fetched" after a server restart.
+    try {
+      await getPriceContextData();
+    } catch {
+      // The debug fields below report the failure.
+    }
+    res.json({
+      ...data,
+      // Whether the HA price fetches succeeded and how old the price
+      // forecast is.
+      ha_fetch: getHaFetchInfo(),
+      // The shared Mistral budget: limit, calls today, remaining.
+      mistral: getMistralBudget(),
+    });
   })
 );
 
 app.get(
   "/api/summary",
-  asyncHandler(async (_req, res) => {
-    res.json({ ...(await getSummary()), server_version: SERVER_VERSION });
+  asyncHandler(async (req, res) => {
+    // force regenerates the insight once regardless of the context
+    // signature; it bypasses the 30-minute interval but never the daily
+    // cap, and still counts.
+    const force = req.query.force === "1" || req.query.force === "true";
+    const snapshot = await buildContextSnapshot();
+    const insight = await getSummaryInsight(snapshot, { force });
+    res.json({
+      ...snapshot.summary,
+      // The moment the underlying summary data was built.
+      as_of: snapshot.asOf,
+      // Stable hash over the materialized context fields; the kiosk
+      // compares it against the signature the insight was generated
+      // from to detect staleness.
+      signature: snapshot.signature,
+      insight: {
+        one_liner: insight.oneLiner,
+        summary: insight.summary,
+        actions: insight.actions,
+        generated_at: insight.generatedAt,
+        // The data moment the cached insight text is based on (its own
+        // as_of, which can trail the top-level as_of).
+        insight_as_of: insight.asOf,
+        // True when the insight is older than the underlying data
+        // signature (throttled, budget-exhausted or failed
+        // regeneration) and the cached text is served fail-soft.
+        stale: insight.stale,
+        error: insight.error,
+      },
+      // Remaining calls in the shared daily Mistral budget.
+      remaining_calls: getMistralBudget().remaining_calls,
+      server_version: SERVER_VERSION,
+    });
   })
 );
 
@@ -340,23 +389,8 @@ app.get(
   asyncHandler(async (req, res) => {
     // force regenerates once regardless of the context signature.
     const force = req.query.force === "1" || req.query.force === "true";
-    const summary = await getSummary();
-    // Optional sources; omitted from the context when unavailable.
-    let daily = null;
-    try {
-      daily = await dailyForecast(5);
-    } catch {
-      daily = null;
-    }
-    let priceParts = null;
-    try {
-      priceParts = await getPriceContextData();
-    } catch {
-      priceParts = null;
-    }
-    const result = await getSummaryInsight(summary, daily, priceParts, {
-      force,
-    });
+    const snapshot = await buildContextSnapshot();
+    const result = await getSummaryInsight(snapshot, { force });
     res.json({
       one_liner: result.oneLiner,
       summary: result.summary,

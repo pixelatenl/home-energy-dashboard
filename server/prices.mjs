@@ -29,8 +29,35 @@ function roundPrice(value) {
 
 const curveCache = new Map(); // days -> { fetchedAt, data }
 
+// Last actual HA fetch observability for the debug panel: whether each
+// entity fetch succeeded and when the forecast was last fetched
+// successfully. Only updated on real fetches (cache misses), so it
+// reports the true age of the served forecast.
+const haFetchInfo = {
+  priceEntityOk: null, // boolean | null (null: never fetched)
+  statusEntityOk: null,
+  lastSuccessAt: null, // Date | null
+};
+
+// GET /api/debug/time ha_fetch field: HA price fetch success and the age
+// of the price forecast.
+export function getHaFetchInfo() {
+  const lastSuccessAt = haFetchInfo.lastSuccessAt;
+  return {
+    price_entity_ok: haFetchInfo.priceEntityOk,
+    tomorrow_status_entity_ok: haFetchInfo.statusEntityOk,
+    price_forecast_fetched_at:
+      lastSuccessAt === null ? null : lastSuccessAt.toISOString(),
+    price_forecast_age_min:
+      lastSuccessAt === null
+        ? null
+        : Math.round((Date.now() - lastSuccessAt.getTime()) / 60_000),
+  };
+}
+
 // Merged hourly curve for a window of `days` calendar days starting today.
-// Data shape: { entries, todayKey, tomorrowKey, currentKey, tomorrowAvailable }
+// Data shape: { entries, todayKey, tomorrowKey, currentKey, tomorrowAvailable,
+// tomorrowStatusAvailable }
 // where entries are sorted by ts and hold { key, ts (Date), price, source }.
 async function loadCurve(days) {
   const hit = curveCache.get(days);
@@ -56,6 +83,14 @@ async function loadCurve(days) {
         DEFAULT_TOMORROW_STATUS_ENTITY
     ),
   ]);
+
+  // Observability for the debug panel: which entity fetches succeeded,
+  // and how old the served forecast is.
+  haFetchInfo.priceEntityOk = haState !== null;
+  haFetchInfo.statusEntityOk = tomorrowState !== null;
+  if (haState !== null) {
+    haFetchInfo.lastSuccessAt = new Date();
+  }
 
   const byKey = new Map(); // hourKey -> entry
 
@@ -127,6 +162,10 @@ async function loadCurve(days) {
     tomorrowKey,
     currentKey,
     tomorrowAvailable: statusAvailable || haHasTomorrow,
+    // Whether the Zonneplan publication status entity itself confirms
+    // that tomorrow's prices are published (independent of any forecast
+    // rows): the AI context requires this confirmation.
+    tomorrowStatusAvailable: statusAvailable,
   };
   curveCache.set(days, { fetchedAt: Date.now(), data });
   return data;
@@ -222,8 +261,13 @@ export async function getCheapestBlock(size) {
 // come from the cached merged curve.
 export async function getPriceContextData() {
   const summary = await getPriceSummary(HORIZON_DAYS);
-  const { entries, todayKey, tomorrowKey, currentKey } =
-    await loadCurve(HORIZON_DAYS);
+  const {
+    entries,
+    todayKey,
+    tomorrowKey,
+    currentKey,
+    tomorrowStatusAvailable,
+  } = await loadCurve(HORIZON_DAYS);
   const currentEntry =
     entries.find((entry) => entry.key === currentKey) ?? null;
   const todayEntries = entries.filter(
@@ -260,11 +304,13 @@ export async function getPriceContextData() {
         max: summary.tomorrow.max,
       },
     },
-    // Whether price rows for tomorrow actually exist in the merged curve
-    // (local midnight tomorrow onwards). Zonneplan publishes them around
-    // 18:00; until then no rows exist and the AI insight must not make
-    // any claims about tomorrow's prices.
-    tomorrowPricesAvailable: tomorrowEntries.length > 0,
+    // Context integrity: tomorrow's prices may only be used in an AI
+    // context once the publication status entity confirms availability
+    // AND rows for tomorrow exist in the merged curve. Rows alone are
+    // never trusted: Zonneplan publishes them around 18:00 and the
+    // status entity is the confirmation.
+    tomorrowPricesAvailable:
+      tomorrowStatusAvailable === true && tomorrowEntries.length > 0,
     cheapestBlock: summary.cheapest_block,
     // Per-day cheapest windows and the remaining peak, for the AI insight
     // context signature.

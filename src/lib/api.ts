@@ -129,10 +129,64 @@ export interface SummaryData {
   flow: FlowSnapshot
   battery_full_in_min?: number
   battery_empty_in_min?: number
+  summary_as_of: string
+  // The moment the underlying summary data was built (same value as
+  // summary_as_of, exposed under the name the API contract uses).
+  as_of: string
+  // Stable hash over the materialized context fields the AI insight is
+  // based on.
+  signature: string
+  // The cached AI insight served with the summary.
+  insight: SummaryInsight
+  // Remaining calls in the shared daily Mistral budget.
+  remaining_calls: number
 }
 
-export function fetchSummary(): Promise<SummaryData> {
-  return getJson<SummaryData>("/api/summary")
+// The AI insight embedded in /api/summary: one_liner for the header,
+// the summary text, the recommended actions, and the metadata the kiosk
+// needs to judge freshness.
+export interface SummaryInsight {
+  one_liner: string | null
+  summary: string | null
+  actions: InsightAction[]
+  generated_at: string | null
+  // The data moment the cached insight text is based on; can trail the
+  // top-level as_of when the insight is stale.
+  insight_as_of: string | null
+  // True when the insight is older than the underlying data signature.
+  stale: boolean
+  error: string | null
+}
+
+let summaryInFlight: Promise<SummaryData> | null = null
+
+// Fetches /api/summary. Concurrent non-force callers share one
+// in-flight request, so the kiosk refetch (several widgets poll this
+// endpoint) never multiplies into a burst. With force, a fresh request
+// is made that asks the server to regenerate the AI insight once
+// regardless of the context signature.
+export function fetchSummary(force = false): Promise<SummaryData> {
+  if (!force && summaryInFlight) {
+    return summaryInFlight
+  }
+  const promise = getJson<SummaryData>(
+    withParams("/api/summary", force ? { force: "1" } : {})
+  ).then(
+    (value) => {
+      if (summaryInFlight === promise) {
+        summaryInFlight = null
+      }
+      return value
+    },
+    (error) => {
+      if (summaryInFlight === promise) {
+        summaryInFlight = null
+      }
+      throw error
+    }
+  )
+  summaryInFlight = promise
+  return promise
 }
 
 // GET /api/appliances: smart plug disaggregation (domain = 'plug' only).
@@ -329,6 +383,21 @@ export interface DebugTimeRawRow {
 
 // GET /api/debug/time: server clock, timezone and local bucket
 // diagnostics, plus raw rows for stored-vs-displayed time comparison.
+export interface DebugHaFetch {
+  price_entity_ok: boolean | null
+  tomorrow_status_entity_ok: boolean | null
+  price_forecast_fetched_at: string | null
+  // Minutes since the last successful HA price forecast fetch; null when
+  // none has succeeded since server start.
+  price_forecast_age_min: number | null
+}
+
+export interface DebugMistral {
+  daily_limit: number
+  calls_today: number
+  remaining_calls: number
+}
+
 export interface DebugTime {
   server_now_utc: string
   server_now_local: string
@@ -340,6 +409,8 @@ export interface DebugTime {
   current_price_row: { ts: string; price_eur: number | null } | null
   latest_measurement: DebugTimeRawRow | null
   latest_energy_delta: DebugTimeRawRow | null
+  ha_fetch: DebugHaFetch
+  mistral: DebugMistral
 }
 
 export function fetchDebugTime(): Promise<DebugTime> {

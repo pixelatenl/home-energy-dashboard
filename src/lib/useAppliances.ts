@@ -4,6 +4,7 @@ import {
   type ApplianceRange,
   type ApplianceSummary,
 } from "@/lib/api"
+import { useDataRefreshListener } from "@/lib/useDataRefresh"
 
 // Fetches the appliance disaggregation for a range and joins the 5-minute
 // refresh cycle. A response that resolves after a range switch is
@@ -40,6 +41,9 @@ export function useAppliances(range: ApplianceRange): {
     const id = setInterval(() => void load(), 5 * 60_000)
     return () => clearInterval(id)
   }, [load])
+
+  // Re-fetch immediately when the header refresh button fires.
+  useDataRefreshListener(load)
 
   return { data, status }
 }
