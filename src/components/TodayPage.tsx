@@ -134,7 +134,7 @@ function TodayPage() {
       subtitle={insight?.one_liner ?? "Monitor your household energy use"}
       actions={
         <span className="flex items-center gap-2">
-          <span className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-blue-700 to-sky-600 px-3 py-1 text-sm font-medium tabular-nums text-white shadow-card dark:from-blue-900 dark:to-sky-800">
+          <span className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-blue-800 to-sky-600 px-3 py-1 text-sm font-medium tabular-nums text-white shadow-card dark:from-blue-950 dark:to-sky-800">
             {insightFrom ? (
               <>Insight from {insightFrom}</>
             ) : (
@@ -162,7 +162,7 @@ function TodayPage() {
               triggerAiRefresh()
               triggerDataRefresh()
             }}
-            className="rounded-full bg-gradient-to-r from-blue-700 to-sky-600 p-1.5 text-white transition-opacity hover:opacity-90 focus-visible:opacity-90 disabled:cursor-not-allowed disabled:opacity-40 dark:from-blue-900 dark:to-sky-800"
+            className="rounded-full bg-gradient-to-r from-blue-800 to-sky-600 p-1.5 text-white transition-opacity hover:opacity-90 focus-visible:opacity-90 disabled:cursor-not-allowed disabled:opacity-40 dark:from-blue-950 dark:to-sky-800"
           >
             <RefreshCw className="size-3.5" aria-hidden="true" />
           </button>

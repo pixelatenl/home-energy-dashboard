@@ -13,7 +13,7 @@ function AIContextBox({ text, error, loading }: AiContextValue) {
   if (loading) {
     return (
       <div
-        className="h-24 animate-pulse rounded-xl bg-gradient-to-br from-blue-700 to-sky-600 dark:from-blue-900 dark:to-sky-800"
+        className="h-24 animate-pulse rounded-xl bg-gradient-to-br from-blue-800 to-sky-600 dark:from-blue-950 dark:to-sky-800"
         aria-hidden="true"
       />
     )
@@ -34,7 +34,7 @@ function AIContextBox({ text, error, loading }: AiContextValue) {
   }
 
   return (
-    <div className="min-h-24 rounded-xl bg-gradient-to-br from-blue-700 to-sky-600 p-4 text-white dark:from-blue-900 dark:to-sky-800">
+    <div className="min-h-24 rounded-xl bg-gradient-to-br from-blue-800 to-sky-600 p-4 text-white dark:from-blue-950 dark:to-sky-800">
       <span className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-white/90">
         <Sparkles className="size-3.5" aria-hidden="true" />
         AI insight
