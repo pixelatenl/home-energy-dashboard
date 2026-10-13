@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useState } from "react"
 import ApplianceUsageToday from "@/components/ApplianceUsageToday"
-import BatteryPanel from "@/components/BatteryPanel"
+import BatteryStatusWidget from "@/components/BatteryStatusWidget"
 import LiveEnergyFlow from "@/components/LiveEnergyFlow"
 import PageLayout from "@/components/PageLayout"
 import PricesWidget from "@/components/PricesWidget"
+import SolarForecastWidget from "@/components/SolarForecastWidget"
 import StatsHeader from "@/components/StatsHeader"
 import SummaryInsight from "@/components/SummaryInsight"
-import WeatherForecast from "@/components/WeatherForecast"
 import {
   Activity,
   BatteryCharging,
@@ -170,16 +170,24 @@ function TodayPage() {
         </span>
       }
     >
+      {/* One coherent compact cluster at the top of the hub: the stats
+          grid with the compact solar forecast and battery status side
+          by side beneath it on the left, the AI summary filling the
+          right column. */}
       <div className="grid gap-6 lg:grid-cols-2">
-        <StatsHeader />
+        <div className="flex flex-col gap-4">
+          <StatsHeader />
+          <div className="grid gap-4 sm:grid-cols-2">
+            <SolarForecastWidget />
+            <BatteryStatusWidget />
+          </div>
+        </div>
         <SummaryInsight insight={insight} loading={insightLoading} />
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
         <LiveEnergyFlow />
         <PricesWidget />
-        <WeatherForecast />
-        <BatteryPanel />
       </div>
 
       <ApplianceUsageToday />

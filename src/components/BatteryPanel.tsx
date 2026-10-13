@@ -38,8 +38,9 @@ function formatMinutes(minutes: number): string {
 
 // Horizontal battery shape: a rounded-rectangle outline with a terminal
 // nub on the right, the inner fill width equal to the state of charge and
-// the percentage inside; outline and fill are colored by state.
-function BatteryGauge({ soc, color }: { soc: number | null; color: string }) {
+// the percentage inside; outline and fill are colored by state. Shared
+// with the compact battery status widget on the hub.
+export function BatteryGauge({ soc, color }: { soc: number | null; color: string }) {
   const pct = Math.min(Math.max(soc ?? 0, 0), 100)
   return (
     <div className="flex items-center">
