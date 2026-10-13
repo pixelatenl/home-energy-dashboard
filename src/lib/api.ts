@@ -109,6 +109,13 @@ export interface BatterySocPoint {
   soc_pct: number
 }
 
+// One hour of today's actual PV production, for the live hero's
+// compact solar chart.
+export interface PvFlowHour {
+  ts: string
+  kwh: number
+}
+
 export interface FlowSnapshot {
   pv_w: number | null
   grid_import_w: number | null
@@ -130,6 +137,7 @@ export interface SummaryData {
   battery_state: BatteryState
   battery_flow_hourly: BatteryFlowHour[]
   battery_soc_series: BatterySocPoint[]
+  pv_flow_hourly: PvFlowHour[]
   server_version: string
   flow: FlowSnapshot
   // Zonneplan sustainability score (0-100) of the current grid

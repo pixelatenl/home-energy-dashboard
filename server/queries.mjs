@@ -550,6 +550,28 @@ async function getBatterySnapshot(map, startMs, endMs) {
   return snapshot;
 }
 
+// Today's hourly PV production for the live hero's compact solar chart:
+// one bucket per hour with PV energy_delta sum in the local-day window,
+// mirroring the battery snapshot's flowHourly.
+async function getPvFlowHourly(map, startMs, endMs) {
+  if (map.pv === null) {
+    return [];
+  }
+  const { rows } = await pool.query(
+    `SELECT time_bucket('1 hour', ts) AS bucket, sum(delta_kwh) AS kwh
+       FROM energy_delta
+      WHERE entity_id = $1
+        AND ts >= $2::timestamptz AND ts < $3::timestamptz
+      GROUP BY bucket
+      ORDER BY bucket`,
+    [map.pv, new Date(startMs), new Date(endMs)]
+  );
+  return rows.map((row) => ({
+    ts: row.bucket.toISOString(),
+    kwh: Math.round(row.kwh * 1000) / 1000,
+  }));
+}
+
 // Live energy flow: the latest value of each power series in the
 // measurement table, only while its most recent row is less than one hour
 // old; otherwise null.
@@ -640,7 +662,7 @@ export async function getSummary() {
   const endMs = now.getTime();
   const todayKey = localDateKey(now);
   const todayStartMs = localDayStartUtcMs(todayKey);
-  const [today, week, month, dataEntities, battery, flow, score] =
+  const [today, week, month, dataEntities, battery, flow, score, pvFlow] =
     await Promise.all([
       getRangeMetrics(todayStartMs, endMs),
       getRangeMetrics(localDayStartUtcMs(mondayDateKey(now)), endMs),
@@ -649,6 +671,7 @@ export async function getSummary() {
       getBatterySnapshot(map, todayStartMs, endMs),
       getFlowSnapshot(map),
       getSustainabilityScore(),
+      getPvFlowHourly(map, todayStartMs, endMs),
     ]);
   const batteryAvailable =
     map.batteryCharging !== null &&
@@ -669,6 +692,7 @@ export async function getSummary() {
     battery_soc_series: battery.socSeries,
     flow,
     sustainability_score: score,
+    pv_flow_hourly: pvFlow,
   };
   // Capacity-based estimates, only when the capacity is configured and the
   // battery is charging or discharging above the 25 W deadband; rounded to
