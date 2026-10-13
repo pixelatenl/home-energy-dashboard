@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useState } from "react"
-import ApplianceUsageToday from "@/components/ApplianceUsageToday"
 import BatteryStatusWidget from "@/components/BatteryStatusWidget"
 import LiveEnergyFlow from "@/components/LiveEnergyFlow"
 import PageLayout from "@/components/PageLayout"
@@ -189,8 +188,6 @@ function TodayPage() {
         <LiveEnergyFlow />
         <PricesWidget />
       </div>
-
-      <ApplianceUsageToday />
 
       <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
         {HUB_LINKS.map(({ to, icon: Icon, title, description }) => (
