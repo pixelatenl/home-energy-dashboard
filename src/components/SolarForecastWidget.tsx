@@ -55,7 +55,9 @@ const ON_TRACK_LABELS: Record<Exclude<OnTrack, null>, string> = {
 }
 
 function OnTrackBadge({ onTrack }: { onTrack: OnTrack }) {
-  if (onTrack === null) {
+  // No badge while ahead of the forecast: running ahead needs no
+  // callout; only on track and behind are worth a glance.
+  if (onTrack === null || onTrack === "ahead") {
     return null
   }
   return (
