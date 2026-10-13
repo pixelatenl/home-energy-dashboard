@@ -8,12 +8,6 @@ import {
   Zap,
 } from "lucide-react"
 import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
-import {
   isStructuredAction,
   type InsightAction,
   type InsightActionType,
@@ -213,26 +207,21 @@ function SummaryInsight({
     : null
 
   return (
-    <Card className="h-full">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Sparkles className="size-5" aria-hidden="true" />
-          AI summary
-        </CardTitle>
-      </CardHeader>
-      {/* The content grows so the blue AI panel always fills the card
-          down to its bottom edge, next to the taller stats header. */}
-      <CardContent className="flex flex-1 flex-col">
-        {/* The blue-gradient AI panel sits inside the white card; the
-            gradient is the visual identity of AI content. */}
-        <div className="flex-1 rounded-xl bg-gradient-to-br from-blue-700 to-sky-600 p-4 text-white dark:from-blue-900 dark:to-sky-800">
-          <SummaryText text={insight.summary} />
-          {insight.stale && (
-            <p className="mt-2 text-xs text-white/70">
-              This insight is older than the live data; it refreshes when
-              the AI budget allows
-            </p>
-          )}
+    // The blue-gradient AI panel is the whole widget; the gradient is
+    // the visual identity of AI content. It stretches to the full grid
+    // row so it matches the height of the stats column next to it.
+    <div className="h-full rounded-lg bg-gradient-to-br from-blue-700 to-sky-600 p-4 text-white shadow-card dark:from-blue-900 dark:to-sky-800">
+      <p className="flex items-center gap-2 font-heading text-base font-medium">
+        <Sparkles className="size-5" aria-hidden="true" />
+        AI summary
+      </p>
+      <SummaryText text={insight.summary} />
+      {insight.stale && (
+        <p className="mt-2 text-xs text-white/70">
+          This insight is older than the live data; it refreshes when
+          the AI budget allows
+        </p>
+      )}
       {groups.length > 0 && (
         <div className="mt-3 space-y-2">
           {groups.map((group) => (
@@ -262,9 +251,7 @@ function SummaryInsight({
           ))}
         </ul>
       )}
-        </div>
-      </CardContent>
-    </Card>
+    </div>
   )
 }
 

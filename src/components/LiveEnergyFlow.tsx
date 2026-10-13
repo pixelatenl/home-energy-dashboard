@@ -312,8 +312,9 @@ function LiveEnergyFlow() {
       {/* The sky fills the card behind everything; content sits above it. */}
       <TimeOfDayBackground phase={phase} sunProgress={sunProgress} />
       <CardHeader className="relative z-10">
-        {/* Same muted panel background as the charts. */}
-        <div className="rounded-xl bg-muted/30 p-4">
+        {/* Same translucent white panel as the AI summary action rows,
+            letting the sky gradient show through. */}
+        <div className="rounded-xl bg-white/25 p-4">
           <CardTitle
             className={`flex items-center gap-2 transition-colors duration-[2500ms] ${
               onDark ? "text-white" : ""
@@ -324,7 +325,7 @@ function LiveEnergyFlow() {
           </CardTitle>
           <CardDescription
             className={`transition-colors duration-[2500ms] ${
-              onDark ? "text-white/75" : ""
+              onDark ? "text-white/75" : "text-foreground"
             }`}
           >
             Power between solar, home, grid and battery
