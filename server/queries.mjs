@@ -12,6 +12,7 @@
 // Every query is parameterized; user input is never interpolated into SQL.
 
 import { pool } from "./db.mjs";
+import { haGetState } from "./ha.mjs";
 import {
   localDateKey,
   localHourIndex,
@@ -225,6 +226,7 @@ export async function getRangeMetrics(startMs, endMs) {
     import_kwh: 0,
     export_kwh: 0,
     pv_kwh: null,
+    self_consumption_pct: null,
     total_usage_kwh: 0,
     cost_eur: 0,
     battery_charged_kwh: null,
@@ -288,6 +290,12 @@ export async function getRangeMetrics(startMs, endMs) {
   metrics.export_kwh = round2(exportKwh);
   if (map.pv !== null) {
     metrics.pv_kwh = round2(pvKwh);
+    // Share of the range's production used on site: what was neither
+    // exported. Null while production is zero (e.g. before sunrise).
+    if (pvKwh > 0) {
+      metrics.self_consumption_pct =
+        Math.round(((pvKwh - exportKwh) / pvKwh) * 1000) / 10;
+    }
     const bothBatteryMissing =
       map.batteryCharging === null && map.batteryDischarging === null;
     const batteryNet = bothBatteryMissing ? 0 : chargedKwh - dischargedKwh;
@@ -593,6 +601,25 @@ function batteryStateFromPower(available, powerW) {
   return powerW > 25 ? "charging" : "discharging";
 }
 
+// The Zonneplan sustainability score (0-100): how green and cheap the
+// current grid electricity is. Fetched live from Home Assistant through
+// the shared haGetState pattern (with its 10-minute cache), like the
+// price entities in prices.mjs; null whenever the entity is unreachable
+// or its state is not a number.
+const DEFAULT_SCORE_ENTITY =
+  "sensor.zonneplan_current_sustainability_score";
+
+async function getSustainabilityScore() {
+  const state = await haGetState(
+    process.env.ZONNEPLAN_SCORE_ENTITY ?? DEFAULT_SCORE_ENTITY
+  );
+  if (state === null) {
+    return null;
+  }
+  const score = Number.parseFloat(state.state);
+  return Number.isFinite(score) ? Math.round(score) : null;
+}
+
 let summaryCache = null; // { fetchedAt, data }
 const SUMMARY_CACHE_MS = 5 * 60 * 1000;
 
@@ -613,14 +640,16 @@ export async function getSummary() {
   const endMs = now.getTime();
   const todayKey = localDateKey(now);
   const todayStartMs = localDayStartUtcMs(todayKey);
-  const [today, week, month, dataEntities, battery, flow] = await Promise.all([
-    getRangeMetrics(todayStartMs, endMs),
-    getRangeMetrics(localDayStartUtcMs(mondayDateKey(now)), endMs),
-    getRangeMetrics(localDayStartUtcMs(`${todayKey.slice(0, 7)}-01`), endMs),
-    counterEntitiesWithData(counterIds),
-    getBatterySnapshot(map, todayStartMs, endMs),
-    getFlowSnapshot(map),
-  ]);
+  const [today, week, month, dataEntities, battery, flow, score] =
+    await Promise.all([
+      getRangeMetrics(todayStartMs, endMs),
+      getRangeMetrics(localDayStartUtcMs(mondayDateKey(now)), endMs),
+      getRangeMetrics(localDayStartUtcMs(`${todayKey.slice(0, 7)}-01`), endMs),
+      counterEntitiesWithData(counterIds),
+      getBatterySnapshot(map, todayStartMs, endMs),
+      getFlowSnapshot(map),
+      getSustainabilityScore(),
+    ]);
   const batteryAvailable =
     map.batteryCharging !== null &&
     map.batteryDischarging !== null &&
@@ -639,6 +668,7 @@ export async function getSummary() {
     battery_flow_hourly: battery.flowHourly,
     battery_soc_series: battery.socSeries,
     flow,
+    sustainability_score: score,
   };
   // Capacity-based estimates, only when the capacity is configured and the
   // battery is charging or discharging above the 25 W deadband; rounded to

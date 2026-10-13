@@ -11,8 +11,8 @@ function formatKwh(value: number | null): string {
   return value === null ? "\u2014" : `${value.toFixed(1)} kWh`
 }
 
-function formatEur(value: number | null): string {
-  return value === null ? "\u2014" : `\u20ac${value.toFixed(2)}`
+function formatPct(value: number | null): string {
+  return value === null ? "\u2014" : `${Math.round(value)}%`
 }
 
 // Corner info tooltip: shows on hover, keyboard focus and tap.
@@ -41,24 +41,42 @@ interface MetricSpec {
   today: string
   week: string
   month: string
+  // Sub-caption under the big value (the grid in/out split).
+  sub?: string
+  // A live value without week/month history (the sustainability score).
+  live?: boolean
+  // The value is unavailable (before sunrise, entity unreachable):
+  // the big figure renders muted instead of implying a real number.
+  muted?: boolean
 }
 
 const PLACEHOLDER = "\u2014"
 
-// The four headline metric cards in a 2x2 grid: today's value large, this
-// week and this month smaller beneath. Missing data shows a dash. The
-// battery lives in the live energy flow widget and the battery panel.
+// The four headline metric cards in a 2x2 grid: Grid (net of import and
+// export, with the in/out split as its sub-caption), Home usage,
+// Self-consumption and the live sustainability Score. Today's value is
+// large, this week and this month smaller beneath (the Score has no
+// history). Missing data shows a muted dash. The battery lives in the
+// live energy flow widget and the battery panel.
 function StatsHeader() {
   const { summary, status } = useSummary()
+
+  // Grid net: import minus export; negative means net export.
+  const netKwh = (range: {
+    import_kwh: number
+    export_kwh: number
+  }) => range.import_kwh - range.export_kwh
 
   const metrics: MetricSpec[] = summary
     ? [
         {
-          label: "From grid",
-          tooltip: "Electricity imported from the grid",
-          today: formatKwh(summary.today.import_kwh),
-          week: formatKwh(summary.week.import_kwh),
-          month: formatKwh(summary.month.import_kwh),
+          label: "Grid",
+          tooltip:
+            "Grid electricity today: imported minus exported; negative means net export",
+          today: formatKwh(netKwh(summary.today)),
+          sub: `${summary.today.import_kwh.toFixed(1)} in, ${summary.today.export_kwh.toFixed(1)} out`,
+          week: formatKwh(netKwh(summary.week)),
+          month: formatKwh(netKwh(summary.month)),
         },
         {
           label: "Home usage",
@@ -70,28 +88,36 @@ function StatsHeader() {
           month: formatKwh(summary.month.total_usage_kwh),
         },
         {
-          label: "To grid",
-          tooltip: "Electricity exported back to the grid",
-          today: formatKwh(summary.today.export_kwh),
-          week: formatKwh(summary.week.export_kwh),
-          month: formatKwh(summary.month.export_kwh),
+          label: "Self-consumption",
+          tooltip: "Share of today's solar production that was used on site",
+          today: formatPct(summary.today.self_consumption_pct),
+          week: formatPct(summary.week.self_consumption_pct),
+          month: formatPct(summary.month.self_consumption_pct),
+          muted: summary.today.self_consumption_pct === null,
         },
         {
-          label: "Energy cost",
+          label: "Score",
           tooltip:
-            "Cost of imported electricity at hourly dynamic prices",
-          today: formatEur(summary.today.cost_eur),
-          week: formatEur(summary.week.cost_eur),
-          month: formatEur(summary.month.cost_eur),
+            "Zonneplan sustainability score of the current grid electricity: how green and cheap it is combined",
+          today:
+            summary.sustainability_score === null
+              ? PLACEHOLDER
+              : String(summary.sustainability_score),
+          week: "",
+          month: "",
+          live: true,
+          muted: summary.sustainability_score === null,
         },
       ]
     : [
         {
-          label: "From grid",
-          tooltip: "Electricity imported from the grid",
+          label: "Grid",
+          tooltip:
+            "Grid electricity today: imported minus exported; negative means net export",
           today: PLACEHOLDER,
           week: PLACEHOLDER,
           month: PLACEHOLDER,
+          muted: true,
         },
         {
           label: "Home usage",
@@ -102,18 +128,22 @@ function StatsHeader() {
           month: PLACEHOLDER,
         },
         {
-          label: "To grid",
-          tooltip: "Electricity exported back to the grid",
+          label: "Self-consumption",
+          tooltip: "Share of today's solar production that was used on site",
           today: PLACEHOLDER,
           week: PLACEHOLDER,
           month: PLACEHOLDER,
+          muted: true,
         },
         {
-          label: "Energy cost",
-          tooltip: "Cost of imported electricity at hourly dynamic prices",
+          label: "Score",
+          tooltip:
+            "Zonneplan sustainability score of the current grid electricity: how green and cheap it is combined",
           today: PLACEHOLDER,
-          week: PLACEHOLDER,
-          month: PLACEHOLDER,
+          week: "",
+          month: "",
+          live: true,
+          muted: true,
         },
       ]
 
@@ -145,12 +175,24 @@ function StatsHeader() {
                     </span>
                   )}
                 </CardDescription>
-                <CardTitle className="text-3xl tabular-nums">
+                <CardTitle
+                  className={`text-3xl tabular-nums ${
+                    metric.muted ? "text-muted-foreground" : ""
+                  }`}
+                >
                   {metric.today}
                 </CardTitle>
-                <p className="text-xs text-muted-foreground tabular-nums">
-                  This week {metric.week} &middot; This month {metric.month}
-                </p>
+                {metric.sub && (
+                  <p className="text-xs text-muted-foreground tabular-nums">
+                    {metric.sub}
+                  </p>
+                )}
+                {!metric.live && (
+                  <p className="text-xs text-muted-foreground tabular-nums">
+                    This week {metric.week} &middot; This month{" "}
+                    {metric.month}
+                  </p>
+                )}
               </CardHeader>
             </Card>
           ))}

@@ -83,6 +83,9 @@ export interface RangeMetrics {
   import_kwh: number
   export_kwh: number
   pv_kwh: number | null
+  // Share of the range's solar production used on site; null while
+  // production is zero.
+  self_consumption_pct: number | null
   total_usage_kwh: number
   cost_eur: number
   battery_charged_kwh: number | null
@@ -129,6 +132,9 @@ export interface SummaryData {
   battery_soc_series: BatterySocPoint[]
   server_version: string
   flow: FlowSnapshot
+  // Zonneplan sustainability score (0-100) of the current grid
+  // electricity; null when the entity is unreachable.
+  sustainability_score: number | null
   battery_full_in_min?: number
   battery_empty_in_min?: number
   summary_as_of: string
