@@ -288,6 +288,21 @@ export async function getPriceContextData() {
     remainingEntries.length > 0
       ? Math.max(...remainingEntries.map((entry) => entry.price))
       : null;
+  // Peak hours above EMS_PRICE_PEAK_EUR (default 0.35 EUR/kWh), for the
+  // decision insight: hours the model should steer away from. The
+  // threshold is re-read per call so a change applies without a
+  // restart; invalid or unset values fall back to the default.
+  const peakThresholdRaw = Number.parseFloat(
+    process.env.EMS_PRICE_PEAK_EUR ?? ""
+  );
+  const peakThreshold =
+    Number.isFinite(peakThresholdRaw) && peakThresholdRaw > 0
+      ? peakThresholdRaw
+      : 0.35;
+  const peakHourLabels = (rows) =>
+    rows
+      .filter((entry) => entry.price > peakThreshold)
+      .map((entry) => `${entry.key.slice(11, 13)}:00`);
   return {
     priceData: {
       current_price: currentEntry ? currentEntry.price : null,
@@ -311,6 +326,14 @@ export async function getPriceContextData() {
     // status entity is the confirmation.
     tomorrowPricesAvailable:
       tomorrowStatusAvailable === true && tomorrowEntries.length > 0,
+    // Whether the merged curve also carries the day after tomorrow:
+    // with the current Zonneplan feed it never does (the window is
+    // today plus tomorrow), so the day-ahead advisory can label its
+    // horizon honestly - cheapest day known so far.
+    dayAfterPricesAvailable:
+      entries.filter(
+        (entry) => entry.key.slice(0, 10) === nextDateKey(tomorrowKey, 1)
+      ).length > 0,
     cheapestBlock: summary.cheapest_block,
     // Per-day cheapest windows and the remaining peak, for the AI insight
     // context signature.
@@ -319,5 +342,11 @@ export async function getPriceContextData() {
       tomorrow: cheapestFromEntries(tomorrowEntries, currentKey, 3),
     },
     remainingMaxPrice,
+    // Peak hours per day for the decision insight context.
+    peakHours: {
+      today: peakHourLabels(todayEntries),
+      tomorrow: peakHourLabels(tomorrowEntries),
+    },
+    peakThresholdEur: peakThreshold,
   };
 }

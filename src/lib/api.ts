@@ -165,6 +165,56 @@ export interface SummaryInsight {
   one_liner: string | null
   summary: string | null
   actions: InsightAction[]
+  // The C1b decision structure: the primary action the server-side
+  // candidates produced, its euro-first supporting facts and an
+  // optional warning. Absent on insights served in the old plain-text
+  // format, which render unchanged.
+  primary_action?: {
+    what: string
+    when: string
+    saving_eur: number
+    confidence: "high" | "medium" | "low"
+  } | null
+  supporting_facts?: string[]
+  warning?: string | null
+  // Explanatory context (why no candidates exist), rendered as a
+  // muted footnote - never a warning.
+  context_note?: string | null
+  // True when no meaningful saving was available: every candidate is
+  // belowThreshold (or none exists). The card leads with the honest
+  // statement and omits the highlighted saving.
+  no_opportunity?: boolean
+  // The server-computed C1b candidates, for the muted largest-
+  // opportunity line in the no-opportunity state.
+  candidates?: InsightCandidate[]
+  // Generic per-kWh timing guidance from the price data: leads the
+  // card when no action exists, a muted fact line when one does.
+  // Null on flat-price days.
+  guidance?: {
+    window: string
+    cheapest_window_average_eur: number
+    peak_hour: string
+    peak_price_eur: number
+    spread_per_kwh_eur: number
+    line: string
+  } | null
+  // The week outlook rows, planning voice.
+  outlook?: WeekOutlook | null
+  // The day-ahead advisory: defer or advance heavy usage based on
+  // tomorrow's prices and solar forecast versus the known days.
+  // Renders as a distinct line beneath the guidance. Null when no
+  // meaningful difference exists.
+  advisory?: {
+    type: "defer" | "advance"
+    tomorrow_average_eur: number | null
+    tomorrow_solar_kwh: number | null
+    compare_day: string
+    compare_average_eur: number | null
+    compare_solar_kwh: number | null
+    price_difference_per_kwh: number | null
+    horizon_note: string
+    line: string
+  } | null
   generated_at: string | null
   // The data moment the cached insight text is based on; can trail the
   // top-level as_of when the insight is stale.
@@ -396,6 +446,143 @@ let dailyInsightInFlight: Promise<DailyInsight> | null = null
 // refreshes ride the 5-minute panel cycle, and concurrent callers share
 // one in-flight request. With force, a fresh request is made that asks the
 // server to regenerate once regardless of the context signature.
+// The week outlook from the five-day forecast: every day after today
+// with its expected solar and home-language condition, plus the best
+// solar day and any notably poor rain day. Grid prices beyond
+// tomorrow are not yet published; there the solar forecast is the
+// deciding signal.
+export interface OutlookDay {
+  date: string
+  weekday: string
+  weekday_short: string
+  solar_kwh: number
+  condition: string
+  // Tomorrow's average grid price when published; null for every day
+  // beyond tomorrow - those prices do not exist in the data.
+  average_price_eur: number | null
+}
+
+export interface WeekOutlook {
+  days: OutlookDay[]
+  best_solar_day: {
+    weekday: string
+    weekday_short: string
+    solar_kwh: number
+  } | null
+  poor_day: {
+    weekday: string
+    weekday_short: string
+    solar_kwh: number
+    condition: string
+  } | null
+}
+
+// One precomputed C1b candidate action with exact server-computed
+// arithmetic, shared between the insight payload and the insight
+// debug endpoint.
+export interface InsightCandidate {
+  label: string
+  load_kwh: number
+  window: string
+  saving_eur: number
+  below_threshold: boolean
+  basis: string
+}
+
+// The read-only insight debug payload: the exact context the summary
+// insight is built from, plus the composed system prompt and the last
+// generated insight for the verbatim saving comparison. Fetching it
+// never costs a Mistral call.
+export interface InsightDebugData {
+  as_of: string
+  signature: string
+  system_prompt: string
+  context: {
+    now_local?: string
+    today?: Record<string, number | null>
+    top_appliances?: { name: string; kwh: number }[]
+    candidates?: InsightCandidate[]
+    battery?: string
+    co2_intensity_g_per_kwh?: number
+    solar_today?: string
+    solar_tomorrow?: string
+    current_price?: number | null
+    cheapest_window?: {
+      day?: string
+      start_hour?: string
+      end_hour?: string
+      average_price?: number
+    } | null
+    today_prices?: {
+      min?: number | null
+      average?: number | null
+      max?: number | null
+      peak_hours?: string[]
+    }
+    tomorrow_prices_available?: boolean
+    tomorrow_prices?: {
+      min?: number | null
+      average?: number | null
+      max?: number | null
+      peak_hours?: string[]
+    }
+    price_peak_threshold_eur?: number | null
+    guidance?: {
+      window: string
+      cheapest_window_average_eur: number
+      peak_hour: string | null
+      peak_price_eur: number
+      spread_per_kwh_eur: number
+    } | null
+    week_outlook?: WeekOutlook | null
+    advisory?: {
+      type: "defer" | "advance"
+      tomorrow_average_eur: number | null
+      tomorrow_solar_kwh: number | null
+      compare_day: string
+      compare_average_eur: number | null
+      compare_solar_kwh: number | null
+      price_difference_per_kwh: number | null
+      horizon_note: string
+    } | null
+  }
+  insight: {
+    signature: string
+    as_of: string
+    no_opportunity: boolean
+    candidates: InsightCandidate[]
+    guidance: {
+      window: string
+      cheapest_window_average_eur: number
+      peak_hour: string
+      peak_price_eur: number
+      spread_per_kwh_eur: number
+      line: string
+    } | null
+    advisory: {
+      type: "defer" | "advance"
+      tomorrow_average_eur: number | null
+      tomorrow_solar_kwh: number | null
+      compare_day: string
+      compare_average_eur: number | null
+      compare_solar_kwh: number | null
+      price_difference_per_kwh: number | null
+      horizon_note: string
+      line: string
+    } | null
+    primary_action: {
+      what: string
+      when: string
+      saving_eur: number
+      confidence: string
+    } | null
+  } | null
+}
+
+export function fetchInsightDebug(): Promise<InsightDebugData> {
+  return getJson<InsightDebugData>("/api/insight/debug")
+}
+
 export function fetchDailyInsight(force = false): Promise<DailyInsight> {
   if (!force && dailyInsightInFlight) {
     return dailyInsightInFlight

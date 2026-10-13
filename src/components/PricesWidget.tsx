@@ -238,7 +238,7 @@ function PriceBars({
               left: `${((block.startHour + block.endHour) / 2 / 24) * 100}%`,
             }}
           >
-            cheapest window
+            cheapest remaining window
           </span>
         )}
         {hoveredHour && (
@@ -298,7 +298,7 @@ function PriceChartLegend() {
       </span>
       <span className="flex items-center gap-1.5">
         <span className="size-3 rounded-[6px] border" />
-        Cheapest window
+        Cheapest remaining window
       </span>
     </div>
   )
@@ -454,7 +454,7 @@ function PricesWidget() {
               />
               {block && (
                 <p className="mt-2 text-xs text-muted-foreground">
-                  Cheapest window {blockLabel(block)} &middot; avg{" "}
+                  Cheapest remaining window {blockLabel(block)} &middot; avg{" "}
                   {formatPrice(block.average_price)}
                 </p>
               )}

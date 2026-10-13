@@ -642,6 +642,23 @@ async function getSustainabilityScore() {
   return Number.isFinite(score) ? Math.round(score) : null;
 }
 
+// The current grid CO2 intensity (g/kWh) from Electricity Maps, fetched
+// live from Home Assistant through the shared haGetState pattern so the
+// decision insight can weigh green hours alongside cheap hours. Null
+// whenever the entity is unreachable or its state is not a number.
+const DEFAULT_CO2_ENTITY = "sensor.electricity_maps_co2_intensity";
+
+export async function getCo2Intensity() {
+  const state = await haGetState(
+    process.env.EMS_CO2_ENTITY ?? DEFAULT_CO2_ENTITY
+  );
+  if (state === null) {
+    return null;
+  }
+  const value = Number.parseFloat(state.state);
+  return Number.isFinite(value) ? Math.round(value) : null;
+}
+
 let summaryCache = null; // { fetchedAt, data }
 const SUMMARY_CACHE_MS = 5 * 60 * 1000;
 

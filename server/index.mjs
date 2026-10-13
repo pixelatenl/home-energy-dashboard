@@ -10,6 +10,8 @@ import {
   getPriceContext,
   getSummaryInsight,
   getWeatherContext,
+  peekSummaryInsight,
+  SUMMARY_SYSTEM_PROMPT_STRUCTURED,
   topProductionHours,
 } from "./ai.mjs";
 import { buildContextSnapshot } from "./context.mjs";
@@ -283,6 +285,54 @@ app.get(
         one_liner: insight.oneLiner,
         summary: insight.summary,
         actions: insight.actions,
+        // The decision structure: the primary action with its estimated
+        // saving and confidence, the euro-first supporting facts and an
+        // optional warning.
+        primary_action: insight.primaryAction
+          ? {
+              what: insight.primaryAction.what,
+              when: insight.primaryAction.when,
+              saving_eur: insight.primaryAction.savingEur,
+              confidence: insight.primaryAction.confidence,
+            }
+          : null,
+        supporting_facts: insight.supportingFacts ?? [],
+        warning: insight.warning ?? null,
+        context_note: insight.contextNote ?? null,
+        // True when no meaningful saving was available; the
+        // belowThreshold candidates let the card name the largest
+        // real opportunity with its true amount.
+        no_opportunity: insight.noOpportunity ?? false,
+        candidates: insight.candidates ?? [],
+        // Generic per-kWh timing guidance, or null on flat-price days.
+        guidance: insight.guidance
+          ? {
+              window: insight.guidance.window,
+              cheapest_window_average_eur:
+                insight.guidance.cheapestWindowAverageEur,
+              peak_hour: insight.guidance.peakHour,
+              peak_price_eur: insight.guidance.peakPriceEur,
+              spread_per_kwh_eur: insight.guidance.spreadPerKwhEur,
+              line: insight.guidance.line,
+            }
+          : null,
+        // The day-ahead advisory, or null when no meaningful difference
+        // exists between tomorrow and the known days.
+        advisory: insight.advisory
+          ? {
+              type: insight.advisory.type,
+              tomorrow_average_eur: insight.advisory.tomorrowAverageEur,
+              tomorrow_solar_kwh: insight.advisory.tomorrowSolarKwh,
+              compare_day: insight.advisory.compareDay,
+              compare_average_eur: insight.advisory.compareAverageEur,
+              compare_solar_kwh: insight.advisory.compareSolarKwh,
+              price_difference_per_kwh: insight.advisory.priceDifferencePerKwh,
+              horizon_note: insight.advisory.horizonNote,
+              line: insight.advisory.line,
+            }
+          : null,
+        // The week outlook: days after today with solar and conditions.
+        outlook: insight.outlook ?? null,
         generated_at: insight.generatedAt,
         // The data moment the cached insight text is based on (its own
         // as_of, which can trail the top-level as_of).
@@ -544,6 +594,28 @@ app.get(
 );
 
 app.get(
+  "/api/insight/debug",
+  asyncHandler(async (_req, res) => {
+    // Read-only traceability: the exact context payload the summary
+    // insight is built from - the C1b candidates with their exact
+    // savings and belowThreshold marks, the price statistics, the
+    // appliance, battery and solar facts - plus the composed system
+    // prompt and the last generated insight for the verbatim saving
+    // comparison. Composing the context never calls the model: every
+    // source is a cache or a cheap query, and peekSummaryInsight only
+    // reads the in-memory insight.
+    const snapshot = await buildContextSnapshot();
+    res.json({
+      as_of: snapshot.asOf,
+      signature: snapshot.signature,
+      system_prompt: SUMMARY_SYSTEM_PROMPT_STRUCTURED,
+      context: snapshot.context,
+      insight: peekSummaryInsight(),
+    });
+  })
+);
+
+app.get(
   "/api/insight/daily",
   asyncHandler(async (req, res) => {
     // force regenerates once regardless of the context signature.
@@ -554,6 +626,44 @@ app.get(
       one_liner: result.oneLiner,
       summary: result.summary,
       actions: result.actions,
+      primary_action: result.primaryAction
+        ? {
+            what: result.primaryAction.what,
+            when: result.primaryAction.when,
+            saving_eur: result.primaryAction.savingEur,
+            confidence: result.primaryAction.confidence,
+          }
+        : null,
+      supporting_facts: result.supportingFacts ?? [],
+      warning: result.warning ?? null,
+      context_note: result.contextNote ?? null,
+      no_opportunity: result.noOpportunity ?? false,
+      candidates: result.candidates ?? [],
+      guidance: result.guidance
+        ? {
+            window: result.guidance.window,
+            cheapest_window_average_eur:
+              result.guidance.cheapestWindowAverageEur,
+            peak_hour: result.guidance.peakHour,
+            peak_price_eur: result.guidance.peakPriceEur,
+            spread_per_kwh_eur: result.guidance.spreadPerKwhEur,
+            line: result.guidance.line,
+          }
+        : null,
+      advisory: result.advisory
+        ? {
+            type: result.advisory.type,
+            tomorrow_average_eur: result.advisory.tomorrowAverageEur,
+            tomorrow_solar_kwh: result.advisory.tomorrowSolarKwh,
+            compare_day: result.advisory.compareDay,
+            compare_average_eur: result.advisory.compareAverageEur,
+            compare_solar_kwh: result.advisory.compareSolarKwh,
+            price_difference_per_kwh: result.advisory.priceDifferencePerKwh,
+            horizon_note: result.advisory.horizonNote,
+            line: result.advisory.line,
+          }
+        : null,
+      outlook: result.outlook ?? null,
       generated_at: result.generatedAt,
       as_of: result.asOf,
       stale: result.stale,
