@@ -70,6 +70,13 @@ function dayChipLabel(date: string): string {
   })
 }
 
+// The glass treatment every action item shares on the blue AI surface:
+// a translucent white fill with a subtle translucent white border and a
+// soft backdrop blur, so each recommended action reads as frosted
+// glass over the gradient. Defined once here, never per instance.
+const GLASS_ITEM_CLASS =
+  "rounded-xl border border-white/20 bg-white/15 p-3 backdrop-blur-sm"
+
 // A designed structured-action row: day chip above the window on the
 // left, the type icon, title and reason in the middle, the price tag on
 // the right, and a subtle "next" badge on the nearest upcoming action.
@@ -82,7 +89,7 @@ function ActionRow({
 }) {
   const Icon = TYPE_ICONS[action.type] ?? Zap
   return (
-    <div className="flex items-center gap-3 rounded-xl bg-white/15 p-3">
+    <div className={`flex items-center gap-3 ${GLASS_ITEM_CLASS}`}>
       <div className="flex shrink-0 flex-col items-start gap-1">
         <span className="whitespace-nowrap rounded-full bg-white/25 px-2 py-0.5 text-xs font-medium">
           {dayChipLabel(action.date)}

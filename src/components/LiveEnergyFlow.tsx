@@ -313,8 +313,9 @@ function LiveEnergyFlow() {
       <TimeOfDayBackground phase={phase} sunProgress={sunProgress} />
       <CardHeader className="relative z-10">
         {/* Same translucent white panel as the AI summary action rows,
-            letting the sky gradient show through. */}
-        <div className="rounded-xl bg-white/25 p-4">
+            letting the sky gradient show through; the border matches
+            their glass rim. */}
+        <div className="rounded-xl border border-white/20 bg-white/25 p-4">
           <CardTitle
             className={`flex items-center gap-2 transition-colors duration-[2500ms] ${
               onDark ? "text-white" : ""
