@@ -17,6 +17,7 @@ import {
   topProductionHours,
 } from "./ai.mjs";
 import { buildContextSnapshot } from "./context.mjs";
+import { getGridScoreDebug } from "./gridscore.mjs";
 import {
   getCheapestBlock,
   getHaFetchInfo,
@@ -270,6 +271,11 @@ app.get(
     } catch {
       // The debug fields below report the failure.
     }
+    // The gridScore object for the debug panel: the display fields
+    // plus the raw uncapped permille, so the served curve can be
+    // verified against the raw HA forecast. Fail-soft: null only when
+    // the builder itself throws.
+    const gridScore = await getGridScoreDebug().catch(() => null);
     res.json({
       ...data,
       // Whether the HA price fetches succeeded and how old the price
@@ -277,6 +283,7 @@ app.get(
       ha_fetch: getHaFetchInfo(),
       // The shared Mistral budget: limit, calls today, remaining.
       mistral: getMistralBudget(),
+      grid_score: gridScore,
     });
   })
 );

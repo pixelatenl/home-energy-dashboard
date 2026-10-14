@@ -12,6 +12,7 @@
 // Every query is parameterized; user input is never interpolated into SQL.
 
 import { pool } from "./db.mjs";
+import { getGridScore } from "./gridscore.mjs";
 import { haGetState } from "./ha.mjs";
 import {
   localDateKey,
@@ -623,25 +624,6 @@ function batteryStateFromPower(available, powerW) {
   return powerW > 25 ? "charging" : "discharging";
 }
 
-// The Zonneplan sustainability score (0-100): how green and cheap the
-// current grid electricity is. Fetched live from Home Assistant through
-// the shared haGetState pattern (with its 10-minute cache), like the
-// price entities in prices.mjs; null whenever the entity is unreachable
-// or its state is not a number.
-const DEFAULT_SCORE_ENTITY =
-  "sensor.zonneplan_current_sustainability_score";
-
-async function getSustainabilityScore() {
-  const state = await haGetState(
-    process.env.ZONNEPLAN_SCORE_ENTITY ?? DEFAULT_SCORE_ENTITY
-  );
-  if (state === null) {
-    return null;
-  }
-  const score = Number.parseFloat(state.state);
-  return Number.isFinite(score) ? Math.round(score) : null;
-}
-
 // The current grid CO2 intensity (g/kWh) from Electricity Maps, fetched
 // live from Home Assistant through the shared haGetState pattern so the
 // decision insight can weigh green hours alongside cheap hours. Null
@@ -679,7 +661,7 @@ export async function getSummary() {
   const endMs = now.getTime();
   const todayKey = localDateKey(now);
   const todayStartMs = localDayStartUtcMs(todayKey);
-  const [today, week, month, dataEntities, battery, flow, score, pvFlow] =
+  const [today, week, month, dataEntities, battery, flow, gridScore, pvFlow] =
     await Promise.all([
       getRangeMetrics(todayStartMs, endMs),
       getRangeMetrics(localDayStartUtcMs(mondayDateKey(now)), endMs),
@@ -687,7 +669,7 @@ export async function getSummary() {
       counterEntitiesWithData(counterIds),
       getBatterySnapshot(map, todayStartMs, endMs),
       getFlowSnapshot(map),
-      getSustainabilityScore(),
+      getGridScore(),
       getPvFlowHourly(map, todayStartMs, endMs),
     ]);
   const batteryAvailable =
@@ -708,7 +690,7 @@ export async function getSummary() {
     battery_flow_hourly: battery.flowHourly,
     battery_soc_series: battery.socSeries,
     flow,
-    sustainability_score: score,
+    grid_score: gridScore,
     pv_flow_hourly: pvFlow,
   };
   // Capacity-based estimates, only when the capacity is configured and the

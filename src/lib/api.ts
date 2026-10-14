@@ -128,6 +128,47 @@ export interface FlowSnapshot {
   battery_discharge_w: number | null
 }
 
+// The grid renewables share ("Energy sustainability" hub stat):
+// Zonneplan's wind-and-solar share of Dutch grid electricity, capped
+// at 100 like the app displays it. Server-computed; the frontend only
+// renders.
+export type GridScoreState = "green" | "yellow" | "grey"
+
+export interface GridScoreHour {
+  // Local Amsterdam hour key "YYYY-MM-DDTHH".
+  hour: string
+  // The capped share (0-100) for that hour (average of the quarter-
+  // hour blocks).
+  score: number
+}
+
+export interface GridScore {
+  current: number | null
+  // Our own interpretation of the app's color badge, computed
+  // server-side (green 75+, yellow 40-75, grey below 40).
+  state: GridScoreState | null
+  curve: GridScoreHour[]
+  // How many hours the curve covers (current hour included).
+  horizon_hours: number
+  // Whether the forecast actually carries tomorrow, gated the same
+  // way as tomorrow prices.
+  tomorrow_available: boolean
+  // The server-rendered sub-caption fact (e.g. "now, falls to 41 at
+  // 19:00"), rendered verbatim; null when there is no honest
+  // prediction (fail-soft or flat without horizon).
+  sub: string | null
+}
+
+// The gridScore object in /api/debug/time: the display fields plus the
+// raw uncapped permille of the current forecast block, the current
+// value's source and the state thresholds, so the curve can be
+// verified against the raw HA forecast.
+export interface GridScoreDebug extends GridScore {
+  raw_current_permille: number | null
+  current_source: "forecast" | "sensor" | null
+  thresholds: { green_min: number; yellow_min: number }
+}
+
 export interface SummaryData {
   today: RangeMetrics
   week: RangeMetrics
@@ -143,9 +184,9 @@ export interface SummaryData {
   pv_flow_hourly: PvFlowHour[]
   server_version: string
   flow: FlowSnapshot
-  // Zonneplan sustainability score (0-100) of the current grid
-  // electricity; null when the entity is unreachable.
-  sustainability_score: number | null
+  // The grid renewables share stat (Energy sustainability); null
+  // fields when the Zonneplan forecast is unreachable.
+  grid_score: GridScore | null
   battery_full_in_min?: number
   battery_empty_in_min?: number
   summary_as_of: string
@@ -736,6 +777,9 @@ export interface DebugTime {
   latest_energy_delta: DebugTimeRawRow | null
   ha_fetch: DebugHaFetch
   mistral: DebugMistral
+  // The gridScore trace for the debug panel (raw uncapped permille
+  // included); null when the builder failed.
+  grid_score: GridScoreDebug | null
 }
 
 export function fetchDebugTime(): Promise<DebugTime> {
