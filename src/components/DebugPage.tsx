@@ -493,9 +493,10 @@ function InsightContextCard() {
                   ? ` · insight from ${data.insight.as_of} (signature ${
                       data.insight.signature === data.signature
                         ? "current"
-                        : "stale"
-                    })`
+                        : "differs"
+                    }, state ${data.insight.state})`
                   : " · no insight generated yet"}
+                {` · Mistral budget ${data.mistral.remaining_calls}/${data.mistral.daily_limit} left (${data.mistral.calls_today} today)`}
               </p>
               {data.insight?.primary_action && (
                 <p>
@@ -608,7 +609,14 @@ function InsightContextCard() {
                       {data.context.guidance.cheapest_window_average_eur}{" "}
                       avg · peak {data.context.guidance.peak_hour} @{" "}
                       {data.context.guidance.peak_price_eur} · spread{" "}
-                      {data.context.guidance.spread_per_kwh_eur} EUR/kWh
+                      {data.context.guidance.spread_per_kwh_eur} EUR/kWh ·
+                      practical {String(data.context.guidance.practical)} ·
+                      gate: start {data.context.guidance.window_start_hour}h,
+                      left {data.context.guidance.hours_remaining}h, window{" "}
+                      {data.context.guidance.cheapest_window_average_eur} vs
+                      day {data.context.guidance.day_average_eur} · day's
+                      cheapest {data.context.guidance.day_cheapest_window} @{" "}
+                      {data.context.guidance.day_cheapest_average_eur}
                     </span>
                   ) : (
                     "none (flat prices or below the spread threshold)"

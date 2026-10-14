@@ -77,6 +77,9 @@ export interface PriceSummary {
   today: PriceDayStats
   tomorrow: PriceTomorrow
   cheapest_block: CheapestBlock | null
+  // The day's actual cheapest window, whole-day: the single source the
+  // advisory card and the prices widget both consume.
+  day_cheapest_block: CheapestBlock | null
 }
 
 export interface RangeMetrics {
@@ -158,17 +161,13 @@ export interface SummaryData {
   remaining_calls: number
 }
 
-// The AI insight embedded in /api/summary: one_liner for the header,
-// the summary text, the recommended actions, and the metadata the kiosk
-// needs to judge freshness.
+// The AI insight embedded in /api/summary: the structured decision
+// payload (the only format) plus the metadata the kiosk needs to
+// judge freshness. The guidance, advisory and outlook objects are
+// served from the live snapshot extras at request time.
 export interface SummaryInsight {
-  one_liner: string | null
-  summary: string | null
-  actions: InsightAction[]
-  // The C1b decision structure: the primary action the server-side
-  // candidates produced, its euro-first supporting facts and an
-  // optional warning. Absent on insights served in the old plain-text
-  // format, which render unchanged.
+  // The decision structure: the primary action the server-side
+  // candidates produced, its warning and context note.
   primary_action?: {
     what: string
     when: string
@@ -196,6 +195,29 @@ export interface SummaryInsight {
     peak_hour: string
     peak_price_eur: number
     spread_per_kwh_eur: number
+    // The practicality gate: the today imperative renders only when
+    // the window starts before the evening pivot, enough of it
+    // remains and its average sits meaningfully below the day's.
+    practical: boolean
+    window_start_hour: number
+    hours_remaining: number
+    day_average_eur: number | null
+    day_cheapest_window: string | null
+    day_cheapest_average_eur: number | null
+    // The Phase E today modes: the peak-avoidance line renders while
+    // the day's peak hour is ahead of now; the passed-hours fact only
+    // when the day's cheap hours are actually gone; the evening price
+    // situation carries today's remaining-hours average; the delay
+    // comparison advises tomorrow's window once today stops
+    // commanding.
+    peak_ahead: boolean
+    day_cheapest_passed: boolean
+    remaining_average_eur: number | null
+    delay: {
+      tomorrow_window: string
+      tomorrow_window_average_eur: number
+      today_window_average_eur: number
+    } | null
     line: string
   } | null
   // The week outlook rows, planning voice.
@@ -206,8 +228,16 @@ export interface SummaryInsight {
   // meaningful difference exists.
   advisory?: {
     type: "defer" | "advance"
+    // Whether a prefer trigger fired: the row always renders with
+    // forecast data; the recommendation only when this is true.
+    triggered: boolean
     tomorrow_average_eur: number | null
     tomorrow_solar_kwh: number | null
+    // Tomorrow's solar score and its low-solar flag: below
+    // LOW_SOLAR_SCORE the unpublished-prices row reads as little sun
+    // with the hedged market expectation.
+    tomorrow_solar_score: number | null
+    tomorrow_low_solar: boolean
     compare_day: string
     compare_average_eur: number | null
     compare_solar_kwh: number | null
@@ -217,10 +247,16 @@ export interface SummaryInsight {
   } | null
   generated_at: string | null
   // The data moment the cached insight text is based on; can trail the
-  // top-level as_of when the insight is stale.
+  // top-level as_of while a regeneration is in flight.
   insight_as_of: string | null
-  // True when the insight is older than the underlying data signature.
-  stale: boolean
+  // The insight's regeneration state, computed server-side: "fresh"
+  // (the cached insight matches the live signature), "reasoning" (the
+  // signatures differ and a regeneration is in flight) or "error" (no
+  // cached insight at all).
+  state: "fresh" | "reasoning" | "error"
+  // Deprecated mirror of state === "reasoning", kept one release for
+  // old payload comparisons; remove with the C25 cleanup.
+  stale?: boolean
   error: string | null
 }
 
@@ -393,47 +429,7 @@ export function fetchHeatModel(
   return getJson<HeatModelData>(withParams("/api/heat/model", { period, date }))
 }
 
-export type InsightActionType =
-  | "appliance"
-  | "battery"
-  | "ev"
-  | "solar"
-  | "general"
-
-// Structured action: the primary insight format, rendered as a designed
-// row (day chip, window, type icon, title, reason, price tag).
-export interface StructuredInsightAction {
-  date: string // YYYY-MM-DD
-  start: string // HH:MM
-  end: string // HH:MM
-  type: InsightActionType
-  title: string
-  reason: string
-  price_eur: number | null
-}
-
-// Prose action: the fallback format when structured validation fails.
-export interface LegacyInsightAction {
-  text: string
-  window: string
-  reason: string
-}
-
-export type InsightAction = StructuredInsightAction | LegacyInsightAction
-
-export function isStructuredAction(
-  action: InsightAction
-): action is StructuredInsightAction {
-  return (
-    typeof (action as StructuredInsightAction).date === "string" &&
-    typeof (action as StructuredInsightAction).start === "string"
-  )
-}
-
 export interface DailyInsight {
-  one_liner: string | null
-  summary: string | null
-  actions: InsightAction[]
   generated_at: string | null
   as_of: string | null
   stale: boolean
@@ -456,6 +452,9 @@ export interface OutlookDay {
   weekday: string
   weekday_short: string
   solar_kwh: number
+  // The solar score (0 to 100 versus the annual peak) grounds the
+  // qualitative wording.
+  solar_score: number | null
   condition: string
   // Tomorrow's average grid price when published; null for every day
   // beyond tomorrow - those prices do not exist in the data.
@@ -465,11 +464,17 @@ export interface OutlookDay {
 export interface WeekOutlook {
   days: OutlookDay[]
   best_solar_day: {
+    date: string
     weekday: string
     weekday_short: string
     solar_kwh: number
+    solar_score: number | null
+    // "Looks good for solar" only when the score backs it
+    // (GOOD_SOLAR_SCORE).
+    good: boolean
   } | null
   poor_day: {
+    date: string
     weekday: string
     weekday_short: string
     solar_kwh: number
@@ -497,6 +502,8 @@ export interface InsightDebugData {
   as_of: string
   signature: string
   system_prompt: string
+  // The shared Mistral budget: limit, calls today, remaining.
+  mistral: DebugMistral
   context: {
     now_local?: string
     today?: Record<string, number | null>
@@ -533,10 +540,17 @@ export interface InsightDebugData {
       peak_hour: string | null
       peak_price_eur: number
       spread_per_kwh_eur: number
+      practical: boolean
+      window_start_hour: number
+      hours_remaining: number
+      day_average_eur: number | null
+      day_cheapest_window: string | null
+      day_cheapest_average_eur: number | null
     } | null
     week_outlook?: WeekOutlook | null
     advisory?: {
       type: "defer" | "advance"
+      triggered: boolean
       tomorrow_average_eur: number | null
       tomorrow_solar_kwh: number | null
       compare_day: string
@@ -549,6 +563,9 @@ export interface InsightDebugData {
   insight: {
     signature: string
     as_of: string
+    // The regeneration state, computed against the live signature:
+    // "fresh" or "reasoning".
+    state: "fresh" | "reasoning"
     no_opportunity: boolean
     candidates: InsightCandidate[]
     guidance: {
@@ -561,6 +578,7 @@ export interface InsightDebugData {
     } | null
     advisory: {
       type: "defer" | "advance"
+      triggered: boolean
       tomorrow_average_eur: number | null
       tomorrow_solar_kwh: number | null
       compare_day: string

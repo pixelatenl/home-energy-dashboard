@@ -16,8 +16,22 @@ import {
 const MISTRAL_URL = "https://api.mistral.ai/v1/chat/completions";
 const MISTRAL_MODEL = "mistral-small-latest";
 const REQUEST_TIMEOUT_MS = 15_000;
-// At most one upstream call per 30 minutes per insight.
+// At most one upstream call per 30 minutes per insight: the throttle for
+// the weather, prices and battery widget paths.
 const MIN_CALL_INTERVAL_MS = 30 * 60 * 1000;
+// The summary insight regenerates in step with the live view, so its
+// own throttle is tighter: 5 minutes by default, overridable via
+// MISTRAL_SUMMARY_MIN_INTERVAL_MINUTES. The context signature is
+// already bucketed, so a signature change is meaningful, not noisy;
+// the shared daily cap remains the real guardrail and is never
+// bypassed.
+function summaryMinIntervalMs() {
+  const raw = Number.parseInt(
+    process.env.MISTRAL_SUMMARY_MIN_INTERVAL_MINUTES ?? "",
+    10
+  );
+  return Number.isFinite(raw) && raw >= 0 ? raw * 60 * 1000 : 5 * 60 * 1000;
+}
 // Shared daily cap for every insight widget; overridden by
 // MISTRAL_DAILY_CALL_LIMIT in the environment (the current plan allows 100).
 const DEFAULT_DAILY_LIMIT = 100;
@@ -60,19 +74,19 @@ const PRICE_SYSTEM_PROMPT =
 // Exported for the read-only insight debug endpoint: the exact prompt
 // the summary insight is generated with, so the model's input stays
 // traceable.
-export const SUMMARY_SYSTEM_PROMPT_STRUCTURED = `You are the decision assistant of a home energy dashboard in the Netherlands with solar panels, a home battery and a dynamic electricity contract. The context carries usage, solar, battery, appliance, price, CO2, candidate_actions, guidance, advisory and week_outlook data. Reply with JSON only, no preamble, no markdown fences, in English.
+export const SUMMARY_SYSTEM_PROMPT_STRUCTURED = `You are the decision assistant of a home energy dashboard in the Netherlands with solar panels, a home battery and a dynamic electricity contract. The context carries usage, solar, battery, appliance, price, CO2 and candidate_actions data. Reply with JSON only, no preamble, no markdown fences, in English, with exactly these keys.
 
-Schema: { "primaryAction": { "what": string (one concrete imperative recommendation), "when": string (the selected candidate's window), "savingEur": number (copied verbatim from the selected candidate; 0 only when candidates is empty), "confidence": "high" | "medium" | "low" }, "supportingFacts": [], "warning": string or null, "contextNote": string or null, "guidance": object or null, "advisory": object or null }. The guidance object, when the context has one: { "window", "cheapest_window_average_eur", "peak_hour", "peak_price_eur", "spread_per_kwh_eur", "line" } - every field copied verbatim, the line a natural sentence. The advisory object, when the context has one: { "type", "tomorrow_average_eur", "tomorrow_solar_kwh", "compare_day", "compare_average_eur", "compare_solar_kwh", "price_difference_per_kwh", "horizon_note", "line" } - every field copied verbatim, the line a natural sentence whose direction follows the type: advance prefers tomorrow, defer prefers the compare_day. Include the guidance element whenever the context has a guidance object, and the advisory element whenever the context has an advisory object - every field copied verbatim; null only when the context object is null. Omitting an element that exists in the context is invalid.
+Schema: { "primaryAction": { "what": string (one concrete imperative recommendation), "when": string (the selected candidate's window), "savingEur": number (copied verbatim from the selected candidate; 0 only when candidates is empty), "confidence": "high" | "medium" | "low" }, "supportingFacts": [], "warning": string or null, "contextNote": string or null }. You write only these fields; the card renders every other row from server-computed data.
 
-Action: you never compute; the server has done all arithmetic. Select the candidate with the largest saving_eur among those whose below_threshold is false; copy its saving_eur verbatim and its window into "when". If every candidate is below_threshold, state honestly that no meaningful saving is available today and name the largest real opportunity with its true amount copied from that candidate. If candidates is empty, the action is the plain honest statement that nothing is worth taking today, for example "No action worth taking today" - set savingEur to 0, even when guidance exists. Never phrase the empty case as deferral advice such as "Wait for tomorrow": the tomorrow comparison belongs to the planning rows, which already carry it. savingEur is only ever a candidate's saving: never the guidance spread, never a derived number.
+Action: you never compute; the server has done all arithmetic. Select the candidate with the largest saving_eur among those whose below_threshold is false; copy its saving_eur verbatim and its window into "when". If every candidate is below_threshold, state honestly that no meaningful saving is available today and name the largest real opportunity with its true amount copied from that candidate. If candidates is empty, the action is the plain honest statement that nothing is worth taking today, for example "No action worth taking today" - set savingEur to 0. Never phrase the empty case as deferral advice such as "Wait for tomorrow". savingEur is only ever a candidate's saving.
 
-Voice: the imperative belongs to today only. Phrase "what" as a household instruction addressing the user directly - name everyday objects (washing machine, dryer, dishwasher, appliances) and state the benefit in the sentence, for example "Run your large appliances between 21:00 and 00:00 to pay the lowest price left today". The window is always computed over the remaining hours, so the benefit clause reads "the lowest price left today"; the phrase "today's lowest price" is reserved for the case where the best remaining window is also the day's absolute cheapest, which only holds when the context shows the window's average equal to today's minimum price - when in doubt, say "the lowest price left today". Never use operator abstractions like "heavy loads", "plan usage", "defer consumption". Future days never command: tomorrow and later read as planning, for example "If you can wait: tomorrow looks better". The card renders the guidance, advisory and outlook rows itself; never duplicate their content elsewhere.
+Voice: phrase "what" as a household instruction addressing the user directly, in appliance classes - for example "Run your large appliances between 12:00 and 15:00" - never a specific appliance name. Use exactly one "today" per sentence and state the benefit in it. Never use operator abstractions like "heavy loads", "plan usage", "defer consumption". Never duplicate timing guidance or day comparisons in your fields; the card renders those rows itself.
 
-Honesty: every number you state must appear in the context - never multiply, divide or derive. No raw formulas or arithmetic expressions anywhere in the output. Only recommend windows in the future relative to now_local. Distinguish actual production from forecast. Only tomorrow's grid price is published: never state a price for a day beyond tomorrow, and when a day's price is null in the outlook, no number may stand in for it - days beyond tomorrow speak only of solar kWh and weather condition. When tomorrow_prices_available is false, do not mention tomorrow at all; base advice only on today's prices, remaining hours, solar and battery state. When data for a period is unavailable, make no claims about that period. Weigh cheap hours, green hours (co2_intensity_g_per_kwh) and own solar production.
+Honesty: every number you state must appear in the context - never multiply, divide or derive. No raw formulas or arithmetic expressions anywhere in the output. Only recommend windows in the future relative to now_local. Distinguish actual production from forecast. Only tomorrow's grid price is published: never state a price for a day beyond tomorrow, and when a day's price is null, no number may stand in for it. When tomorrow_prices_available is false, do not mention tomorrow at all; base advice only on today's prices, remaining hours, solar and battery state. When data for a period is unavailable, make no claims about that period. Weigh cheap hours, green hours (co2_intensity_g_per_kwh) and own solar production.
 
-Warning and context: "warning" is only for something that needs attention and implies what to check or do, for example "Battery empty before tonight's peak; check why it has not charged". Explanatory context - why no candidates exist, why the battery is where it is - goes in "contextNote" as one coherent sentence about the home, for example "No appliance used enough power today to make shifting worthwhile; the battery has stayed empty and idle."
+Warning and context: "warning" is only for something that needs attention and implies what to check or do, for example "Battery empty before tonight's peak; check why it has not charged". "contextNote" is written only on quiet days - one coherent sentence about the home explaining why no candidate exists, for example "No appliance used enough power today to make shifting worthwhile; the battery has stayed empty and idle" - or for a genuine insight the rows do not carry, such as the battery charging now reducing the value of shifting usage. When a real action is selected, contextNote is null: the action's basis line explains it, and the note never restates the action's numbers, appliance names or windows.
 
-Plain language: user-facing text never contains internal system vocabulary - candidates, threshold, belowThreshold, payload, context, insight, budget, signature, mechanism. If something cannot be expressed in home terms, omit it. supportingFacts is always an empty array: the card renders the rows plus one context note, and any additional fact would duplicate them. "confidence" is high when the selected candidate is above threshold, medium or low when below_threshold or the data is thin. Name appliances only with the labels in candidates and the names in top_appliances. The primaryAction (what plus when) stays under 25 words.`;
+Plain language: user-facing text never contains internal system vocabulary - candidates, threshold, belowThreshold, payload, context, insight, budget, signature, mechanism. If something cannot be expressed in home terms, omit it. supportingFacts is always an empty array. "confidence" is high when the selected candidate is above threshold, medium or low when below_threshold or the data is thin. Name appliances only with the labels in candidates and the names in top_appliances. The primaryAction (what plus when) stays under 25 words.`;
 
 // The decision prompt as one clean document with sections: schema,
 // action, voice, honesty, warning/context, plain language.
@@ -163,7 +177,7 @@ export function buildPriceContext(priceParts, solarDaily) {
   } else {
     context.tomorrow_note =
       "Tomorrow's prices are not published yet; they become available " +
-      "around 18:00. Do not mention or estimate tomorrow's prices.";
+      "later today. Do not mention or estimate tomorrow's prices.";
   }
   if (solarDaily) {
     context.solar_today = solarDaily;
@@ -248,7 +262,7 @@ export function priceFallbackText(priceParts) {
   sentences.push(
     tomorrowAvailable
       ? "Tomorrow's prices are published."
-      : "Tomorrow's prices are not published yet; they become available around 18:00."
+      : "Tomorrow's prices are not published yet; they become available later today."
   );
   return sentences.filter(Boolean).join(" ");
 }
@@ -414,19 +428,12 @@ export function buildSummaryContext(summary, weatherDaily, priceParts, extras) {
   context.candidates = Array.isArray(extrasSafe.candidates)
     ? extrasSafe.candidates
     : [];
-  // Generic timing guidance from the price data, or null on
-  // flat-price days: the model phrases it but copies the numbers
-  // verbatim. Guidance is per kWh and never carries a total.
-  context.guidance = extrasSafe.guidance ?? null;
-  // The day-ahead advisory, or null when no meaningful difference
-  // exists between tomorrow and the known days: same guidance class,
-  // copied verbatim and phrased by the model.
-  context.advisory = extrasSafe.advisory ?? null;
-  // The week outlook from the forecast: days after today with solar
-  // and conditions, the best solar day and any notably poor rain day.
-  // Beyond tomorrow the solar forecast is the deciding signal; the
-  // card renders the outlook rows in planning voice.
-  context.week_outlook = extrasSafe.outlook ?? null;
+  // The guidance, advisory and week outlook objects never reach the
+  // model: the payload serves them from the live snapshot extras at
+  // request time, and the card renders their rows from its own
+  // templates. Only the summary-level solar and price facts above stay
+  // in the model context, because the context note and the warning
+  // reference them.
   return context;
 }
 
@@ -746,9 +753,6 @@ export async function getBatteryContext(summary, weatherDaily, priceParts, optio
   return getInsight("battery", BATTERY_SYSTEM_PROMPT, cacheKey, context, options);
 }
 
-// Daily summary insight: JSON with a summary text and up to three
-// recommended actions. The model output is parsed defensively; on failure
-// the caller receives { summary: null, actions: [], error }.
 // Context signature for the daily insight: the live values bucketed so
 // that trivial drift does not trigger a regeneration. The insight
 // regenerates only when this signature changes, which keeps the text in
@@ -842,34 +846,11 @@ export function buildSummarySignature(summary, weatherDaily, priceParts, extras)
         .join(",") || "na"
     }`
   );
-  // Generic guidance: included verbatim when it exists, so the insight
-  // regenerates when the window, peak or spread moves enough to matter.
-  parts.push(
-    `gd:${
-      extras?.guidance
-        ? `${extras.guidance.window}:${extras.guidance.spread_per_kwh_eur}`
-        : "na"
-    }`
-  );
-  // Day-ahead advisory: type, comparison day and the exact difference.
-  parts.push(
-    `adv:${
-      extras?.advisory
-        ? `${extras.advisory.type}:${extras.advisory.compare_day}:${extras.advisory.price_difference_per_kwh}`
-        : "na"
-    }`
-  );
-  // Week outlook: best and poor solar day, so the insight regenerates
-  // when the forecast reshapes them.
-  parts.push(
-    `wk:${
-      extras?.outlook
-        ? `${extras.outlook.best_solar_day?.weekday ?? "na"}:${
-            extras.outlook.best_solar_day?.solar_kwh ?? "na"
-          }:${extras.outlook.poor_day?.weekday ?? "na"}`
-        : "na"
-    }`
-  );
+  // The guidance, advisory and week outlook deliberately stay out of
+  // the signature: the payload serves them from the live snapshot
+  // extras at request time, so a reshaping forecast no longer churns
+  // the model call. The candidate list above still regenerates the
+  // insight when a real opportunity appears or disappears.
   return parts.join("|");
 }
 
@@ -916,11 +897,57 @@ function asFiniteNumber(value) {
   return null;
 }
 
+// The deterministic lines served with the guidance and advisory
+// objects: the model never writes them, the card renders the rows
+// from the fields, and these lines ride the payload for consumers
+// that want a sentence (the debug view). The routes call them with
+// the live snapshot extras at request time.
+export function composeGuidanceLine(g) {
+  return `Cheapest remaining window today is ${g.window} at ${g.cheapest_window_average_eur} average; running heavy appliances then instead of the ${g.peak_hour} peak saves about ${g.spread_per_kwh_eur} per kWh.`;
+}
+
+export function composeAdvisoryLine(a) {
+  // The informational row (no trigger fired): the plain comparison,
+  // honest about the horizon when tomorrow's prices are unpublished.
+  if (a.triggered === false) {
+    if (a.tomorrow_average_eur === null) {
+      return a.compare_solar_kwh !== null
+        ? `Tomorrow brings ${a.tomorrow_solar_kwh} kWh of solar expected against today's ${a.compare_solar_kwh}; grid prices for tomorrow are not yet published.`
+        : `Tomorrow brings ${a.tomorrow_solar_kwh} kWh of solar expected; grid prices for tomorrow are not yet published.`;
+    }
+    return `Tomorrow averages ${a.tomorrow_average_eur} EUR per kWh with ${a.tomorrow_solar_kwh} kWh of solar expected; today averages ${a.compare_average_eur} with ${a.compare_solar_kwh} kWh.`;
+  }
+  return a.type === "advance"
+    ? `Tomorrow averages ${a.tomorrow_average_eur} EUR per kWh with ${a.tomorrow_solar_kwh} kWh of solar expected; today averages ${a.compare_average_eur} with ${a.compare_solar_kwh} kWh: consider running heavy appliances tomorrow instead of today.`
+    : `${a.compare_day} averages ${a.compare_average_eur} EUR per kWh with ${a.compare_solar_kwh} kWh of solar expected; tomorrow averages ${a.tomorrow_average_eur} with ${a.tomorrow_solar_kwh} kWh: consider running heavy appliances on ${a.compare_day} instead of tomorrow.`;
+}
+
+// The saving guard: the claimed saving must match a candidate's exact
+// value. Zero is legitimate in the two honest no-opportunity cases
+// (C3 rule a): no candidates at all, or every candidate below
+// threshold with the plain no-action statement. A zero claim with an
+// above-threshold candidate present is invalid - the model missed a
+// real saving. Exported as a pure function so the test suite pins the
+// boundaries.
+export function savingMatchesCandidate(savingEur, candidates) {
+  if (candidates.length === 0) {
+    return savingEur === 0;
+  }
+  if (savingEur === 0 && candidates.every((c) => c.below_threshold === true)) {
+    return true;
+  }
+  return candidates.some(
+    (candidate) => Math.abs(candidate.saving_eur - savingEur) < 0.005
+  );
+}
+
 // Validates the decision insight: a primary action with non-empty
-// what and when, a finite saving and a known confidence level, at most
-// three non-empty supporting facts, an optional warning, and optional
-// guidance whose numbers the insight flow verifies against the
-// context. Returns null when the payload does not fit the schema.
+// what and when, a finite saving and a known confidence level, an
+// empty supporting facts array, an optional warning and an optional
+// context note. The guidance, advisory and outlook objects never pass
+// through the model: the server serves them from its own context, so
+// the model output carries only the fields it actually writes.
+// Returns null when the payload does not fit the schema.
 export function validateDecisionInsight(parsed) {
   if (!parsed || typeof parsed !== "object") {
     return null;
@@ -973,79 +1000,6 @@ export function validateDecisionInsight(parsed) {
     typeof parsed.contextNote === "string" && parsed.contextNote.trim()
       ? parsed.contextNote.trim()
       : null;
-  // Guidance: the model copies the numbers verbatim and phrases the
-  // line; the flow verifies the numbers against the context. The line
-  // must never carry an EUR total - totals belong to actions only.
-  const rawGuidance =
-    parsed.guidance && typeof parsed.guidance === "object"
-      ? parsed.guidance
-      : null;
-  let guidance = null;
-  if (rawGuidance !== null) {
-    const line =
-      typeof rawGuidance.line === "string" ? rawGuidance.line.trim() : "";
-    const cheapest = asFiniteNumber(rawGuidance.cheapest_window_average_eur);
-    const peakPrice = asFiniteNumber(rawGuidance.peak_price_eur);
-    const spread = asFiniteNumber(rawGuidance.spread_per_kwh_eur);
-    if (line && cheapest !== null && peakPrice !== null && spread !== null) {
-      if (/(?:EUR|\u20ac)\s?\d/.test(line)) {
-        return null;
-      }
-      guidance = {
-        window:
-          typeof rawGuidance.window === "string" ? rawGuidance.window : "",
-        cheapestWindowAverageEur: cheapest,
-        peakHour:
-          typeof rawGuidance.peak_hour === "string"
-            ? rawGuidance.peak_hour
-            : "",
-        peakPriceEur: peakPrice,
-        spreadPerKwhEur: spread,
-        line,
-      };
-    }
-  }
-  // The day-ahead advisory: same class as guidance - the numbers are
-  // copied verbatim (the flow verifies them against the context), the
-  // model phrases the line, and the line never carries an EUR total.
-  const rawAdvisory =
-    parsed.advisory && typeof parsed.advisory === "object"
-      ? parsed.advisory
-      : null;
-  let advisory = null;
-  if (rawAdvisory !== null) {
-    const advisoryLine =
-      typeof rawAdvisory.line === "string" ? rawAdvisory.line.trim() : "";
-    const advisoryType =
-      typeof rawAdvisory.type === "string" ? rawAdvisory.type.trim() : "";
-    if (
-      advisoryLine &&
-      (advisoryType === "defer" || advisoryType === "advance")
-    ) {
-      if (/(?:EUR|\u20ac)\s?\d/.test(advisoryLine)) {
-        return null;
-      }
-      advisory = {
-        type: advisoryType,
-        tomorrowAverageEur: asFiniteNumber(rawAdvisory.tomorrow_average_eur),
-        tomorrowSolarKwh: asFiniteNumber(rawAdvisory.tomorrow_solar_kwh),
-        compareDay:
-          typeof rawAdvisory.compare_day === "string"
-            ? rawAdvisory.compare_day
-            : "",
-        compareAverageEur: asFiniteNumber(rawAdvisory.compare_average_eur),
-        compareSolarKwh: asFiniteNumber(rawAdvisory.compare_solar_kwh),
-        priceDifferencePerKwh: asFiniteNumber(
-          rawAdvisory.price_difference_per_kwh
-        ),
-        horizonNote:
-          typeof rawAdvisory.horizon_note === "string"
-            ? rawAdvisory.horizon_note
-            : "",
-        line: advisoryLine,
-      };
-    }
-  }
   return {
     what,
     when,
@@ -1054,8 +1008,6 @@ export function validateDecisionInsight(parsed) {
     supportingFacts,
     warning,
     contextNote,
-    guidance,
-    advisory,
   };
 }
 
@@ -1080,22 +1032,36 @@ function insightClaimsUnpublishedTomorrow(validated, priceParts) {
 
 // Daily summary insight: gated by the context signature. The signature is
 // the primary gate - Mistral is called only when it changed since the
-// last generated insight, or on force - with the 30-minute minimum
-// interval per widget underneath. The cache stores the signature the
-// text was generated from and is served until the signature changes.
-// When the interval has not expired, the shared daily cap is exhausted
-// or generation fails, the previous insight is served with a stale
-// marker (fail soft) rather than an unverified text. Concurrent callers
-// (the kiosk polls /api/summary from several widgets) join one
+// last generated insight, or on force - with the summary's own minimum
+// interval underneath. The cache stores the signature the text was
+// generated from and is served until the signature changes. Request-
+// driven warm-up: when the signature changed, /api/summary fires a
+// background regeneration (deduplicated below) and answers immediately
+// with the cached insight in state "reasoning"; force keeps its
+// synchronous, throttle-bypassing behavior. When the interval has not
+// expired, the shared daily cap is exhausted or generation fails, the
+// previous insight keeps being served in state "reasoning" with the
+// error populated (fail soft) rather than an unverified text. Concurrent
+// callers (the kiosk polls /api/summary from several widgets) join one
 // in-flight generation.
 let summaryInsightCache = null; // { signature, asOf, result }
 let summaryLastCallAt = 0;
 let summaryInFlight = null; // { signature, promise }
+// The last background warm-up failure reason, served with the cached
+// insight so the payload can report why the regeneration has not
+// landed yet. Cleared when a generation succeeds.
+let summaryWarmupError = null;
 
 // The last generated summary insight, read-only: no generation, throttle
 // or budget logic runs. Serves the insight debug endpoint's verbatim
-// saving comparison against the current context's candidates.
-export function peekSummaryInsight() {
+// saving comparison against the current context's candidates. The
+// guidance, advisory and outlook objects are not part of the cached
+// insight - the debug route serves them from the live snapshot extras,
+// exactly as the summary route does. The regeneration state is
+// computed against the live signature passed in: "fresh" when the
+// cached insight matches it, otherwise "reasoning" (the next request
+// warms the new signature up).
+export function peekSummaryInsight(liveSignature = null) {
   const cached = summaryInsightCache;
   if (!cached) {
     return null;
@@ -1104,12 +1070,13 @@ export function peekSummaryInsight() {
   return {
     signature: cached.signature,
     as_of: cached.asOf,
+    state:
+      liveSignature !== null && cached.signature === liveSignature
+        ? "fresh"
+        : "reasoning",
     no_opportunity: cached.result.noOpportunity ?? false,
     context_note: cached.result.contextNote ?? null,
     candidates: cached.result.candidates ?? [],
-    guidance: cached.result.guidance ?? null,
-    advisory: cached.result.advisory ?? null,
-    outlook: cached.result.outlook ?? null,
     primary_action: primaryAction
       ? {
           what: primaryAction.what,
@@ -1125,6 +1092,10 @@ export async function getSummaryInsight(snapshot, options = {}) {
   const { summary, weatherDaily, priceParts, extras, signature, asOf } =
     snapshot;
   const force = options.force === true;
+  // Request-driven warm-up: answer from the cache immediately and let a
+  // signature change regenerate in the background. Never combined with
+  // force, which keeps its synchronous behavior.
+  const background = options.background === true && !force;
   const cached = summaryInsightCache;
   const tomorrowAvailable = priceParts?.tomorrowPricesAvailable === true;
   const context = buildSummaryContext(
@@ -1133,94 +1104,54 @@ export async function getSummaryInsight(snapshot, options = {}) {
     priceParts,
     extras
   );
-  const reason = force ? "force" : "signature_change";
+  const reason = force
+    ? "force"
+    : background
+      ? "signature_change_warmup"
+      : "signature_change";
 
-  // Serves a result: the composed decision insight keeps the legacy
-  // one_liner/summary/actions fields alive for the unchanged frontend
-  // and carries the decision fields alongside them.
-  const serve = (result, stale) => ({
+  // Serves a result with its regeneration state: "fresh" (the cached
+  // insight matches the live signature), "reasoning" (the signatures
+  // differ and a regeneration is in flight) or "error" (no cached
+  // insight at all). The stale field is the deprecated mirror of
+  // state === "reasoning", kept one release for the debug panel and old
+  // payload comparisons; remove it in the C25 cleanup.
+  const serve = (result, state, error = null) => ({
     ...result,
     asOf,
-    stale,
-    error: null,
+    state,
+    stale: state === "reasoning",
+    error,
   });
-  const empty = (error) => ({
-    oneLiner: null,
-    summary: null,
-    actions: [],
+  const empty = (error, state = "error") => ({
     primaryAction: null,
     supportingFacts: [],
     warning: null,
     contextNote: null,
     noOpportunity: false,
     candidates: [],
-    guidance: null,
-    advisory: null,
-    outlook: null,
     generatedAt: null,
     asOf,
-    stale: false,
+    state,
+    stale: state === "reasoning",
     error,
   });
   const degrade = (error) =>
-    cached ? serve(cached.result, true) : empty(error);
+    cached ? serve(cached.result, "reasoning", error) : empty(error);
 
   // Cache hit: the cached insight was generated from this exact signature.
   if (!force && cached && cached.signature === signature) {
-    return serve(cached.result, false);
+    return serve(cached.result, "fresh");
   }
-
-  if (summaryInFlight && summaryInFlight.signature === signature) {
-    return summaryInFlight.promise;
-  }
-
-// Honest saving precision, shared with the frontend rendering: two
-// decimals at 0.10 EUR and above; the smallest exact decimals below,
-// so a nonzero saving never reads as 0.00. One quantity, one number.
-function savingEurText(value) {
-  if (value === 0) {
-    return "\u20AC 0.00";
-  }
-  if (Math.abs(value) >= 0.1) {
-    return `\u20AC ${value.toFixed(2)}`;
-  }
-  return `\u20AC ${value.toFixed(4).replace(/0+$/, "")}`;
-}
-
-  // The prose paragraph the unchanged frontend renders: the primary
-  // action with its saving and confidence, the euro-first supporting
-  // facts, then the warning. The euro format matches the frontend's
-  // figure highlighting. Windowless actions (no candidate) compose
-  // from the what alone; a bare "today" window is dropped when the
-  // what already names the day, so the lead never reads "today today".
-  const leadLine = (validated) => {
-    if (!validated.when) {
-      return validated.what;
-    }
-    if (/^today$/i.test(validated.when) && /\btoday\b/i.test(validated.what)) {
-      return validated.what;
-    }
-    return `${validated.what} ${validated.when}`;
-  };
-  const composeSummary = (validated) =>
-    [
-      `${leadLine(validated)}.`,
-      `Estimated saving: ${savingEurText(validated.savingEur)} (${validated.confidence} confidence).`,
-      ...validated.supportingFacts,
-      ...(validated.contextNote ? [validated.contextNote] : []),
-      ...(validated.guidance ? [validated.guidance.line] : []),
-      ...(validated.advisory ? [validated.advisory.line] : []),
-      ...(validated.warning ? [validated.warning] : []),
-    ].join(" ");
 
   const generate = async () => {
-    // Force bypasses the 30-minute interval but never the shared daily
-    // cap, and still counts.
+    // Force bypasses the summary minimum interval but never the shared
+    // daily cap, and still counts.
     if (dailyLimitReached()) {
       logMistral("summary", signature, reason, "skipped_daily_limit");
       return degrade("daily_limit_reached");
     }
-    if (!force && Date.now() - summaryLastCallAt < MIN_CALL_INTERVAL_MS) {
+    if (!force && Date.now() - summaryLastCallAt < summaryMinIntervalMs()) {
       logMistral("summary", signature, reason, "skipped_throttle");
       return degrade("throttled");
     }
@@ -1230,52 +1161,17 @@ function savingEurText(value) {
     // user-facing text must carry no arithmetic expressions - both
     // enforced server-side so the model can never pass off its own
     // arithmetic as data.
-    const savingsOk = (validated) => {
-      const savings = (context.candidates ?? []).map(
-        (candidate) => candidate.saving_eur
-      );
-      if (savings.length === 0) {
-        return validated.savingEur === 0;
-      }
-      return savings.some(
-        (saving) => Math.abs(saving - validated.savingEur) < 0.005
-      );
-    };
+    const savingsOk = (validated) =>
+      savingMatchesCandidate(validated.savingEur, context.candidates ?? []);
     const textsOf = (validated) => [
       validated.what,
       validated.when,
       ...validated.supportingFacts,
       validated.warning ?? "",
-      validated.guidance?.line ?? "",
-      validated.advisory?.line ?? "",
     ];
     const noFormulas = (validated) =>
       !textsOf(validated).some((text) => ARITHMETIC_PATTERN.test(text ?? ""));
-    // Guidance numbers must match the price data exactly: present when
-    // the context has guidance, absent on flat-price days, every number
-    // verbatim. A mismatch means the model recomputed - rejected.
-    const guidanceOk = (validated) => {
-      const expected = context.guidance ?? null;
-      const actual = validated.guidance ?? null;
-      if (expected === null || actual === null) {
-        return expected === actual;
-      }
-      return (
-        actual.window === expected.window &&
-        Math.abs(
-          actual.cheapestWindowAverageEur -
-            expected.cheapest_window_average_eur
-        ) < 0.00005 &&
-        actual.peakHour === expected.peak_hour &&
-        Math.abs(actual.peakPriceEur - expected.peak_price_eur) < 0.00005 &&
-        Math.abs(actual.spreadPerKwhEur - expected.spread_per_kwh_eur) <
-          0.00005
-      );
-    };
-    // The day-ahead advisory must match the price and forecast data
-    // exactly: present when the context has one, absent otherwise,
-    // every number verbatim. A mismatch means the model recomputed -
-    // rejected.
+
     // Plain language: user-facing text never contains internal
     // system vocabulary; anything that cannot be said in home terms
     // is omitted, so a leak invalidates the output.
@@ -1288,7 +1184,10 @@ function savingEurText(value) {
     // Price honesty: no user-facing text may state a grid price for a
     // day beyond tomorrow - those prices are unpublished. A sentence
     // naming such a weekday together with a price claim is invalid.
-    const beyondTomorrowWeekdays = (context.week_outlook?.days ?? [])
+    // The weekday names come from the live outlook extras: the model
+    // context carries the solar forecast labels, and the check guards
+    // the text the model writes against them.
+    const beyondTomorrowWeekdays = (extras?.outlook?.days ?? [])
       .slice(1)
       .map((day) => day.weekday);
     const priceHonestyOk = (validated) =>
@@ -1305,27 +1204,7 @@ function savingEurText(value) {
           return namesDay && claimsPrice;
         });
       });
-    const advisoryOk = (validated) => {
-      const expected = context.advisory ?? null;
-      const actual = validated.advisory ?? null;
-      if (expected === null || actual === null) {
-        return expected === actual;
-      }
-      const numberClose = (a, b) =>
-        a === null || b === null ? a === b : Math.abs(a - b) < 0.00005;
-      return (
-        actual.type === expected.type &&
-        numberClose(actual.tomorrowAverageEur, expected.tomorrow_average_eur) &&
-        numberClose(actual.tomorrowSolarKwh, expected.tomorrow_solar_kwh) &&
-        actual.compareDay === expected.compare_day &&
-        numberClose(actual.compareAverageEur, expected.compare_average_eur) &&
-        numberClose(actual.compareSolarKwh, expected.compare_solar_kwh) &&
-        numberClose(
-          actual.priceDifferencePerKwh,
-          expected.price_difference_per_kwh
-        )
-      );
-    };
+
     // Every integrity check with its failure reason, so the log names
     // the actual failure instead of a generic guess.
     const integrityChecks = (validated) => [
@@ -1336,8 +1215,6 @@ function savingEurText(value) {
       ],
       [savingsOk(validated), "saving does not match a candidate"],
       [noFormulas(validated), "arithmetic expression in output"],
-      [guidanceOk(validated), "guidance mismatch"],
-      [advisoryOk(validated), "advisory mismatch"],
       [plainLanguageOk(validated), "internal vocabulary in output"],
       [priceHonestyOk(validated), "price claimed for an unpublished day"],
     ];
@@ -1389,9 +1266,6 @@ function savingEurText(value) {
     }
 
     const result = {
-      oneLiner: leadLine(validated),
-      summary: composeSummary(validated),
-      actions: [],
       primaryAction: {
         what: validated.what,
         when: validated.when,
@@ -1409,15 +1283,51 @@ function savingEurText(value) {
         (candidate) => candidate.below_threshold === true
       ),
       candidates: context.candidates ?? [],
-      guidance: validated.guidance,
-      advisory: validated.advisory,
-      outlook: context.week_outlook ?? null,
       generatedAt: new Date().toISOString(),
     };
 
     summaryInsightCache = { signature, asOf, result };
-    return serve(result, false);
+    summaryWarmupError = null;
+    return serve(result, "fresh");
   };
+
+  // Request-driven warm-up: fire-and-forget regeneration, deduplicated
+  // by summaryInFlight - a second generation for the same signature
+  // never starts, and while any generation is in flight the next
+  // request triggers the newer signature's warm-up. The endpoint
+  // answers immediately with the cached insight in state "reasoning"
+  // (or the empty pending shape before the first insight exists).
+  if (background) {
+    if (!summaryInFlight) {
+      const promise = generate().catch((err) => {
+        // generate degrades every known failure; this guard only keeps
+        // the fire-and-forget call from becoming an unhandled
+        // rejection. The prompt, context and API key are never logged.
+        logMistral("summary", signature, reason, `error:${shortError(err)}`);
+        return cached
+          ? serve(cached.result, "reasoning", "ai_unavailable")
+          : empty("ai_unavailable");
+      });
+      summaryInFlight = { signature, promise };
+      void promise.then((result) => {
+        summaryWarmupError =
+          result.state === "fresh" ? null : result.error ?? null;
+        if (summaryInFlight?.promise === promise) {
+          summaryInFlight = null;
+        }
+      });
+    }
+    return cached
+      ? serve(cached.result, "reasoning", summaryWarmupError)
+      : empty(null, "reasoning");
+  }
+
+  // Synchronous callers (force, or the legacy insight routes) join a
+  // generation already in flight for the same signature instead of
+  // starting a second one.
+  if (summaryInFlight && summaryInFlight.signature === signature) {
+    return summaryInFlight.promise;
+  }
 
   const promise = generate();
   summaryInFlight = { signature, promise };

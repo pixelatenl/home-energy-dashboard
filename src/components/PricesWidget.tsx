@@ -372,6 +372,10 @@ function PricesWidget() {
     return !best || (best.price ?? -Infinity) < hour.price ? hour : best
   }, null)
   const block = summary?.cheapest_block ?? null
+  // The day's actual cheapest window, whole-day, from the server: the
+  // same single source the advisory card reads, so the two surfaces
+  // can never disagree about the day's cheapest hours.
+  const dayBlock = summary?.day_cheapest_block ?? null
   // Shared price scale across both days so a euro always has the same bar
   // height and color in today's and tomorrow's charts.
   const allPrices =
@@ -458,6 +462,16 @@ function PricesWidget() {
                   {formatPrice(block.average_price)}
                 </p>
               )}
+              {dayBlock &&
+                (!block || blockLabel(dayBlock) !== blockLabel(block)) && (
+                  // The day's actual cheapest hours, named when they
+                  // differ from what remains - one source with the
+                  // advisory card.
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Cheapest today {blockLabel(dayBlock)} &middot; avg{" "}
+                    {formatPrice(dayBlock.average_price)}
+                  </p>
+                )}
             </div>
 
             <div className="rounded-xl bg-muted/30 p-4">
@@ -482,7 +496,7 @@ function PricesWidget() {
                   />
                 ) : (
                   <div className="flex h-16 items-center justify-center rounded-lg bg-card text-sm text-muted-foreground">
-                    Tomorrow&rsquo;s prices are published around 18:00
+                    Tomorrow&rsquo;s prices are not published yet
                   </div>
                 )}
               </div>

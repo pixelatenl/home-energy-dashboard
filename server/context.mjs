@@ -17,6 +17,7 @@ import { dailyForecast } from "./solar.mjs";
 import {
   localDateKey,
   localDayStartUtcMs,
+  localHourIndex,
   localHourLabel,
   nextDateKey,
 } from "./time.mjs";
@@ -91,6 +92,9 @@ export function buildOutlook(weatherDaily, priceParts) {
         weekday,
         weekday_short: weekday.slice(0, 3),
         solar_kwh: day.estimated_kwh,
+        // The solar score (0 to 100 versus the annual peak) grounds
+        // the week outlook's qualitative wording.
+        solar_score: day.solar_score ?? null,
         condition: conditionSummary(day.weather_code ?? -1),
         average_price_eur:
           day.date === tomorrowKey ? tomorrowAverage : null,
@@ -102,26 +106,44 @@ export function buildOutlook(weatherDaily, priceParts) {
   const best = outlookDays.reduce((top, day) =>
     day.solar_kwh > top.solar_kwh ? day : top
   );
-  // The rain day: the lowest-solar rain day, rendered whenever the
-  // forecast shows rain - plainly the day to avoid.
-  const rainDays = outlookDays.filter((day) => day.condition === "rain");
+  // A notably poor day - named plainly as the day to avoid: its
+  // condition maps to rain or showers (the summary maps both to
+  // "rain"), or its expected solar is under 40 percent of the best
+  // known day's. The row names the worst qualifying day, the lowest
+  // solar among them; a rainy day with good solar is never the avoid
+  // day while a poorer one exists.
+  const POOR_SOLAR_FACTOR = 0.4;
+  const poorCandidates = outlookDays.filter(
+    (day) =>
+      day.condition === "rain" ||
+      day.solar_kwh < best.solar_kwh * POOR_SOLAR_FACTOR
+  );
   const poor =
-    rainDays.length > 0
-      ? rainDays.reduce((low, day) => (day.solar_kwh < low.solar_kwh ? day : low))
+    poorCandidates.length > 0
+      ? poorCandidates.reduce((low, day) =>
+          day.solar_kwh < low.solar_kwh ? day : low
+        )
       : null;
   return {
     days: outlookDays,
     best_solar_day:
       best.solar_kwh > 0
         ? {
+            date: best.date,
             weekday: best.weekday,
             weekday_short: best.weekday_short,
             solar_kwh: best.solar_kwh,
+            solar_score: best.solar_score,
+            // "Looks good for solar" only when the score backs it.
+            good:
+              best.solar_score !== null &&
+              best.solar_score >= GOOD_SOLAR_SCORE,
           }
         : null,
     poor_day:
       poor !== null
         ? {
+            date: poor.date,
             weekday: poor.weekday,
             weekday_short: poor.weekday_short,
             solar_kwh: poor.solar_kwh,
@@ -131,16 +153,103 @@ export function buildOutlook(weatherDaily, priceParts) {
   };
 }
 
-function buildGuidance(priceParts) {
+// The practicality gate for the today imperative: the command renders
+// only when the remaining window is a real opportunity. Three named
+// conditions, tunable together (recorded in docs/advisory-spec.md):
+// the window starts before the evening pivot hour (default 18:00,
+// EMS_EVENING_PIVOT_HOUR), at least this many hours of it remain, and
+// its average sits at least this far below the day's average - a live
+// reference comparison. Outside the gate the card states the passed
+// cheap hours plainly instead of commanding.
+const EVENING_PIVOT_HOUR =
+  Number.parseInt(process.env.EMS_EVENING_PIVOT_HOUR ?? "", 10) || 18;
+const PRACTICAL_MIN_HOURS = 2;
+const PRACTICAL_MIN_ADVANTAGE_EUR = 0.05;
+// The evening delay rule (Phase E): tomorrow's cheapest window must be
+// at least this much cheaper than the best window remaining today
+// before the card advises delaying heavy usage to it.
+const DELAY_MIN_ADVANTAGE_EUR_RAW = Number.parseFloat(
+  process.env.EMS_DELAY_MIN_ADVANTAGE_EUR ?? ""
+);
+const DELAY_MIN_ADVANTAGE_EUR =
+  Number.isFinite(DELAY_MIN_ADVANTAGE_EUR_RAW) &&
+  DELAY_MIN_ADVANTAGE_EUR_RAW > 0
+    ? DELAY_MIN_ADVANTAGE_EUR_RAW
+    : 0.05;
+// The qualitative solar thresholds (Phase E): a forecast day below
+// LOW_SOLAR_SCORE reads as little sun (the hedged grid-reliance
+// phrasing before tomorrow's prices are published); a day at or
+// above GOOD_SOLAR_SCORE reads as looking good for solar in the week
+// outlook.
+const LOW_SOLAR_SCORE =
+  Number.parseInt(process.env.EMS_LOW_SOLAR_SCORE ?? "", 10) || 20;
+const GOOD_SOLAR_SCORE =
+  Number.parseInt(process.env.EMS_GOOD_SOLAR_SCORE ?? "", 10) || 60;
+
+export function buildGuidance(priceParts) {
   const cheapest = priceParts?.cheapestByDay?.today ?? null;
   const today = priceParts?.priceData?.today ?? null;
   if (!cheapest || !today || today.max == null) {
     return null;
   }
-  const spread = today.max - cheapest.average_price;
+  // The spread and the advantage are rounded to the served precision
+  // before the threshold comparisons: raw float subtraction can sit a
+  // hair under an exact boundary (0.3 - 0.25 reads as 0.0499... and
+  // would fail the 0.05 advantage gate).
+  const spread = round4(today.max - cheapest.average_price);
   if (spread < GUIDANCE_MIN_SPREAD_EUR) {
     return null;
   }
+  const now = Date.now();
+  const startMs = Date.parse(cheapest.start);
+  const endMs = Date.parse(cheapest.end);
+  // The window's own hours that remain, not the lead time before it.
+  const hoursRemaining = Math.max(
+    0,
+    (endMs - Math.max(now, startMs)) / 3_600_000
+  );
+  const windowStartHour = localHourIndex(new Date(cheapest.start));
+  const dayAverage = today.average ?? null;
+  // The gate inputs ride the payload so the debug view can show them.
+  const practical =
+    windowStartHour < EVENING_PIVOT_HOUR &&
+    hoursRemaining >= PRACTICAL_MIN_HOURS &&
+    dayAverage !== null &&
+    round4(dayAverage - cheapest.average_price) >=
+      PRACTICAL_MIN_ADVANTAGE_EUR;
+  const dayWindow = priceParts?.dayCheapestWindow ?? null;
+  const nowHour = localHourIndex(new Date());
+  // The peak-avoidance line renders only while the day's peak hour is
+  // still ahead of the current hour - the live-reference rule.
+  const peakHourNum =
+    today.peak_hour != null ? Number.parseInt(today.peak_hour, 10) : null;
+  const peakAhead = peakHourNum !== null && peakHourNum > nowHour;
+  // Whether the day's actual cheap hours are gone: the passed-hours
+  // fact is honest only then. A gate-blocked evening window that is
+  // still ahead reads as the evening price situation instead.
+  const dayCheapestPassed = dayWindow
+    ? nowHour >= localHourIndex(new Date(dayWindow.end))
+    : false;
+  // The evening delay rule: with tomorrow's prices published, compare
+  // tomorrow's cheapest window against the best window remaining
+  // today; when tomorrow is meaningfully cheaper the card advises
+  // delaying heavy usage to it (rendered only once today no longer
+  // commands - the imperative transfer of the voice rules).
+  const tomorrowWindow = priceParts?.cheapestByDay?.tomorrow ?? null;
+  const tomorrowAvailable = priceParts?.tomorrowPricesAvailable === true;
+  const delay =
+    tomorrowAvailable &&
+    tomorrowWindow !== null &&
+    round4(cheapest.average_price - tomorrowWindow.average_price) >=
+      DELAY_MIN_ADVANTAGE_EUR
+      ? {
+          tomorrow_window: `${localHourLabel(tomorrowWindow.start)}-${localHourLabel(
+            tomorrowWindow.end
+          )} tomorrow`,
+          tomorrow_window_average_eur: round4(tomorrowWindow.average_price),
+          today_window_average_eur: round4(cheapest.average_price),
+        }
+      : null;
   return {
     window: `${localHourLabel(cheapest.start)}-${localHourLabel(
       cheapest.end
@@ -149,6 +258,23 @@ function buildGuidance(priceParts) {
     peak_hour: today.peak_hour ?? null,
     peak_price_eur: round4(today.max),
     spread_per_kwh_eur: round4(spread),
+    // The gate and its inputs.
+    practical,
+    window_start_hour: windowStartHour,
+    hours_remaining: Math.round(hoursRemaining * 10) / 10,
+    day_average_eur: dayAverage === null ? null : round4(dayAverage),
+    // The Phase E today modes: the peak-avoidance line while the peak
+    // is ahead, the passed-hours honesty, the evening price situation
+    // and the cross-day delay comparison.
+    peak_ahead: peakAhead,
+    day_cheapest_passed: dayCheapestPassed,
+    remaining_average_eur: priceParts?.remainingAverageEur ?? null,
+    delay,
+    // The day's actual cheapest window, for the passed-hours fact.
+    day_cheapest_window: dayWindow
+      ? `${localHourLabel(dayWindow.start)}-${localHourLabel(dayWindow.end)}`
+      : null,
+    day_cheapest_average_eur: dayWindow ? round4(dayWindow.average_price) : null,
   };
 }
 
@@ -177,6 +303,12 @@ export function buildAdvisory(priceParts, weatherDaily) {
   const tomorrowEntry = byDate(tomorrowKey);
   const todaySolar = todayEntry?.estimated_kwh ?? null;
   const tomorrowSolar = tomorrowEntry?.estimated_kwh ?? null;
+  // Tomorrow's solar score (0 to 100 versus the annual peak) and its
+  // low-solar flag: the hedged grid-reliance phrasing (Phase E)
+  // applies when the score sits below LOW_SOLAR_SCORE.
+  const tomorrowScore = tomorrowEntry?.solar_score ?? null;
+  const tomorrowLowSolar =
+    tomorrowScore !== null && tomorrowScore < LOW_SOLAR_SCORE;
   // The best of the following forecast days, for the solar comparison.
   const following = days.filter((day) => day.date > tomorrowKey);
   const bestFollowing =
@@ -247,7 +379,12 @@ export function buildAdvisory(priceParts, weatherDaily) {
       ? { label: dayLabel(solarDeferDay.date), average: null }
       : null);
   const advance = !deferDay && (priceAdvance || solarAdvance);
-  if (!deferDay && !advance) {
+  const triggered = Boolean(deferDay) || advance;
+  // The tomorrow row always renders when the forecast carries
+  // tomorrow's expected solar: the triggers decide the prefer
+  // recommendation, not the row's existence. Without any forecast
+  // data for tomorrow the row is omitted - honest absence.
+  if (!triggered && tomorrowSolar === null) {
     return null;
   }
   const compare =
@@ -263,24 +400,40 @@ export function buildAdvisory(priceParts, weatherDaily) {
                 : null,
         }
       : { label: "today", average_eur: todayAvg, solar_kwh: todaySolar };
-  // The honest horizon note, defer-only: it matters exactly when the
-  // advisory recommends waiting for a cheaper day whose successor is
-  // not yet priced. It names the referent - the cheapest known day
-  // with its average. An advance advisory compares fully priced days
-  // and carries no note.
-  const horizonNote =
+  // The honest horizon note. Defer-only when triggered: it matters
+  // exactly when the advisory recommends waiting for a cheaper day
+  // whose successor is not yet priced. It names the referent - the
+  // cheapest known day with its average. An advance advisory compares
+  // fully priced days and carries no note. The informational row
+  // (no trigger) labels the horizon honestly when tomorrow's prices
+  // are not yet published.
+  let horizonNote = null;
+  if (
     type === "defer" &&
+    triggered &&
     tomorrowAvg !== null &&
     compare.average_eur !== null &&
     !dayAfterKnown
-      ? `Cheapest day known so far is ${compare.label} at ${round4(
-          compare.average_eur
-        )} average; the day after is not yet published`
-      : null;
+  ) {
+    horizonNote = `Cheapest day known so far is ${compare.label} at ${round4(
+      compare.average_eur
+    )} average; the day after is not yet published`;
+  } else if (!triggered && tomorrowAvg === null) {
+    horizonNote =
+      "Grid prices for tomorrow are not yet published; a fuller " +
+      "comparison follows once they are available.";
+  }
   return {
     type,
+    // Whether one of the prefer triggers fired: the row always renders
+    // with forecast data, the recommendation (and its chip) only when
+    // this is true.
+    triggered,
     tomorrow_average_eur: tomorrowAvg,
     tomorrow_solar_kwh: tomorrowSolar,
+    // Tomorrow's solar score and its low-solar flag (Phase E).
+    tomorrow_solar_score: tomorrowScore,
+    tomorrow_low_solar: tomorrowLowSolar,
     compare_day: compare.label,
     compare_average_eur: compare.average_eur,
     compare_solar_kwh: compare.solar_kwh,
@@ -304,6 +457,14 @@ export function buildAdvisory(priceParts, weatherDaily) {
 // the window average. Candidates below 0.05 EUR stay in the list,
 // marked belowThreshold, so the model can report them honestly.
 // Exported as a pure function so the arithmetic stays verifiable.
+// Household register for an appliance label: entity names arrive
+// capitalised and sometimes carry a suffix such as "Washing machine
+// energy"; the basis line reads "your washing machine used ...".
+function householdApplianceName(name) {
+  const cleaned = name.replace(/\s+(energy|power|consumption)$/i, "").trim();
+  return cleaned.charAt(0).toLowerCase() + cleaned.slice(1);
+}
+
 export function buildCandidates(applianceRows, summary, priceParts, priceRows) {
   const cheapest = priceParts?.cheapestByDay?.today ?? null;
   if (!cheapest) {
@@ -332,7 +493,9 @@ export function buildCandidates(applianceRows, summary, priceParts, priceRows) {
       window: windowLabel,
       saving_eur: savingEur,
       below_threshold: savingEur < 0.05,
-      basis: `${round2(kwh)} kWh today at an average of EUR ${round4(
+      basis: `your ${householdApplianceName(row.appliance)} used ${round2(
+        kwh
+      )} kWh so far today at an average of EUR ${round4(
         avgPaid
       )}/kWh versus EUR ${round4(cheapest.average_price)}/kWh in the cheapest remaining window`,
     });
@@ -355,7 +518,7 @@ export function buildCandidates(applianceRows, summary, priceParts, priceRows) {
       window: windowLabel,
       saving_eur: savingEur,
       below_threshold: savingEur < 0.05,
-      basis: `${round2(outTotal)} kWh discharged today covering hours at EUR ${round4(
+      basis: `your battery discharged ${round2(outTotal)} kWh today covering hours at EUR ${round4(
         outTotal > 0 ? avoided / outTotal : 0
       )}/kWh average versus EUR ${round4(
         cheapest.average_price
