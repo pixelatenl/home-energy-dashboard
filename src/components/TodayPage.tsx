@@ -115,11 +115,10 @@ function TodayPage() {
   }, [])
 
   const budgetExhausted = remainingCalls !== null && remainingCalls <= 0
-  const hasInsightText = insight?.summary != null
-  // The refresh button only makes sense when the insight lags the data
-  // (stale) and the shared AI budget still has room.
-  const refreshDisabled =
-    budgetExhausted || (hasInsightText && insight?.stale === false)
+  // The refresh button stays an explicit regenerate control; freshness
+  // is the server's business (the Reasoning chip on the card). Only the
+  // shared AI budget can disable it.
+  const refreshDisabled = budgetExhausted
   const insightFrom =
     insight?.insight_as_of != null
       ? new Date(insight.insight_as_of).toLocaleTimeString("en-GB", {
@@ -131,7 +130,7 @@ function TodayPage() {
   return (
     <PageLayout
       title={greetingFor(nowTick)}
-      subtitle={insight?.one_liner ?? "Monitor your household energy use"}
+      subtitle="Monitor your household energy use"
       actions={
         <span className="flex items-center gap-2">
           <span className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-blue-800 to-sky-600 px-3 py-1 text-sm font-medium tabular-nums text-white shadow-card dark:from-blue-950 dark:to-sky-800">
@@ -140,11 +139,6 @@ function TodayPage() {
             ) : (
               <span className="font-normal text-white/80">
                 No insight yet
-              </span>
-            )}
-            {insight?.stale && hasInsightText && (
-              <span className="rounded-full bg-white/20 px-2 py-0.5 text-xs font-semibold uppercase tracking-wide text-white">
-                stale
               </span>
             )}
           </span>

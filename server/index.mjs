@@ -5,6 +5,8 @@ import { fileURLToPath } from "node:url";
 import express from "express";
 import { shutdown } from "./db.mjs";
 import {
+  composeAdvisoryLine,
+  composeGuidanceLine,
   getBatteryContext,
   getMistralBudget,
   getPriceContext,
@@ -72,6 +74,21 @@ try {
   gitHash = "unknown";
 }
 const SERVER_VERSION = `${gitHash} @ ${SERVER_START}`;
+
+// The guidance, advisory and outlook objects served with the insight:
+// sourced from the live snapshot extras at request time - never from
+// the cached insight - so the rows never go stale between generations
+// and the card always renders the current window. The line is
+// composed deterministically; the model never writes these objects.
+function liveAdvisoryObjects(extras) {
+  const guidance = extras?.guidance ?? null;
+  const advisory = extras?.advisory ?? null;
+  return {
+    guidance: guidance ? { ...guidance, line: composeGuidanceLine(guidance) } : null,
+    advisory: advisory ? { ...advisory, line: composeAdvisoryLine(advisory) } : null,
+    outlook: extras?.outlook ?? null,
+  };
+}
 
 // One line at startup so a stale or misaligned clock is visible
 // immediately: the UTC time, the TZ variable and the timezone the
@@ -268,26 +285,30 @@ app.get(
   "/api/summary",
   asyncHandler(async (req, res) => {
     // force regenerates the insight once regardless of the context
-    // signature; it bypasses the 30-minute interval but never the daily
-    // cap, and still counts.
+    // signature; it bypasses the summary minimum interval but never the
+    // daily cap, and still counts - synchronously, as before. Without
+    // force a signature change is warmed up in the background: the
+    // endpoint answers immediately with the cached insight in state
+    // "reasoning" and the next poll delivers the fresh one.
     const force = req.query.force === "1" || req.query.force === "true";
     const snapshot = await buildContextSnapshot();
-    const insight = await getSummaryInsight(snapshot, { force });
+    const insight = await getSummaryInsight(snapshot, {
+      force,
+      background: !force,
+    });
     res.json({
       ...snapshot.summary,
       // The moment the underlying summary data was built.
       as_of: snapshot.asOf,
-      // Stable hash over the materialized context fields; the kiosk
-      // compares it against the signature the insight was generated
-      // from to detect staleness.
+      // Stable hash over the materialized context fields; provenance
+      // for the debug panel (the insight state folds the signature
+      // comparison in server-side).
       signature: snapshot.signature,
       insight: {
-        one_liner: insight.oneLiner,
-        summary: insight.summary,
-        actions: insight.actions,
         // The decision structure: the primary action with its estimated
-        // saving and confidence, the euro-first supporting facts and an
-        // optional warning.
+        // saving and confidence, its warning and context note. The
+        // guidance, advisory and outlook objects join from the live
+        // snapshot extras; there is no legacy prose format.
         primary_action: insight.primaryAction
           ? {
               what: insight.primaryAction.what,
@@ -304,42 +325,19 @@ app.get(
         // real opportunity with its true amount.
         no_opportunity: insight.noOpportunity ?? false,
         candidates: insight.candidates ?? [],
-        // Generic per-kWh timing guidance, or null on flat-price days.
-        guidance: insight.guidance
-          ? {
-              window: insight.guidance.window,
-              cheapest_window_average_eur:
-                insight.guidance.cheapestWindowAverageEur,
-              peak_hour: insight.guidance.peakHour,
-              peak_price_eur: insight.guidance.peakPriceEur,
-              spread_per_kwh_eur: insight.guidance.spreadPerKwhEur,
-              line: insight.guidance.line,
-            }
-          : null,
-        // The day-ahead advisory, or null when no meaningful difference
-        // exists between tomorrow and the known days.
-        advisory: insight.advisory
-          ? {
-              type: insight.advisory.type,
-              tomorrow_average_eur: insight.advisory.tomorrowAverageEur,
-              tomorrow_solar_kwh: insight.advisory.tomorrowSolarKwh,
-              compare_day: insight.advisory.compareDay,
-              compare_average_eur: insight.advisory.compareAverageEur,
-              compare_solar_kwh: insight.advisory.compareSolarKwh,
-              price_difference_per_kwh: insight.advisory.priceDifferencePerKwh,
-              horizon_note: insight.advisory.horizonNote,
-              line: insight.advisory.line,
-            }
-          : null,
-        // The week outlook: days after today with solar and conditions.
-        outlook: insight.outlook ?? null,
+        ...liveAdvisoryObjects(snapshot.extras),
         generated_at: insight.generatedAt,
         // The data moment the cached insight text is based on (its own
         // as_of, which can trail the top-level as_of).
         insight_as_of: insight.asOf,
-        // True when the insight is older than the underlying data
-        // signature (throttled, budget-exhausted or failed
-        // regeneration) and the cached text is served fail-soft.
+        // The regeneration state: "fresh" (the cached insight matches
+        // the live signature), "reasoning" (the signatures differ and
+        // a regeneration is in flight) or "error" (no cached insight
+        // at all; the card stays empty rather than unverified).
+        state: insight.state,
+        // Deprecated mirror of state === "reasoning", kept one release
+        // for the debug panel and old payload comparisons; remove with
+        // the C25 cleanup.
         stale: insight.stale,
         error: insight.error,
       },
@@ -597,20 +595,37 @@ app.get(
   "/api/insight/debug",
   asyncHandler(async (_req, res) => {
     // Read-only traceability: the exact context payload the summary
-    // insight is built from - the C1b candidates with their exact
-    // savings and belowThreshold marks, the price statistics, the
-    // appliance, battery and solar facts - plus the composed system
-    // prompt and the last generated insight for the verbatim saving
-    // comparison. Composing the context never calls the model: every
-    // source is a cache or a cheap query, and peekSummaryInsight only
-    // reads the in-memory insight.
+    // insight is built from - the candidates with their exact savings
+    // and belowThreshold marks, the price statistics, the appliance,
+    // battery and solar facts - plus the composed system prompt and the
+    // last generated insight for the verbatim saving comparison.
+    // Composing the context never calls the model: every source is a
+    // cache or a cheap query, and peekSummaryInsight only reads the
+    // in-memory insight. The guidance, advisory and week outlook ride
+    // the payload from the live extras, not the model context; they
+    // are merged into both sections so the debug view keeps showing
+    // them next to the price data its consistency checks compare
+    // against.
     const snapshot = await buildContextSnapshot();
+    // The peeked insight carries its regeneration state, computed
+    // against the live signature, so the debug panel shows whether the
+    // insight tracks the current context.
+    const peeked = peekSummaryInsight(snapshot.signature);
+    const live = liveAdvisoryObjects(snapshot.extras);
     res.json({
       as_of: snapshot.asOf,
       signature: snapshot.signature,
       system_prompt: SUMMARY_SYSTEM_PROMPT_STRUCTURED,
-      context: snapshot.context,
-      insight: peekSummaryInsight(),
+      // The shared Mistral budget: limit, calls today, remaining -
+      // the same fields the debug time route reports.
+      mistral: getMistralBudget(),
+      context: {
+        ...snapshot.context,
+        guidance: live.guidance,
+        advisory: live.advisory,
+        week_outlook: live.outlook,
+      },
+      insight: peeked ? { ...peeked, ...live } : null,
     });
   })
 );
@@ -623,9 +638,6 @@ app.get(
     const snapshot = await buildContextSnapshot();
     const result = await getSummaryInsight(snapshot, { force });
     res.json({
-      one_liner: result.oneLiner,
-      summary: result.summary,
-      actions: result.actions,
       primary_action: result.primaryAction
         ? {
             what: result.primaryAction.what,
@@ -639,31 +651,7 @@ app.get(
       context_note: result.contextNote ?? null,
       no_opportunity: result.noOpportunity ?? false,
       candidates: result.candidates ?? [],
-      guidance: result.guidance
-        ? {
-            window: result.guidance.window,
-            cheapest_window_average_eur:
-              result.guidance.cheapestWindowAverageEur,
-            peak_hour: result.guidance.peakHour,
-            peak_price_eur: result.guidance.peakPriceEur,
-            spread_per_kwh_eur: result.guidance.spreadPerKwhEur,
-            line: result.guidance.line,
-          }
-        : null,
-      advisory: result.advisory
-        ? {
-            type: result.advisory.type,
-            tomorrow_average_eur: result.advisory.tomorrowAverageEur,
-            tomorrow_solar_kwh: result.advisory.tomorrowSolarKwh,
-            compare_day: result.advisory.compareDay,
-            compare_average_eur: result.advisory.compareAverageEur,
-            compare_solar_kwh: result.advisory.compareSolarKwh,
-            price_difference_per_kwh: result.advisory.priceDifferencePerKwh,
-            horizon_note: result.advisory.horizonNote,
-            line: result.advisory.line,
-          }
-        : null,
-      outlook: result.outlook ?? null,
+      ...liveAdvisoryObjects(snapshot.extras),
       generated_at: result.generatedAt,
       as_of: result.asOf,
       stale: result.stale,

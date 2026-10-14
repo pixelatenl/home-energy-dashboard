@@ -22,10 +22,11 @@ import {
   useRefetchOnWake,
 } from "@/lib/useDataRefresh"
 
-// The hub's compact solar presence: today's expected production, the
-// progress of actual production toward it, the live output and the
-// solar score, all from the existing weather endpoints. The full
-// WeatherForecast widget moves to the Solar tab in a later phase.
+// The hub's compact solar presence: today's expected production as
+// the lead, the live output in the description, the progress of
+// actual production toward it and the solar score, all from the
+// existing weather endpoints. The full WeatherForecast widget moves
+// to the Solar tab in a later phase.
 
 // Local hour fraction (8.5 for "2026-10-13T08:30") of a local-time ISO
 // string, the format the daily sunrise/sunset and hourly labels use.
@@ -35,6 +36,23 @@ function localHourFraction(iso: string): number {
 
 function formatKwh(value: number | null): string {
   return value === null ? "\u2014" : `${value.toFixed(1)} kWh`
+}
+
+// The live output sentence in the card's description slot: "Now
+// producing 2553 W" with the number emphasized, or the honest absence
+// when nothing is producing (night, or the sensor unreachable).
+function NowProducing({ watts }: { watts: number | null }) {
+  if (watts === null || watts <= 0) {
+    return <>No current solar production</>
+  }
+  return (
+    <>
+      Now producing{" "}
+      <span className="font-medium tabular-nums text-foreground">
+        {watts} W
+      </span>
+    </>
+  )
 }
 
 // Ahead, on track or behind: produced so far versus the expected
@@ -66,18 +84,6 @@ function OnTrackBadge({ onTrack }: { onTrack: OnTrack }) {
     >
       {ON_TRACK_LABELS[onTrack]}
     </span>
-  )
-}
-
-// Live output in watts from the live energy flow snapshot.
-function LiveWatts({ watts }: { watts: number | null }) {
-  return (
-    <p className="text-xs text-muted-foreground">
-      Now producing{" "}
-      <span className="font-medium tabular-nums text-foreground">
-        {watts === null ? "\u2014" : `${watts} W`}
-      </span>
-    </p>
   )
 }
 
@@ -205,8 +211,8 @@ function SolarForecastWidget() {
     )
   }
 
-  // No forecast data: produced so far and the live output stay honest;
-  // no target, progress or verdict is fabricated.
+  // No forecast data: the live output and produced so far stay
+  // honest; no target, progress or verdict is fabricated.
   if (daily === null) {
     return (
       <Card>
@@ -215,7 +221,9 @@ function SolarForecastWidget() {
             <Sun className="size-5" aria-hidden="true" />
             Solar forecast
           </CardTitle>
-          <CardDescription>Expected production today</CardDescription>
+          <CardDescription>
+            <NowProducing watts={summary?.flow.pv_w ?? null} />
+          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
           <p className="text-sm text-muted-foreground">No forecast data</p>
@@ -225,7 +233,6 @@ function SolarForecastWidget() {
           <p className="text-xs text-muted-foreground">
             produced so far today
           </p>
-          <LiveWatts watts={summary?.flow.pv_w ?? null} />
         </CardContent>
       </Card>
     )
@@ -238,7 +245,9 @@ function SolarForecastWidget() {
           <Sun className="size-5" aria-hidden="true" />
           Solar forecast
         </CardTitle>
-        <CardDescription>Expected PV production for today</CardDescription>
+        <CardDescription>
+          <NowProducing watts={summary?.flow.pv_w ?? null} />
+        </CardDescription>
         <CardAction>
           <Badge variant="outline" className="tabular-nums">
             Solar score {daily.solar_score}/100
@@ -265,7 +274,6 @@ function SolarForecastWidget() {
             <OnTrackBadge onTrack={onTrack} />
           </div>
         </div>
-        <LiveWatts watts={summary?.flow.pv_w ?? null} />
       </CardContent>
     </Card>
   )

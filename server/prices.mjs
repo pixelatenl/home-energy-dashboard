@@ -247,6 +247,11 @@ export async function getPriceSummary(days) {
       ...dayStats(tomorrowHours),
     },
     cheapest_block: cheapestFromEntries(entries, currentKey, 3),
+    // The day's actual cheapest window, whole-day (an empty key admits
+    // every hour): the single source the advisory card and the prices
+    // widget both consume, so the two surfaces can never disagree
+    // about the day's cheapest hours.
+    day_cheapest_block: cheapestFromEntries(todayEntries, "", 3),
   };
 }
 
@@ -287,6 +292,22 @@ export async function getPriceContextData() {
   const remainingMaxPrice =
     remainingEntries.length > 0
       ? Math.max(...remainingEntries.map((entry) => entry.price))
+      : null;
+  // The average price of today's remaining hours (now until local
+  // midnight), for the evening price situation: a live reference the
+  // advisory card states honestly once the today window no longer
+  // commands.
+  const remainingTodayEntries = todayEntries.filter(
+    (entry) => entry.key >= currentKey
+  );
+  const remainingAverageEur =
+    remainingTodayEntries.length > 0
+      ? roundPrice(
+          remainingTodayEntries.reduce(
+            (total, entry) => total + entry.price,
+            0
+          ) / remainingTodayEntries.length
+        )
       : null;
   // Peak hours above EMS_PRICE_PEAK_EUR (default 0.35 EUR/kWh), for the
   // decision insight: hours the model should steer away from. The
@@ -341,7 +362,13 @@ export async function getPriceContextData() {
       today: cheapestFromEntries(todayEntries, currentKey, 3),
       tomorrow: cheapestFromEntries(tomorrowEntries, currentKey, 3),
     },
+    // The day's actual cheapest window, whole-day (an empty key admits
+    // every hour): the honest reference when the remaining window is a
+    // late remnant and the card states the passed cheap hours.
+    dayCheapestWindow: cheapestFromEntries(todayEntries, "", 3),
     remainingMaxPrice,
+    // Today's remaining-hours average (now until local midnight).
+    remainingAverageEur,
     // Peak hours per day for the decision insight context.
     peakHours: {
       today: peakHourLabels(todayEntries),
