@@ -137,7 +137,7 @@ describe("buildGridScore: the sub-caption fact", () => {
       null,
       NOW
     );
-    assert.equal(score.sub, "now, falls to 30 at 19:00");
+    assert.equal(score.sub, "falls to 30% at 19:00");
   });
 
   it("qualifies a rise that lands tomorrow", () => {
@@ -154,7 +154,7 @@ describe("buildGridScore: the sub-caption fact", () => {
       null,
       NOW
     );
-    assert.equal(score.sub, "now, rises to 90 at 08:00 tomorrow");
+    assert.equal(score.sub, "rises to 90% at 08:00 tomorrow");
   });
 
   it("says flat all day when the range stays under 15 points", () => {

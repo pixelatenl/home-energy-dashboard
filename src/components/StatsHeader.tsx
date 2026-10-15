@@ -1,11 +1,10 @@
 import { House, Info, PlugZap, Recycle } from "lucide-react"
-import type { ReactNode } from "react"
 import {
   Card,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
-import type { GridScoreHour, GridScoreState } from "@/lib/api"
+import type { GridScore, GridScoreState } from "@/lib/api"
 import { useSummary } from "@/lib/useSummary"
 
 function formatKwh(value: number | null): string {
@@ -15,6 +14,17 @@ function formatKwh(value: number | null): string {
 function formatPct(value: number | null): string {
   return value === null ? "\u2014" : `${Math.round(value)}%`
 }
+
+const PLACEHOLDER = "\u2014"
+
+// The grid card's tooltip: the net figure's meaning plus the
+// renewables strip's. The color state thresholds are our own
+// interpretation; Zonneplan publishes none.
+const GRID_TOOLTIP =
+  "Grid electricity today: imported minus exported; negative means net export. The strip shows how much of the grid's power comes from sun and wind right now, estimated by Zonneplan; the line is the next hours. The color states are our own interpretation, not Zonneplan's."
+
+const USAGE_TOOLTIP =
+  "Household consumption: from grid + direct solar use - export - energy stored in the battery. Self-consumption: the share of today's solar production that was used on site."
 
 // Corner info tooltip: shows on hover, keyboard focus and tap.
 function InfoTooltip({ text }: { text: string }) {
@@ -35,13 +45,13 @@ function InfoTooltip({ text }: { text: string }) {
   )
 }
 
-// The three state glyphs of the Energy sustainability stat, one per
+// The three state glyphs of the grid renewables share, one per
 // server-computed color state: leaf (fully renewable grid), pylon
 // with a sun disc (mixed grid), factory with a chimney (fossil
-// dominance). All three share the same stroke style and 16 px box so
+// dominance). All three share the same stroke style and 24 px box so
 // the state swap causes no layout shift, and all render equally
-// muted (currentColor at muted opacity): the stat is secondary
-// context next to the household stats.
+// muted (currentColor at muted opacity): the share is secondary
+// context inside the grid card.
 const GLYPH_PROPS = {
   viewBox: "0 0 24 24",
   fill: "none",
@@ -49,7 +59,7 @@ const GLYPH_PROPS = {
   strokeWidth: 1.75,
   strokeLinecap: "round",
   strokeLinejoin: "round",
-  className: "size-5 shrink-0",
+  className: "size-6 shrink-0 text-muted-foreground",
   "aria-hidden": true,
 } as const
 
@@ -84,91 +94,46 @@ function GridScoreGlyph({ state }: { state: GridScoreState }) {
   )
 }
 
-// Minimal sparkline of the grid score curve: one muted green-leaning
-// line (distinct from the price widget's brighter bar palette), no
-// axes, with a subtle tick marking now (the curve's first hour is
-// the current one).
-function GridScoreSparkline({ curve }: { curve: GridScoreHour[] }) {
-  if (curve.length < 2) {
-    return null
-  }
-  const width = 100
-  const height = 28
-  const top = 3
-  const base = height - 3
-  const x = (index: number) => (index / (curve.length - 1)) * (width - 3) + 1.5
-  const y = (score: number) =>
-    base - (Math.min(score, 100) / 100) * (base - top)
-  const line = curve
-    .map((point, index) =>
-      `${index === 0 ? "M" : "L"}${x(index).toFixed(2)} ${y(point.score).toFixed(2)}`
-    )
-    .join(" ")
+// The grid card's live strip: how green the utility's power is right
+// now - the state glyph and the share as the strip's headline row,
+// the server-rendered movement clause beneath - in the same stacked
+// setup as the home usage card's self-consumption strip. Both strips
+// anchor to the card's base (mt-auto), so the hairlines sit level
+// across the two cards however many figure lines sit above them. The
+// share's color state thresholds are our own interpretation;
+// Zonneplan publishes none.
+function SustainabilityStrip({ score }: { score: GridScore | null }) {
+  const share =
+    score?.current == null ? PLACEHOLDER : `${Math.round(score.current)}%`
   return (
-    <svg
-      viewBox={`0 0 ${width} ${height}`}
-      preserveAspectRatio="none"
-      className="mt-1.5 h-7 w-full text-emerald-400/70"
-      role="img"
-      aria-label="Grid renewables share over the next hours"
-    >
-      <path
-        d={line}
-        fill="none"
-        stroke="currentColor"
-        strokeWidth={1.5}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        vectorEffect="non-scaling-stroke"
-      />
-      <path
-        d={`M1.5 ${(y(curve[0].score) - 4).toFixed(2)}v8`}
-        stroke="currentColor"
-        strokeWidth={1.5}
-        strokeLinecap="round"
-        vectorEffect="non-scaling-stroke"
-      />
-    </svg>
+    <div className="mt-auto border-t pt-2">
+      <p className="flex items-center gap-2">
+        {score?.state && <GridScoreGlyph state={score.state} />}
+        <span
+          className={`text-2xl font-semibold tabular-nums ${
+            score?.current == null ? "text-muted-foreground" : ""
+          }`}
+        >
+          {share}
+        </span>
+      </p>
+      <p className="text-xs text-muted-foreground">
+        Current renewable grid power
+        {score?.sub ? `, ${score.sub}` : ""}
+      </p>
+    </div>
   )
 }
 
-// The tooltip text of the Energy sustainability stat. The color state
-// thresholds are our own interpretation; Zonneplan publishes none.
-const SUSTAINABILITY_TOOLTIP =
-  "How much of the electricity on the Dutch grid comes from sun and wind right now, estimated by Zonneplan. The line shows the next hours. The color states are our own interpretation, not Zonneplan's."
-
-interface MetricSpec {
-  label: string
-  tooltip: string
-  hint?: string
-  today: string
-  week: string
-  month: string
-  // Sub-caption under the big value (the grid in/out split, or the
-  // server-rendered sustainability movement fact).
-  sub?: string
-  // A live value without week/month history (Energy sustainability).
-  live?: boolean
-  // The value is unavailable (before sunrise, entity unreachable):
-  // the big figure renders muted instead of implying a real number.
-  muted?: boolean
-  // The stat's state-dependent icon node (the sustainability glyph).
-  icon?: ReactNode
-  // The sparkline points (the sustainability curve).
-  sparkline?: GridScoreHour[]
-}
-
-const PLACEHOLDER = "\u2014"
-
-// The four headline metric cards: Grid (net of import and export, with
-// the in/out split as its sub-caption), Home usage, Self-consumption
-// and the live Energy sustainability stat (the grid renewables share
-// with its curve). Today's value is large, this week and this month
-// smaller beneath (the sustainability stat has no history). Missing
-// data shows a muted dash. The battery lives in the live energy flow
-// widget and the battery panel. Rendered as a bare fragment: TodayPage
-// lays the cards into one shared top-widget grid (with the solar
-// forecast and battery status), so every widget shares one height.
+// The two headline metric cards: From the grid (net of import and
+// export, with the in/out split as its sub-caption and the live
+// grid renewables share as its strip) and Home usage (household
+// consumption with today's self-consumption share as its
+// sub-caption). Today's value is large, this week and this month
+// smaller beneath. Missing data shows a muted dash. The battery and
+// solar live in their own compact widgets beside these. Rendered as
+// a bare fragment: TodayPage lays the cards into one shared
+// top-widget grid, so every widget shares one height.
 function StatsHeader() {
   const { summary, status } = useSummary()
 
@@ -179,140 +144,118 @@ function StatsHeader() {
   }) => range.import_kwh - range.export_kwh
 
   const gridScore = summary?.grid_score ?? null
-  const gridScoreMetric: MetricSpec = {
-    label: "Energy sustainability",
-    tooltip: SUSTAINABILITY_TOOLTIP,
-    today:
-      gridScore?.current == null
-        ? PLACEHOLDER
-        : `${Math.round(gridScore.current)}%`,
-    week: "",
-    month: "",
-    live: true,
-    muted: gridScore?.current == null,
-    icon: gridScore?.state ? <GridScoreGlyph state={gridScore.state} /> : undefined,
-    sparkline: gridScore?.curve,
-    sub: gridScore?.sub ?? undefined,
-  }
+  const usageToday = summary?.today.total_usage_kwh ?? null
+  const selfConsumption = summary?.today.self_consumption_pct ?? null
 
-  const metrics: MetricSpec[] = summary
-    ? [
-        {
-          label: "From the grid",
-          tooltip:
-            "Grid electricity today: imported minus exported; negative means net export",
-          icon: <PlugZap className="size-5 shrink-0" aria-hidden="true" />,
-          today: formatKwh(netKwh(summary.today)),
-          sub: `${summary.today.import_kwh.toFixed(1)} in, ${summary.today.export_kwh.toFixed(1)} out`,
-          week: formatKwh(netKwh(summary.week)),
-          month: formatKwh(netKwh(summary.month)),
-        },
-        {
-          label: "Home usage",
-          tooltip:
-            "Household consumption: from grid + direct solar use - export - energy stored in the battery",
-          hint: summary.pv_available ? undefined : "excl. solar",
-          icon: <House className="size-5 shrink-0" aria-hidden="true" />,
-          today: formatKwh(summary.today.total_usage_kwh),
-          week: formatKwh(summary.week.total_usage_kwh),
-          month: formatKwh(summary.month.total_usage_kwh),
-        },
-        {
-          label: "Self-consumption",
-          tooltip: "Share of today's solar production that was used on site",
-          icon: <Recycle className="size-5 shrink-0" aria-hidden="true" />,
-          today: formatPct(summary.today.self_consumption_pct),
-          week: formatPct(summary.week.self_consumption_pct),
-          month: formatPct(summary.month.self_consumption_pct),
-          muted: summary.today.self_consumption_pct === null,
-        },
-        gridScoreMetric,
-      ]
-    : [
-        {
-          label: "Grid",
-          tooltip:
-            "Grid electricity today: imported minus exported; negative means net export",
-          icon: <PlugZap className="size-5 shrink-0" aria-hidden="true" />,
-          today: PLACEHOLDER,
-          week: PLACEHOLDER,
-          month: PLACEHOLDER,
-          muted: true,
-        },
-        {
-          label: "Home usage",
-          tooltip:
-            "Household consumption: from grid + direct solar use - export - energy stored in the battery",
-          icon: <House className="size-5 shrink-0" aria-hidden="true" />,
-          today: PLACEHOLDER,
-          week: PLACEHOLDER,
-          month: PLACEHOLDER,
-        },
-        {
-          label: "Self-consumption",
-          tooltip: "Share of today's solar production that was used on site",
-          icon: <Recycle className="size-5 shrink-0" aria-hidden="true" />,
-          today: PLACEHOLDER,
-          week: PLACEHOLDER,
-          month: PLACEHOLDER,
-          muted: true,
-        },
-        gridScoreMetric,
-      ]
+  if (status === "loading") {
+    return (
+      <>
+        {[0, 1].map((index) => (
+          <div
+            key={index}
+            className="min-h-32 animate-pulse rounded-lg bg-muted"
+            aria-hidden="true"
+          />
+        ))}
+      </>
+    )
+  }
 
   return (
     <>
-      {status === "loading"
-        ? metrics.map((metric) => (
-            <div
-              key={metric.label}
-              className="min-h-32 animate-pulse rounded-lg bg-muted"
-              aria-hidden="true"
-            />
-          ))
-        : metrics.map((metric) => (
-            <Card key={metric.label} className="relative min-h-32">
-              <div className="absolute right-3 top-3">
-                <InfoTooltip text={metric.tooltip} />
-              </div>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-1.5 text-muted-foreground">
-                  {metric.icon}
-                  {metric.label}
-                  {metric.hint && (
-                    <span
-                      className="italic"
-                      title="No PV entity found; home usage is grid import only"
-                    >
-                      {" "}
-                      ({metric.hint})
-                    </span>
-                  )}
-                </CardTitle>
-                <CardTitle
-                  className={`text-[2.5rem] tabular-nums ${
-                    metric.muted ? "text-muted-foreground" : ""
-                  }`}
-                >
-                  {metric.today}
-                </CardTitle>
-                {metric.sub && (
-                  <p className="text-xs text-muted-foreground tabular-nums">
-                    {metric.sub}
-                  </p>
-                )}
-                {metric.sparkline && (
-                  <GridScoreSparkline curve={metric.sparkline} />
-                )}
-                {!metric.live && (
-                  <p className="text-xs text-muted-foreground tabular-nums">
-                    This week {metric.week} &middot; This month{" "}
-                    {metric.month}
-                  </p>
-                )}
-              </CardHeader>
-            </Card>
-          ))}
+      {/* From the grid: the household's grid figures plus the utility
+          greenness, which belongs here - the grid power being measured
+          is the same power the renewables share describes. */}
+      <Card className="relative min-h-32">
+        <div className="absolute right-3 top-3">
+          <InfoTooltip text={GRID_TOOLTIP} />
+        </div>
+        <CardHeader className="flex flex-1 flex-col items-stretch">
+          <CardTitle className="flex items-center gap-1.5 text-muted-foreground">
+            <PlugZap className="size-5 shrink-0" aria-hidden="true" />
+            From the grid
+          </CardTitle>
+          <CardTitle
+            className={`text-[2.5rem] tabular-nums ${
+              summary === null ? "text-muted-foreground" : ""
+            }`}
+          >
+            {summary === null
+              ? PLACEHOLDER
+              : formatKwh(netKwh(summary.today))}
+          </CardTitle>
+          {summary !== null && (
+            <p className="text-xs text-muted-foreground tabular-nums">
+              {summary.today.import_kwh.toFixed(1)} kWh in,{" "}
+              {summary.today.export_kwh.toFixed(1)} kWh out
+            </p>
+          )}
+          <p className="pb-2 text-xs text-muted-foreground tabular-nums">
+            This week {summary === null ? PLACEHOLDER : formatKwh(netKwh(summary.week))}{" "}
+            &middot; This month{" "}
+            {summary === null ? PLACEHOLDER : formatKwh(netKwh(summary.month))}
+          </p>
+          <SustainabilityStrip score={gridScore} />
+        </CardHeader>
+      </Card>
+
+      {/* Home usage: the household's consumption with its solar
+          self-consumption share - both describe what the home did with
+          its energy today. */}
+      <Card className="relative min-h-32">
+        <div className="absolute right-3 top-3">
+          <InfoTooltip text={USAGE_TOOLTIP} />
+        </div>
+        <CardHeader className="flex flex-1 flex-col items-stretch">
+          <CardTitle className="flex items-center gap-1.5 text-muted-foreground">
+            <House className="size-5 shrink-0" aria-hidden="true" />
+            Home usage
+            {summary !== null && !summary.pv_available && (
+              <span
+                className="italic"
+                title="No PV entity found; home usage is grid import only"
+              >
+                {" "}(excl. solar)
+              </span>
+            )}
+          </CardTitle>
+          <CardTitle
+            className={`text-[2.5rem] tabular-nums ${
+              usageToday === null ? "text-muted-foreground" : ""
+            }`}
+          >
+            {formatKwh(usageToday)}
+          </CardTitle>
+          <p className="pb-2 text-xs text-muted-foreground tabular-nums">
+            This week{" "}
+            {formatKwh(summary?.week.total_usage_kwh ?? null)} &middot; This
+            month {formatKwh(summary?.month.total_usage_kwh ?? null)}
+          </p>
+          {/* The self-consumption strip: the share of today's solar
+              production the home used on site - its own space beneath a
+              hairline, the recycle glyph and the percentage as the
+              strip's headline row, the description beneath, so it reads
+              as the card's second figure, not fine print. */}
+          <div className="mt-auto border-t pt-2">
+            <p className="flex items-center gap-2">
+              <Recycle
+                className="size-6 shrink-0 text-muted-foreground"
+                aria-hidden="true"
+              />
+              <span
+                className={`text-2xl font-semibold tabular-nums ${
+                  selfConsumption === null ? "text-muted-foreground" : ""
+                }`}
+              >
+                {formatPct(selfConsumption)}
+              </span>
+            </p>
+            <p className="text-xs text-muted-foreground">
+              of today&rsquo;s solar used for home
+            </p>
+          </div>
+        </CardHeader>
+      </Card>
     </>
   )
 }

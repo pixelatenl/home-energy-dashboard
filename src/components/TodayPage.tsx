@@ -110,11 +110,13 @@ function TodayPage() {
         </span>
       }
     >
-      {/* One coherent compact cluster at the top of the hub: the four
-          stat cards plus the compact solar forecast and battery status
-          in one shared grid on the left - every top widget renders at
-          the same height (sm and up; the tallest row sets the measure)
-          - with the AI summary filling the right column. */}
+      {/* One coherent compact cluster at the top of the hub: the two
+          stat cards (grid with its renewables strip, home usage with
+          self-consumption) plus the compact solar forecast and battery
+          status in one shared grid on the left - every top widget
+          renders at the same height (sm and up; the tallest row sets
+          the measure) - with the AI summary filling the right
+          column. */}
       <div className="grid gap-6 lg:grid-cols-2">
         <div className="grid gap-4 sm:grid-cols-2 sm:auto-rows-fr">
           <StatsHeader />

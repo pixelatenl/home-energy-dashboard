@@ -48,10 +48,11 @@ export function gridScoreState(score) {
 }
 
 // The sub-caption fact, computed server-side and rendered verbatim by
-// the frontend: the largest upcoming drop or rise of at least
-// MOVEMENT_MIN_POINTS against the current score, with the hour it
-// lands; "flat all day" when the curve's range stays under the
-// threshold; null when there is nothing honest to predict.
+// the frontend as the movement clause after its own "(now)" label:
+// the largest upcoming drop or rise of at least MOVEMENT_MIN_POINTS
+// against the current score, with the hour it lands; "flat all day"
+// when the curve's range stays under the threshold; null when there
+// is nothing honest to predict.
 function buildSubCaption(currentScore, curve, todayKey) {
   if (currentScore === null || curve.length < 2) {
     return null;
@@ -84,7 +85,7 @@ function buildSubCaption(currentScore, curve, todayKey) {
   }
   const daySuffix =
     movement.hour.slice(0, 10) === todayKey ? "" : " tomorrow";
-  return `now, ${movement.kind} to ${Math.round(movement.score)} at ${movement.hour.slice(11, 13)}:00${daySuffix}`;
+  return `${movement.kind} to ${Math.round(movement.score)}% at ${movement.hour.slice(11, 13)}:00${daySuffix}`;
 }
 
 // Pure builder from the three HA states, so the conversion, capping,

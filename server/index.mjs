@@ -296,12 +296,16 @@ app.get(
     // daily cap, and still counts - synchronously, as before. Without
     // force a signature change is warmed up in the background: the
     // endpoint answers immediately with the cached insight in state
-    // "reasoning" and the next poll delivers the fresh one.
+    // "reasoning" and the next poll delivers the fresh one. The warm-up
+    // only runs while a cached insight exists to serve meanwhile - with
+    // an empty cache (the first request after a restart) the insight
+    // generates synchronously instead, so the kiosk's first response
+    // already carries the advisory and its skeleton covers the wait.
     const force = req.query.force === "1" || req.query.force === "true";
     const snapshot = await buildContextSnapshot();
     const insight = await getSummaryInsight(snapshot, {
       force,
-      background: !force,
+      background: !force && peekSummaryInsight() !== null,
     });
     res.json({
       ...snapshot.summary,
