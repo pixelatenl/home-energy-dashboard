@@ -18,7 +18,7 @@ function App() {
   return (
     <BrowserRouter>
       <ModeProvider>
-        <div className="min-h-screen bg-background">
+        <div className="min-h-screen">
           <Routes>
             <Route path="/" element={<TodayPage />} />
             <Route path="/usage" element={<UsagePage />} />

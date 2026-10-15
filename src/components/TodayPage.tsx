@@ -1,77 +1,23 @@
 import { useCallback, useEffect, useState } from "react"
 import BatteryStatusWidget from "@/components/BatteryStatusWidget"
+import BrandLogo from "@/components/BrandLogo"
 import LiveEnergyFlow from "@/components/LiveEnergyFlow"
 import PageLayout from "@/components/PageLayout"
 import PricesWidget from "@/components/PricesWidget"
 import SolarForecastWidget from "@/components/SolarForecastWidget"
 import StatsHeader from "@/components/StatsHeader"
 import SummaryInsight from "@/components/SummaryInsight"
-import {
-  Activity,
-  BatteryCharging,
-  Droplets,
-  Flame,
-  Plug,
-  RefreshCw,
-  Sun,
-} from "lucide-react"
-import { Link } from "react-router-dom"
-import { Card, CardContent } from "@/components/ui/card"
+import { RefreshCw } from "lucide-react"
 import { fetchSummary, type SummaryInsight as SummaryInsightData } from "@/lib/api"
-import { useModeSearch } from "@/lib/mode"
 import { greetingFor } from "@/lib/time"
 import { triggerAiRefresh } from "@/lib/useAiContext"
 import { triggerDataRefresh, useRefetchOnWake } from "@/lib/useDataRefresh"
 
-// Spoke links below the widget grid: one compact card per analytical
-// page. Heat and hot water share the /heat page.
-const HUB_LINKS = [
-  {
-    to: "/usage",
-    icon: Activity,
-    title: "Usage",
-    description: "Grid and home energy per period",
-  },
-  {
-    to: "/solar",
-    icon: Sun,
-    title: "Solar",
-    description: "Yield and avoided cost",
-  },
-  {
-    to: "/battery",
-    icon: BatteryCharging,
-    title: "Battery",
-    description: "Charge cycles and value",
-  },
-  {
-    to: "/appliances",
-    icon: Plug,
-    title: "Appliances",
-    description: "Per-appliance energy",
-  },
-  {
-    to: "/heat",
-    icon: Flame,
-    title: "Heat",
-    description: "Zones, gas and heating cost",
-  },
-  {
-    to: "/heat",
-    icon: Droplets,
-    title: "Hot water",
-    description: "Hot water on the heat page",
-  },
-]
-
-// The dashboard page: the widget grid and the spoke link cards, plus
-// the insight loading (fetchSummary, the Mistral budget counter, the
+// The dashboard page: the widget grid, plus the insight loading (fetchSummary, the Mistral budget counter, the
 // 5-minute refresh cycle and the wake/focus catch-up). The greeting
 // header with the insight pill and refresh button lives in the shared
 // PageLayout's header slots.
 function TodayPage() {
-  // Hub links carry the mode param, like the NavBar tabs.
-  const modeSearch = useModeSearch()
   // Ticks once a minute so the greeting follows the local time of day.
   const [nowTick, setNowTick] = useState(() => Date.now())
   const [insight, setInsight] = useState<SummaryInsightData | null>(null)
@@ -129,6 +75,7 @@ function TodayPage() {
 
   return (
     <PageLayout
+      logo={<BrandLogo className="h-10 w-[72px]" />}
       title={greetingFor(nowTick)}
       subtitle="Monitor your household energy use"
       actions={
@@ -163,17 +110,16 @@ function TodayPage() {
         </span>
       }
     >
-      {/* One coherent compact cluster at the top of the hub: the stats
-          grid with the compact solar forecast and battery status side
-          by side beneath it on the left, the AI summary filling the
-          right column. */}
+      {/* One coherent compact cluster at the top of the hub: the four
+          stat cards plus the compact solar forecast and battery status
+          in one shared grid on the left - every top widget renders at
+          the same height (sm and up; the tallest row sets the measure)
+          - with the AI summary filling the right column. */}
       <div className="grid gap-6 lg:grid-cols-2">
-        <div className="flex flex-col gap-4">
+        <div className="grid gap-4 sm:grid-cols-2 sm:auto-rows-fr">
           <StatsHeader />
-          <div className="grid gap-4 sm:grid-cols-2">
-            <SolarForecastWidget />
-            <BatteryStatusWidget />
-          </div>
+          <SolarForecastWidget />
+          <BatteryStatusWidget />
         </div>
         <SummaryInsight insight={insight} loading={insightLoading} />
       </div>
@@ -181,25 +127,6 @@ function TodayPage() {
       <div className="grid gap-6 lg:grid-cols-2">
         <LiveEnergyFlow />
         <PricesWidget />
-      </div>
-
-      <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-        {HUB_LINKS.map(({ to, icon: Icon, title, description }) => (
-          <Link key={title} to={`${to}${modeSearch}`}>
-            <Card className="transition hover:border-foreground/30 hover:shadow-card-lift">
-              <CardContent className="flex items-center gap-3">
-                <Icon
-                  className="size-5 shrink-0 text-muted-foreground"
-                  aria-hidden="true"
-                />
-                <div>
-                  <p className="text-sm font-medium">{title}</p>
-                  <p className="text-xs text-muted-foreground">{description}</p>
-                </div>
-              </CardContent>
-            </Card>
-          </Link>
-        ))}
       </div>
     </PageLayout>
   )

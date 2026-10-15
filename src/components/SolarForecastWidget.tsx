@@ -194,14 +194,6 @@ function SolarForecastWidget() {
     onTrack = ratio >= 1.1 ? "ahead" : ratio <= 0.9 ? "behind" : "on-track"
   }
 
-  const progressPct =
-    daily !== null && daily.estimated_kwh > 0
-      ? Math.min(
-          Math.round(((producedKwh ?? 0) / daily.estimated_kwh) * 100),
-          100
-        )
-      : 0
-
   if (status === "loading") {
     return (
       <div
@@ -217,8 +209,8 @@ function SolarForecastWidget() {
     return (
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Sun className="size-5" aria-hidden="true" />
+          <CardTitle className="flex items-center gap-2 text-muted-foreground">
+            <Sun className="size-6" aria-hidden="true" />
             Solar forecast
           </CardTitle>
           <CardDescription>
@@ -238,11 +230,31 @@ function SolarForecastWidget() {
     )
   }
 
+  // The day bar's scale: the forecast level, or the production past it
+  // when the day overdelivers, so the bar grows past its own target
+  // instead of clipping at 100 percent. Amber fills up to the forecast
+  // line, green is everything produced beyond it. The caption
+  // percentage stays honest and can read above 100.
+  const producedValue = producedKwh ?? 0
+  const barScale = Math.max(producedValue, daily.estimated_kwh, 0.001)
+  const forecastPct = (daily.estimated_kwh / barScale) * 100
+  const producedPct = (producedValue / barScale) * 100
+  const overPct = Math.max(0, producedPct - forecastPct)
+  const progressPct =
+    daily.estimated_kwh > 0
+      ? Math.round((producedValue / daily.estimated_kwh) * 100)
+      : 0
+  // The forecast mark only earns its place once the day beats its
+  // forecast by more than 10 percent; smaller exceedances would leave
+  // a mark squeezed against the bar's end, too tight to read.
+  const showForecastMark =
+    daily.estimated_kwh > 0 && producedValue > daily.estimated_kwh * 1.1
+
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Sun className="size-5" aria-hidden="true" />
+        <CardTitle className="flex items-center gap-2 text-muted-foreground">
+          <Sun className="size-6" aria-hidden="true" />
           Solar forecast
         </CardTitle>
         <CardDescription>
@@ -258,14 +270,39 @@ function SolarForecastWidget() {
         <p className="font-heading text-3xl font-medium tabular-nums">
           {daily.estimated_kwh.toFixed(1)} kWh
         </p>
-        {/* Actual production so far toward the full-day expectation;
-            the same amber as the full forecast widget's day bar. */}
-        <div>
-          <div className="h-2 rounded-full bg-muted">
+        {/* Actual production so far toward the full-day expectation:
+            the same amber as the full forecast widget's day bar, with
+            the green portion past the forecast level marking the day
+            overdelivering its own forecast. Once the exceedance passes
+            10 percent, the prices chart's "Now" idiom appears: a
+            dashed vertical line at the forecast level, labeled
+            "Forecasted" above the bar. */}
+        <div className="relative pt-5">
+          {showForecastMark && (
+            <span
+              className="absolute top-0 z-10 -translate-x-1/2 whitespace-nowrap text-[10px] text-muted-foreground"
+              style={{ left: `${forecastPct}%` }}
+            >
+              Forecasted
+            </span>
+          )}
+          <div className="relative h-2 overflow-hidden rounded-full bg-muted">
             <div
-              className="h-2 rounded-full bg-[#f59e0b]"
-              style={{ width: `${progressPct}%` }}
+              className="absolute inset-y-0 left-0 bg-[#f59e0b]"
+              style={{ width: `${Math.min(producedPct, forecastPct)}%` }}
             />
+            {overPct > 0 && (
+              <div
+                className="absolute inset-y-0 bg-emerald-500 dark:bg-emerald-400"
+                style={{ left: `${forecastPct}%`, width: `${overPct}%` }}
+              />
+            )}
+            {showForecastMark && (
+              <div
+                className="absolute inset-y-0 w-0 -translate-x-1/2 border-l border-dashed border-foreground/50"
+                style={{ left: `${forecastPct}%` }}
+              />
+            )}
           </div>
           <div className="mt-2 flex items-center justify-between gap-2">
             <span className="text-xs text-muted-foreground tabular-nums">

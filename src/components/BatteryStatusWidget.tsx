@@ -7,6 +7,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
+import { BATTERY_IDLE_COLOR } from "@/lib/flowDiagram"
 import { useSummary } from "@/lib/useSummary"
 
 // The hub's compact battery presence: current charge percentage with a
@@ -15,10 +16,10 @@ import { useSummary } from "@/lib/useSummary"
 // The full battery panel moves to the Battery tab in a later phase.
 
 // Palette shared with the battery panel and its charts: green
-// charging, amber discharging, neutral idle.
+// charging, amber discharging, teal idle (the flow diagram's idle
+// accent).
 const CHARGING_COLOR = "hsl(140 70% 45%)"
 const DISCHARGING_COLOR = "#f59e0b"
-const NEUTRAL_COLOR = "#94a3b8"
 
 function formatKwh(value: number | null): string {
   return value === null ? "\u2014" : `${value.toFixed(1)} kWh`
@@ -50,13 +51,13 @@ function BatteryStatusWidget() {
       ? CHARGING_COLOR
       : state === "discharging"
         ? DISCHARGING_COLOR
-        : NEUTRAL_COLOR
+        : BATTERY_IDLE_COLOR
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <BatteryCharging className="size-5" aria-hidden="true" />
+        <CardTitle className="flex items-center gap-2 text-muted-foreground">
+          <BatteryCharging className="size-6" aria-hidden="true" />
           Battery
         </CardTitle>
         <CardDescription>Charge and today&rsquo;s flow</CardDescription>

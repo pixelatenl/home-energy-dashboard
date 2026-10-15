@@ -2,9 +2,9 @@ import { Sparkles, TriangleAlert } from "lucide-react"
 import type { SummaryInsight as SummaryInsightData } from "@/lib/api"
 import {
   buildAdvisoryContent,
-  type AdvisoryCardRow,
+  type AdvisoryDayCard,
+  type AdvisoryItem,
 } from "@/lib/advisoryRows"
-import { humanEur, humanizeEurInText } from "@/lib/advisoryText"
 
 // One shared glass definition for the whole advisory surface: 15
 // percent translucent white, white text and a soft backdrop blur. The
@@ -22,58 +22,98 @@ const GLASS_CHIP = "rounded-full bg-white/15 text-white backdrop-blur-sm"
 // The notes zone's fine print: the horizon and context notes below the
 // rows - smaller text, the card's muted register, slightly more line
 // spacing. Plain text, never glass, never chips.
-const NOTE_TEXT = "text-[11px] leading-loose text-white/60"
+const NOTE_TEXT = "text-[11px] leading-loose text-white"
 
-// One generic glass-row renderer: every content row maps through the
-// same eyebrow pattern (day chip left, value chip right), one lead
-// sentence and its supporting lines. The hierarchy lives in the data,
-// not in per-row markup.
-function AdvisoryRowView({ row }: { row: AdvisoryCardRow }) {
+// One piece of advice inside a day card: the lead sentence with its
+// right-side value chip, its supporting lines and optional trailing
+// furniture. One style for every item - the hierarchy lives in the
+// data, not in per-item markup.
+// One piece of advice inside a day card: the lead sentence with its
+// right-side value chip, its supporting lines and optional trailing
+// furniture. The item's own register carries the hierarchy: imperative
+// advice (an action, a command) sets its title in the medium weight;
+// guidance-class items (plain facts, planning notes) render their
+// titles at the normal weight, a step softer, so the card's commands
+// stand out from its context.
+function AdvisoryItemView({ item }: { item: AdvisoryItem }) {
   return (
-    <div className={GLASS_BLOCK}>
-      <div className="flex items-center justify-between gap-2">
-        <span
-          className={`whitespace-nowrap px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${GLASS_CHIP}`}
+    <div className="space-y-1">
+      <div className="flex items-start justify-between gap-2">
+        <p
+          className={`min-w-0 flex-1 text-sm leading-snug ${
+            item.muted ? "font-normal" : "font-medium"
+          }`}
         >
-          {row.chip}
-        </span>
-        {row.valueChip !== null && (
+          {item.sentence}
+        </p>
+        {item.valueChip !== null && (
           <span
             className={`shrink-0 px-2.5 py-1 text-xs tabular-nums ${GLASS_CHIP}`}
           >
-            {row.valueChip}
+            {item.valueChip}
           </span>
         )}
       </div>
-      <p className="text-sm font-medium leading-snug">{row.sentence}</p>
-      {row.supporting.map((line, index) => (
+      {item.supporting.map((line, index) => (
+        // The supporting lines sit one step below their title - the
+        // same translucent white the widget titles use, so the small
+        // text reads as explanation, not as a second command.
         <p
           key={index}
           className={
             line.tabular
-              ? "text-xs leading-relaxed tabular-nums"
-              : "text-xs leading-relaxed"
+              ? "text-xs leading-relaxed tabular-nums text-white/80"
+              : "text-xs leading-relaxed text-white/80"
           }
         >
           {line.text}
         </p>
       ))}
-      {row.footer?.kind === "confidence" && (
+      {item.footer?.kind === "confidence" && (
         <p className="text-[10px] font-medium uppercase tracking-wide">
-          {row.footer.label} confidence
+          {item.footer.label} confidence
         </p>
       )}
-      {row.footer?.kind === "note" && (
-        <p className="text-xs leading-relaxed">{row.footer.text}</p>
+      {item.footer?.kind === "note" && (
+        <p className="text-xs leading-relaxed">{item.footer.text}</p>
       )}
     </div>
   )
 }
 
+// One day of the advisory timeline: every piece of advice for that
+// day grouped inside a single glass block, the day chip on its own
+// line above the day's items. The hierarchy is explicit: each item is
+// one advice unit - its bold lead sentence with its smaller
+// supporting lines tightly attached beneath it (the supporting text
+// always belongs to the title above it, never to the item below) -
+// and the units are separated by hairline dividers, so a day with
+// several items reads as distinct pieces of advice rather than one
+// blended block.
+function AdvisoryDayCardView({ card }: { card: AdvisoryDayCard }) {
+  return (
+    <div className={GLASS_BLOCK}>
+      <span
+        className={`w-fit whitespace-nowrap px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${GLASS_CHIP}`}
+      >
+        {card.chip}
+      </span>
+      <div className="divide-y divide-white/15">
+        {card.items.map((item, index) => (
+          <div key={index} className="py-2 first:pt-0 last:pb-0">
+            <AdvisoryItemView item={item} />
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 // Daily AI advisory at the top of the page: the structured decision
-// payload (the only insight format) rendered as data-driven glass rows
-// - the action, guidance, advisory and outlook rows - with the warning
-// as the amber exception and the notes zone as the card's fine print.
+// payload (the only insight format) rendered as data-driven glass day
+// cards - every piece of advice for one day grouped inside its single
+// card, in calendar order - with the warning as the amber exception
+// and the notes zone as the card's fine print.
 // The data is owned by the page, which refreshes it on the 5-minute
 // panel cycle; the "insight from" stamp and the force-refresh control
 // live in the page header. While the server regenerates the insight,
@@ -86,12 +126,39 @@ function SummaryInsight({
   insight: SummaryInsightData | null
   loading: boolean
 }) {
+  // The first-paint placeholder: the same blue-gradient AI panel in
+  // skeleton form - header plus two glass rows - so the kiosk shows
+  // the panel's shape immediately. This covers the one moment the
+  // panel can lag behind the widgets: the first /api/summary call
+  // also waits for the server to generate the insight. Refreshes
+  // keep the previous content visible instead, so this only ever
+  // renders before the first insight arrives.
   if (loading) {
     return (
       <div
-        className="h-full min-h-36 animate-pulse rounded-lg bg-muted"
-        aria-hidden="true"
-      />
+        className="h-full min-h-36 animate-pulse rounded-lg border bg-gradient-to-br from-blue-800/50 to-sky-600/50 p-4 text-white shadow-card dark:from-blue-950/50 dark:to-sky-800/50"
+        aria-busy="true"
+      >
+        <p className="flex items-center gap-2 font-heading text-lg font-medium text-muted-foreground">
+          <Sparkles className="size-6" aria-hidden="true" />
+          AI advisory
+          <span
+            className={`ml-auto flex items-center gap-1 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${GLASS_CHIP}`}
+          >
+            <Sparkles className="size-3" aria-hidden="true" />
+            Reasoning
+          </span>
+        </p>
+        <div className="mt-2 space-y-2">
+          {[0, 1].map((index) => (
+            <div key={index} className={GLASS_BLOCK}>
+              <div className="h-3.5 w-20 rounded-full bg-white/30" />
+              <div className="h-3 w-3/4 rounded-full bg-white/30" />
+              <div className="h-3 w-1/2 rounded-full bg-white/30" />
+            </div>
+          ))}
+        </div>
+      </div>
     )
   }
 
@@ -109,9 +176,9 @@ function SummaryInsight({
     // sky-600 pair (blue-950 to sky-800 at night) every AI box uses.
     // It stretches to the full grid row so it matches the height of
     // the stats column next to it.
-    <div className="h-full rounded-lg bg-gradient-to-br from-blue-800 to-sky-600 p-4 text-white shadow-card dark:from-blue-950 dark:to-sky-800">
-      <p className="flex items-center gap-2 font-heading text-base font-medium">
-        <Sparkles className="size-5" aria-hidden="true" />
+    <div className="h-full rounded-lg border bg-gradient-to-br from-blue-800/50 to-sky-600/50 p-4 text-white shadow-card dark:from-blue-950/50 dark:to-sky-800/50">
+      <p className="flex items-center gap-2 font-heading text-lg font-medium text-muted-foreground">
+        <Sparkles className="size-6" aria-hidden="true" />
         AI advisory
         {insight.state === "reasoning" && (
           // The regeneration signal: the chip pulses while the server
@@ -128,15 +195,9 @@ function SummaryInsight({
         )}
       </p>
       <div className="mt-2 space-y-2">
-        {content.rows.map((row, index) => (
-          <AdvisoryRowView key={`${row.chip}-${index}`} row={row} />
+        {content.cards.map((card, index) => (
+          <AdvisoryDayCardView key={`${card.chip}-${index}`} card={card} />
         ))}
-        {content.largestOpportunity && (
-          <p className="text-xs text-white">
-            largest opportunity today: {content.largestOpportunity.label},{" "}
-            {humanEur(content.largestOpportunity.savingEur)}
-          </p>
-        )}
         {insight.warning && (
           // The amber exception: only something that needs attention.
           <p className="flex items-start gap-2 text-sm font-medium leading-relaxed text-amber-300 dark:text-amber-200">
@@ -148,23 +209,17 @@ function SummaryInsight({
           </p>
         )}
       </div>
-      {(content.showOutlookNote || content.contextNote !== null) && (
+      {content.showOutlookNote && (
         // The notes zone: the card's fine print below a hairline
-        // separator between the rows and the notes. The horizon note
-        // and the context note (quiet days only) share one muted
-        // register - plain text, no glass, no chips.
+        // separator between the day cards and the note - plain text,
+        // no glass, no chips. The quiet-day context explaining lives
+        // on the Today card instead, in the same register as the
+        // other advice.
         <div className="mt-2 space-y-1.5 border-t border-white/15 pt-2">
-          {content.showOutlookNote && (
-            <p className={NOTE_TEXT}>
-              Beyond tomorrow, grid prices are not yet published; there
-              the solar forecast is the deciding signal.
-            </p>
-          )}
-          {content.contextNote !== null && (
-            <p className={NOTE_TEXT}>
-              {humanizeEurInText(content.contextNote)}
-            </p>
-          )}
+          <p className={NOTE_TEXT}>
+            Beyond tomorrow, grid prices are not yet published; there
+            the solar forecast is the deciding signal.
+          </p>
         </div>
       )}
     </div>

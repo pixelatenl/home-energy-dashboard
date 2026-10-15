@@ -1,8 +1,7 @@
-import { Info } from "lucide-react"
+import { House, Info, PlugZap, Recycle } from "lucide-react"
 import type { ReactNode } from "react"
 import {
   Card,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
@@ -50,7 +49,7 @@ const GLYPH_PROPS = {
   strokeWidth: 1.75,
   strokeLinecap: "round",
   strokeLinejoin: "round",
-  className: "size-4 shrink-0",
+  className: "size-5 shrink-0",
   "aria-hidden": true,
 } as const
 
@@ -109,7 +108,7 @@ function GridScoreSparkline({ curve }: { curve: GridScoreHour[] }) {
     <svg
       viewBox={`0 0 ${width} ${height}`}
       preserveAspectRatio="none"
-      className="mt-1.5 h-7 w-full text-emerald-600/70 dark:text-emerald-400/60"
+      className="mt-1.5 h-7 w-full text-emerald-400/70"
       role="img"
       aria-label="Grid renewables share over the next hours"
     >
@@ -161,13 +160,15 @@ interface MetricSpec {
 
 const PLACEHOLDER = "\u2014"
 
-// The four headline metric cards in a 2x2 grid: Grid (net of import and
-// export, with the in/out split as its sub-caption), Home usage,
-// Self-consumption and the live Energy sustainability stat (the grid
-// renewables share with its curve). Today's value is large, this week
-// and this month smaller beneath (the sustainability stat has no
-// history). Missing data shows a muted dash. The battery lives in the
-// live energy flow widget and the battery panel.
+// The four headline metric cards: Grid (net of import and export, with
+// the in/out split as its sub-caption), Home usage, Self-consumption
+// and the live Energy sustainability stat (the grid renewables share
+// with its curve). Today's value is large, this week and this month
+// smaller beneath (the sustainability stat has no history). Missing
+// data shows a muted dash. The battery lives in the live energy flow
+// widget and the battery panel. Rendered as a bare fragment: TodayPage
+// lays the cards into one shared top-widget grid (with the solar
+// forecast and battery status), so every widget shares one height.
 function StatsHeader() {
   const { summary, status } = useSummary()
 
@@ -197,9 +198,10 @@ function StatsHeader() {
   const metrics: MetricSpec[] = summary
     ? [
         {
-          label: "Grid",
+          label: "From the grid",
           tooltip:
             "Grid electricity today: imported minus exported; negative means net export",
+          icon: <PlugZap className="size-5 shrink-0" aria-hidden="true" />,
           today: formatKwh(netKwh(summary.today)),
           sub: `${summary.today.import_kwh.toFixed(1)} in, ${summary.today.export_kwh.toFixed(1)} out`,
           week: formatKwh(netKwh(summary.week)),
@@ -210,6 +212,7 @@ function StatsHeader() {
           tooltip:
             "Household consumption: from grid + direct solar use - export - energy stored in the battery",
           hint: summary.pv_available ? undefined : "excl. solar",
+          icon: <House className="size-5 shrink-0" aria-hidden="true" />,
           today: formatKwh(summary.today.total_usage_kwh),
           week: formatKwh(summary.week.total_usage_kwh),
           month: formatKwh(summary.month.total_usage_kwh),
@@ -217,6 +220,7 @@ function StatsHeader() {
         {
           label: "Self-consumption",
           tooltip: "Share of today's solar production that was used on site",
+          icon: <Recycle className="size-5 shrink-0" aria-hidden="true" />,
           today: formatPct(summary.today.self_consumption_pct),
           week: formatPct(summary.week.self_consumption_pct),
           month: formatPct(summary.month.self_consumption_pct),
@@ -229,6 +233,7 @@ function StatsHeader() {
           label: "Grid",
           tooltip:
             "Grid electricity today: imported minus exported; negative means net export",
+          icon: <PlugZap className="size-5 shrink-0" aria-hidden="true" />,
           today: PLACEHOLDER,
           week: PLACEHOLDER,
           month: PLACEHOLDER,
@@ -238,6 +243,7 @@ function StatsHeader() {
           label: "Home usage",
           tooltip:
             "Household consumption: from grid + direct solar use - export - energy stored in the battery",
+          icon: <House className="size-5 shrink-0" aria-hidden="true" />,
           today: PLACEHOLDER,
           week: PLACEHOLDER,
           month: PLACEHOLDER,
@@ -245,6 +251,7 @@ function StatsHeader() {
         {
           label: "Self-consumption",
           tooltip: "Share of today's solar production that was used on site",
+          icon: <Recycle className="size-5 shrink-0" aria-hidden="true" />,
           today: PLACEHOLDER,
           week: PLACEHOLDER,
           month: PLACEHOLDER,
@@ -254,7 +261,7 @@ function StatsHeader() {
       ]
 
   return (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+    <>
       {status === "loading"
         ? metrics.map((metric) => (
             <div
@@ -269,11 +276,7 @@ function StatsHeader() {
                 <InfoTooltip text={metric.tooltip} />
               </div>
               <CardHeader>
-                <CardDescription
-                  className={
-                    metric.icon ? "flex items-center gap-1.5" : undefined
-                  }
-                >
+                <CardTitle className="flex items-center gap-1.5 text-muted-foreground">
                   {metric.icon}
                   {metric.label}
                   {metric.hint && (
@@ -285,9 +288,9 @@ function StatsHeader() {
                       ({metric.hint})
                     </span>
                   )}
-                </CardDescription>
+                </CardTitle>
                 <CardTitle
-                  className={`text-3xl tabular-nums ${
+                  className={`text-[2.5rem] tabular-nums ${
                     metric.muted ? "text-muted-foreground" : ""
                   }`}
                 >
@@ -310,7 +313,7 @@ function StatsHeader() {
               </CardHeader>
             </Card>
           ))}
-    </div>
+    </>
   )
 }
 

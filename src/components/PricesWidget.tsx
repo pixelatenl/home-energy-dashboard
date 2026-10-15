@@ -392,8 +392,8 @@ function PricesWidget() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Euro className="size-5" aria-hidden="true" />
+        <CardTitle className="flex items-center gap-2 text-muted-foreground">
+          <Euro className="size-6" aria-hidden="true" />
           Electricity prices
         </CardTitle>
         <CardDescription>

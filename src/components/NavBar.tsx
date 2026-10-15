@@ -22,7 +22,7 @@ function NavBar() {
   return (
     <nav
       aria-label="Main navigation"
-      className="inline-flex rounded-lg border bg-muted p-1"
+      className="inline-flex rounded-md border p-1"
     >
       {TABS.map((tab) => (
         <NavLink
@@ -32,7 +32,7 @@ function NavBar() {
           className={({ isActive }) =>
             `rounded-md px-4 py-1.5 text-sm font-medium transition focus-visible:outline-none ${
               isActive
-                ? "bg-background text-foreground shadow-card"
+                ? "bg-white/20 text-foreground shadow-card backdrop-blur-sm"
                 : "text-muted-foreground hover:text-foreground"
             }`
           }

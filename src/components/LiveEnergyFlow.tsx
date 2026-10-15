@@ -19,6 +19,7 @@ import {
 import {
   SOLAR_COLOR,
   DISCHARGING_COLOR,
+  GRID_IMPORT_COLOR,
   DIAGRAM_WIDTH,
   DIAGRAM_HEIGHT,
   HOME_LABEL,
@@ -36,69 +37,99 @@ import { amsterdamNow, todayInAmsterdam, localHourFractionOf } from "@/lib/time"
 // --- Render pass over the diagram data (see src/lib/flowDiagram.ts) ---
 // The home node is the house illustration from src/house.png, embedded
 // inside the SVG so the flow lines share its coordinate space; solar,
-// grid and battery stay circular nodes around it. Every connection uses
-// the shared base line styles; only the animated dash overlays carry
-// per-flow colors.
+// grid and battery stay rounded gradient tiles around it. Every
+// connection renders from the shared base line styles; only the
+// traveling pulses carry per-flow colors.
 
-// Line weight grows with power: 2 px at the flow threshold up to 8 px at
-// high power; the sqrt scaling keeps midrange values readable.
+// Line weight grows with power: 1.5 px at the flow threshold up to 4.5
+// px at high power; the sqrt scaling keeps midrange values readable.
 const FLOW_THRESHOLD_W = 25
 const FLOW_WIDTH_MAX_W = 4000
 
 function flowWidth(value: number): number {
   const t = Math.min(Math.max(value / FLOW_WIDTH_MAX_W, 0), 1)
-  return 2 + 6 * Math.sqrt(t)
+  return 1.5 + 3 * Math.sqrt(t)
 }
 
-// Dash cycle length in seconds: near-still at the threshold, about one
-// second at high power.
+// Crossing time in seconds: how long the traveling pulse takes to run
+// one line - about six seconds near the threshold, under a second at
+// high power.
 function flowDuration(value: number): number {
-  const seconds = 12 * Math.sqrt(FLOW_THRESHOLD_W / value)
-  return Math.min(12, Math.max(1, seconds))
+  const seconds = 6 * Math.sqrt(FLOW_THRESHOLD_W / value)
+  return Math.min(6, Math.max(0.7, seconds))
 }
 
 // --- Shared flow line style (the only definition; every connection
 // renders from it) ---
-// Every line, active and inactive, rides the same translucent white
-// band: on the light day sky the band lifts the dashes' contrast; on
-// the dark night sky it glows softly. The dashes on top are the only
-// difference: colored and animated for active flows (solar yellow,
-// grid deep indigo, battery green), soft light gray and static for
-// inactive ones. No borders anywhere.
+// Every active line shares one base style - the grid line's deep
+// indigo at reduced opacity under the translucent white band - so the
+// flow identity lives entirely in the colored traveling pulse on top
+// (solar orange, grid indigo, battery state color). Inactive lines
+// are a single 1px white line at half opacity - present, but visually
+// quiet. No borders anywhere.
 const FLOW_BAND = "rgba(255, 255, 255, 0.5)"
-const INACTIVE_DASH = "#b6c2d4"
+const ACTIVE_BASE_COLOR = GRID_IMPORT_COLOR
+const INACTIVE_LINE = "rgba(255, 255, 255, 0.3)"
 
-// One flow line: the shared white band, then the dashes - animated and
-// in the flow's color when it carries power, static light gray when it
-// does not. Dash speed and line weight scale with power; the dashes
-// travel along the path direction, so a reversed flow travels its own
-// line the other way.
+// The traveling pulse, in path-length fractions: every pulse path
+// carries pathLength="1", so these are the same for every edge. The
+// comet covers 15 percent of its line, then a gap of one full line
+// length before it re-enters at the start - one pulse per line,
+// wrapping seamlessly every 1.15 path lengths, the cycle the
+// flow-pulse keyframe in index.css matches.
+const PULSE_FRACTION = 0.15
+const PULSE_CYCLE = 1 + PULSE_FRACTION
+
+// One flow line: the shared base line with the flow's bright pulse
+// traveling along it when it carries power, a thin translucent white
+// line when it does not. Pulse speed and line weight scale with power;
+// the pulse travels along the path direction, so a reversed flow runs
+// its own line the other way.
 function FlowLine({ edge }: { edge: FlowEdge }) {
   const active = edge.active && edge.value !== null
   const value = edge.value ?? 0
-  const width = active ? flowWidth(value) : 2
+  const width = flowWidth(value)
+  if (!active) {
+    return (
+      <path
+        d={edge.path}
+        fill="none"
+        stroke={INACTIVE_LINE}
+        strokeWidth={1}
+        vectorEffect="non-scaling-stroke"
+        strokeLinecap="round"
+      />
+    )
+  }
   return (
     <g className="flow-shadow">
       <path
         d={edge.path}
         fill="none"
         stroke={FLOW_BAND}
-        strokeWidth={width + 3}
+        strokeWidth={width + 2}
         strokeLinecap="round"
       />
       <path
         d={edge.path}
         fill="none"
-        stroke={active ? edge.color : INACTIVE_DASH}
+        stroke={ACTIVE_BASE_COLOR}
+        strokeOpacity={0.45}
         strokeWidth={width}
         strokeLinecap="round"
-        strokeDasharray="10 14"
-        className={active ? "flow-dash" : undefined}
-        style={
-          active
-            ? { animationDuration: `${flowDuration(value).toFixed(2)}s` }
-            : undefined
-        }
+      />
+      <path
+        d={edge.path}
+        pathLength={1}
+        fill="none"
+        stroke={edge.color}
+        strokeWidth={width + 1}
+        strokeLinecap="round"
+        strokeDasharray={`${PULSE_FRACTION} 1`}
+        className="flow-pulse"
+        style={{
+          animationDuration: `${(flowDuration(value) * PULSE_CYCLE).toFixed(2)}s`,
+        }}
       />
     </g>
   )
@@ -124,24 +155,35 @@ const NODE_TEXT = "clamp(0.7rem, 2.5vw, 0.9rem)"
 const NODE_SUB_TEXT = "clamp(0.65rem, 2.3vw, 0.8rem)"
 const NODE_ICON = "clamp(0.9rem, 3vw, 1.15rem)"
 
-// A node: a circle with a solid card fill carrying its icon, name and
-// live figure, so it reads on any sky.
+// A node: a rounded-corner square tile carrying its icon, name and
+// live figure over its flow's gradient (see the palette in
+// flowDiagram.ts) - deep behind the icon, vivid under the figures -
+// with white text, a soft white border and the card's shadow for lift.
+// The battery tile follows its state color; the home node stays the
+// house illustration and never renders here.
 function FlowNodeView({ node }: { node: FlowNode }) {
   const Icon = node.icon
+  const gradient = node.gradient ?? null
   return (
     <div
-      className="absolute flex -translate-x-1/2 -translate-y-1/2 flex-col items-center justify-center gap-0.5 rounded-full border-2 bg-card text-center"
+      className={`absolute flex aspect-square -translate-x-1/2 -translate-y-1/2 flex-col items-center justify-center gap-0.5 rounded-xl border text-center shadow-card ${
+        gradient ? "border-white/25 text-white" : "bg-background"
+      }`}
       style={{
         left: `${(node.x / DIAGRAM_WIDTH) * 100}%`,
         top: `${(node.y / DIAGRAM_HEIGHT) * 100}%`,
         width: `${((NODE_RADIUS * 2) / DIAGRAM_WIDTH) * 100}%`,
-        aspectRatio: "1",
-        borderColor: node.borderColor ?? "var(--color-border)",
+        background: gradient ?? undefined,
+        borderColor: gradient ? undefined : node.borderColor ?? "var(--color-border)",
       }}
     >
       <Icon
         className="shrink-0"
-        style={{ width: NODE_ICON, height: NODE_ICON, color: node.iconColor }}
+        style={{
+          width: NODE_ICON,
+          height: NODE_ICON,
+          color: gradient ? "#ffffff" : node.iconColor,
+        }}
         aria-hidden="true"
       />
       <span
@@ -158,7 +200,7 @@ function FlowNodeView({ node }: { node: FlowNode }) {
       </span>
       {node.sub && (
         <span
-          className="whitespace-nowrap leading-none tabular-nums opacity-70"
+          className="whitespace-nowrap leading-none tabular-nums opacity-80"
           style={{ fontSize: NODE_SUB_TEXT }}
         >
           {node.sub}
@@ -173,25 +215,25 @@ function FlowNodeView({ node }: { node: FlowNode }) {
 function HomeLabel({ node }: { node: FlowNode }) {
   return (
     <div
-      className="absolute -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded-full border border-border/70 bg-card px-2.5 py-1 font-semibold leading-none tabular-nums shadow-sm"
+      className="absolute -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded-full border border-border/70 bg-background px-2.5 py-1 font-semibold leading-none tabular-nums shadow-sm"
       style={{
         left: `${(HOME_LABEL.x / DIAGRAM_WIDTH) * 100}%`,
         top: `${(HOME_LABEL.y / DIAGRAM_HEIGHT) * 100}%`,
         fontSize: NODE_TEXT,
       }}
     >
-      <span className="mr-1 font-medium opacity-70">{node.name}</span>
+      <span className="mr-1 font-medium">{node.name}</span>
       {node.figure}
     </div>
   )
 }
 
-// An edge value chip: the watt figure in a solid pill with dark text on
-// the card background, so the number reads on any sky gradient.
+// An edge value chip: the watt figure in a solid pill on the
+// background surface, so the number reads on any sky gradient.
 function FlowEdgeChip({ edge }: { edge: FlowEdge }) {
   return (
     <div
-      className="absolute -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded-full border border-border/70 bg-card px-2 py-0.5 font-semibold leading-none tabular-nums text-card-foreground shadow-sm"
+      className="absolute -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded-full border border-border/70 bg-background px-2 py-0.5 font-semibold leading-none tabular-nums text-card-foreground shadow-sm"
       style={{
         left: `${(edge.chip.x / DIAGRAM_WIDTH) * 100}%`,
         top: `${(edge.chip.y / DIAGRAM_HEIGHT) * 100}%`,
@@ -275,7 +317,7 @@ function StackedNodes({ data }: { data: FlowData }) {
         return (
           <div
             key={node.key}
-            className="flex items-center gap-2.5 rounded-lg border-2 bg-card p-2.5"
+            className="flex items-center gap-2.5 rounded-lg border-2 bg-background p-2.5"
             style={{ borderColor: node.borderColor ?? "var(--color-border)" }}
           >
             <Icon
@@ -521,8 +563,9 @@ function TodayBatteryChart({
 
 // The live energy flow widget: the flow snapshot from /api/summary drawn
 // around the house illustration - Solar top left, Battery bottom left,
-// Grid bottom right - with orthogonal animated dashed flow lines and
-// value chips at the stat card value size, over a time-of-day sky.
+// Grid bottom right - with rounded flow lines carrying traveling
+// pulses and value chips at the stat card value size, over a
+// time-of-day sky.
 function LiveEnergyFlow() {
   const { summary, status } = useSummary()
   const { phase, sunProgress, onDark } = useTimeOfDayPhase()
@@ -574,27 +617,25 @@ function LiveEnergyFlow() {
     <Card className="relative">
       {/* The sky fills the card behind everything; content sits above it. */}
       <TimeOfDayBackground phase={phase} sunProgress={sunProgress} />
+      {/* Bottom scrim: darkens the lower area so the compact today
+          charts pop against it (on the day sky especially). It sits
+          above the sky and below the content, fading up. */}
+      <div
+        className="pointer-events-none absolute inset-x-0 bottom-0 h-56 bg-gradient-to-t from-[#020211]/70 to-transparent"
+        aria-hidden="true"
+      />
       <CardHeader className="relative z-10">
-        {/* Same translucent white panel as the AI summary action rows,
-            letting the sky gradient show through; the border matches
-            their glass rim. */}
-        <div className="rounded-xl border border-white/20 bg-white/25 p-4">
-          <CardTitle
-            className={`flex items-center gap-2 transition-colors duration-[2500ms] ${
-              onDark ? "text-white" : ""
-            }`}
-          >
-            <Zap className="size-5" aria-hidden="true" />
-            Live energy flow
-          </CardTitle>
-          <CardDescription
-            className={`transition-colors duration-[2500ms] ${
-              onDark ? "text-white/75" : "text-foreground"
-            }`}
-          >
-            Power between solar, home, grid and battery
-          </CardDescription>
-        </div>
+        <CardTitle className="flex items-center gap-2 text-muted-foreground">
+          <Zap className="size-6" aria-hidden="true" />
+          Live energy flow
+        </CardTitle>
+        <CardDescription
+          className={`transition-colors duration-[2500ms] ${
+            onDark ? "text-white" : "text-foreground"
+          }`}
+        >
+          Power between solar, home, grid and battery
+        </CardDescription>
       </CardHeader>
       <CardContent className="relative z-10 flex justify-center">
         {/* The diamond diagram on wider screens; a simplified stacked
