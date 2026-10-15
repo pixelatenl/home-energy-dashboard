@@ -224,6 +224,14 @@ export function deniesCheapestWindow(text) {
   );
 }
 
+// A NaN or Infinity in an answer is always a model artifact: the
+// context never carries one (JSON renders missing numbers as null),
+// so an answer containing either is invalid - the model tried to
+// state a value the context does not have.
+export function containsNonFiniteText(text) {
+  return /\b(?:nan|infinity)\b/i.test(text ?? "");
+}
+
 // Deterministic price insight from the merged data, served when the
 // model output fails validation or the upstream is unavailable: plain
 // today-only facts, never contradicting the price widget.
@@ -652,7 +660,10 @@ export async function getWeatherContext(daily, todayHourly, options = {}) {
     WEATHER_SYSTEM_PROMPT,
     cacheKey,
     buildWeatherContext(daily, todayHourly),
-    options
+    {
+      ...options,
+      validate: (text) => !containsNonFiniteText(text),
+    }
   );
 }
 
@@ -665,13 +676,17 @@ export async function getPriceContext(priceParts, solarDaily, options = {}) {
   const tomorrowAvailable = priceParts?.tomorrowPricesAvailable === true;
   const cheapestExists = priceParts?.cheapestBlock != null;
   // The answer is checked against what the context actually contains:
-  // while tomorrow is unpublished, tomorrow price claims are rejected;
-  // while today's cheapest window exists, denials of it are rejected.
-  // A failure is re-asked once with the corrective instruction; a second
-  // failure degrades to the deterministic fallback below, never
-  // contradicting the widget.
-  const validators = [];
-  const correctionNotes = [];
+  // NaN or Infinity is always rejected (the model inventing a value
+  // the context does not have); while tomorrow is unpublished,
+  // tomorrow price claims are rejected; while today's cheapest window
+  // exists, denials of it are rejected. A failure is re-asked once
+  // with the corrective instruction; a second failure degrades to the
+  // deterministic fallback below, never contradicting the widget.
+  const validators = [(text) => !containsNonFiniteText(text)];
+  const correctionNotes = [
+    "Never print NaN or Infinity; omit any value that is missing " +
+      "from the context instead of inventing it.",
+  ];
   if (!tomorrowAvailable) {
     validators.push((text) => !claimsTomorrowPrices(text));
     correctionNotes.push(
@@ -750,7 +765,10 @@ export function buildBatteryContext(summary, weatherDaily, priceParts) {
 export async function getBatteryContext(summary, weatherDaily, priceParts, options = {}) {
   const context = buildBatteryContext(summary, weatherDaily, priceParts);
   const cacheKey = hashString(JSON.stringify(context));
-  return getInsight("battery", BATTERY_SYSTEM_PROMPT, cacheKey, context, options);
+  return getInsight("battery", BATTERY_SYSTEM_PROMPT, cacheKey, context, {
+    ...options,
+    validate: (text) => !containsNonFiniteText(text),
+  });
 }
 
 // Context signature for the daily insight: the live values bucketed so
@@ -1217,6 +1235,10 @@ export async function getSummaryInsight(snapshot, options = {}) {
       [noFormulas(validated), "arithmetic expression in output"],
       [plainLanguageOk(validated), "internal vocabulary in output"],
       [priceHonestyOk(validated), "price claimed for an unpublished day"],
+      [
+        !textsOf(validated).some((text) => containsNonFiniteText(text)),
+        "NaN or Infinity in output",
+      ],
     ];
     const integrityFailure = (validated) =>
       integrityChecks(validated).find(([ok]) => !ok)?.[1] ?? null;

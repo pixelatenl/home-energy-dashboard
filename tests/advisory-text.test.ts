@@ -104,6 +104,17 @@ describe("money format", () => {
       "saved 0.40 and 0.0035 respectively"
     );
   });
+
+  it("renders a NaN token as an honest dash, never as a price", () => {
+    assert.equal(
+      humanizeEurInText("an average of \u20ACNaN per kWh"),
+      "an average of \u2014 per kWh"
+    );
+    assert.equal(
+      humanizeEurInText("the lowest at NaN"),
+      "the lowest at \u2014"
+    );
+  });
 });
 
 describe("the dynamic reservation", () => {

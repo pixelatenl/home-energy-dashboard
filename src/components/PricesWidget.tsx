@@ -502,7 +502,11 @@ function PricesWidget() {
                     scale={sharedScale}
                   />
                 ) : (
-                  <div className="flex h-16 items-center justify-center rounded-lg bg-card text-sm text-muted-foreground">
+                  // The unpublished state keeps the chart's exact
+                  // height - the bars (h-36) plus the hour label row
+                  // (mt-1 h-4) - so the panel never changes height the
+                  // moment tomorrow's prices drop in.
+                  <div className="flex h-41 items-center justify-center rounded-lg bg-card text-sm text-muted-foreground">
                     Tomorrow&rsquo;s prices are not published yet
                   </div>
                 )}

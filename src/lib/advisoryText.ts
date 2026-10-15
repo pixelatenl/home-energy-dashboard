@@ -45,6 +45,11 @@ export function humanizeEurInText(text: string): string {
       const two = Number(amount).toFixed(2)
       return Number(two) !== 0 ? two : amount
     })
+    // The last display guard: a NaN token - a model artifact for a
+    // value the context never carried; the server-side validators
+    // reject it - renders as an honest dash, never as €NaN.
+    .replace(/(?:\u20ac|EUR)\s?NaN/gi, "\u2014")
+    .replace(/\bNaN\b/gi, "\u2014")
 }
 
 // Human precision for the card's numbers: at most three decimals,

@@ -342,12 +342,13 @@ function StackedNodes({ data }: { data: FlowData }) {
 }
 
 // --- Compact today charts under the flow diagram ---
-// Two deliberately low, muted charts so the animated flow lines stay the
-// hero's visual lead: actual hourly solar production against the
-// forecast curve, and hourly battery charge versus discharge. Both ride
-// the same full-day time axis with a shared now marker, on the glass
-// treatment the hero header uses. No axes or gridlines; the flow above
-// carries the emotional weight, these carry the numbers.
+// Two muted charts so the animated flow lines stay the hero's visual
+// lead: actual hourly solar production against the forecast curve, and
+// hourly battery charge versus discharge. Each leads with its day
+// total so the curves read with their value, and both ride the same
+// full-day time axis with a shared now marker, on the glass treatment
+// the hero header uses. No axes or gridlines; the flow above carries
+// the emotional weight, these carry the numbers.
 
 // Shared chart geometry: a wide, short viewBox stretched to the block
 // width; strokes use non-scaling so the stretch does not distort them.
@@ -371,24 +372,97 @@ function todayChartLabelClass(onDark: boolean): string {
   }`
 }
 
+// The headline figure's styling: the same on-dark transition, one
+// weight up from the label - the chart's value, stated in numbers.
+function todayChartValueClass(onDark: boolean): string {
+  return `mt-1 text-sm font-semibold tabular-nums transition-colors duration-[2500ms] ${
+    onDark ? "text-white" : ""
+  }`
+}
+
 // The now marker's x position for the full-day 0-24h axis.
 function nowXOf(nowFraction: number): number {
   return (Math.min(Math.max(nowFraction, 0), 24) / 24) * TODAY_CHART_W
 }
 
-// "Solar today": actual hourly production (from the summary's
-// pv_flow_hourly) as a stepped subtle area in the flow's solar yellow,
-// with the hourly forecast curve (estimated_pv_wh) as a dashed overlay.
+// Legend styling: the fine-print register with the same on-dark
+// transition as the labels.
+function todayChartLegendClass(onDark: boolean): string {
+  return `mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs transition-colors duration-[2500ms] ${
+    onDark ? "text-white" : "text-muted-foreground"
+  }`
+}
+
+// The solar chart's legend: the produced line's yellow against the
+// dashed forecast curve's white, with matching swatch shapes.
+function TodaySolarLegend({ onDark }: { onDark: boolean }) {
+  return (
+    <div className={todayChartLegendClass(onDark)}>
+      <span className="flex items-center gap-1.5">
+        <span
+          className="h-2 w-4 rounded-sm"
+          style={{ backgroundColor: SOLAR_COLOR }}
+        />
+        Produced
+      </span>
+      <span className="flex items-center gap-1.5">
+        <svg width="16" height="8" aria-hidden="true">
+          <line
+            x1="1"
+            y1="4"
+            x2="15"
+            y2="4"
+            stroke="white"
+            strokeOpacity={0.55}
+            strokeWidth="1.5"
+            strokeDasharray="4 4"
+          />
+        </svg>
+        Forecast
+      </span>
+    </div>
+  )
+}
+
+// The battery chart's legend: the bar pair's green and amber.
+function TodayBatteryLegend({ onDark }: { onDark: boolean }) {
+  return (
+    <div className={todayChartLegendClass(onDark)}>
+      <span className="flex items-center gap-1.5">
+        <span
+          className="h-2 w-4 rounded-sm"
+          style={{ backgroundColor: CHARGING_COLOR, opacity: 0.7 }}
+        />
+        Charged
+      </span>
+      <span className="flex items-center gap-1.5">
+        <span
+          className="h-2 w-4 rounded-sm"
+          style={{ backgroundColor: DISCHARGING_COLOR, opacity: 0.7 }}
+        />
+        Discharged
+      </span>
+    </div>
+  )
+}
+
+// "Solar today": the day's production total as the headline figure,
+// then the actual hourly production (from the summary's
+// pv_flow_hourly) as a stepped subtle area in the flow's solar
+// yellow, with the hourly forecast curve (estimated_pv_wh) as a
+// dashed overlay.
 function TodaySolarChart({
   actual,
   forecast,
   onDark,
   nowFraction,
+  producedKwh,
 }: {
   actual: PvFlowHour[]
   forecast: WeatherHour[] | null
   onDark: boolean
   nowFraction: number
+  producedKwh: number | null
 }) {
   // kWh per local hour, both series on the same scale.
   const actualByHour = new Array<number>(24).fill(0)
@@ -425,16 +499,21 @@ function TodaySolarChart({
   return (
     <div className={TODAY_CHART_PANEL}>
       <p className={todayChartLabelClass(onDark)}>Solar today</p>
+      <p className={todayChartValueClass(onDark)}>
+        {producedKwh === null ? "\u2014" : `${producedKwh.toFixed(1)} kWh`}{" "}
+        produced
+      </p>
       {!hasActual && !hasForecast ? (
         <p className="mt-2 text-xs text-muted-foreground">No data yet</p>
       ) : (
-        <svg
-          viewBox={`0 0 ${TODAY_CHART_W} ${TODAY_CHART_H}`}
-          preserveAspectRatio="none"
-          className="mt-1 h-12 w-full"
-          role="img"
-          aria-label="Hourly solar production today against the forecast"
-        >
+        <>
+          <svg
+            viewBox={`0 0 ${TODAY_CHART_W} ${TODAY_CHART_H}`}
+            preserveAspectRatio="none"
+            className="mt-1 h-20 w-full"
+            role="img"
+            aria-label="Hourly solar production today against the forecast"
+          >
           <polygon points={areaPoints} fill={SOLAR_COLOR} opacity={0.25} />
           <polyline
             points={stepPoints.join(" ")}
@@ -464,23 +543,30 @@ function TodaySolarChart({
             strokeDasharray="2 3"
             vectorEffect="non-scaling-stroke"
           />
-        </svg>
+          </svg>
+          <TodaySolarLegend onDark={onDark} />
+        </>
       )}
     </div>
   )
 }
 
-// "Battery today": hourly charge as green bars up from the zero line and
-// discharge as amber bars down, in the battery panel's colors, on the
-// same full-day axis.
+// "Battery today": the day's charged and discharged totals as the
+// headline figure, then the hourly charge as green bars up from the
+// zero line and discharge as amber bars down, in the battery panel's
+// colors, on the same full-day axis.
 function TodayBatteryChart({
   flow,
   onDark,
   nowFraction,
+  chargedKwh,
+  dischargedKwh,
 }: {
   flow: BatteryFlowHour[]
   onDark: boolean
   nowFraction: number
+  chargedKwh: number | null
+  dischargedKwh: number | null
 }) {
   const zeroY = TODAY_CHART_H / 2
   const slot = TODAY_CHART_W / 24
@@ -502,16 +588,25 @@ function TodayBatteryChart({
   return (
     <div className={TODAY_CHART_PANEL}>
       <p className={todayChartLabelClass(onDark)}>Battery today</p>
+      <p className={todayChartValueClass(onDark)}>
+        {chargedKwh === null ? "\u2014" : `${chargedKwh.toFixed(1)} kWh`}{" "}
+        charged &middot;{" "}
+        {dischargedKwh === null
+          ? "\u2014"
+          : `${dischargedKwh.toFixed(1)} kWh`}{" "}
+        discharged
+      </p>
       {!hasFlow ? (
         <p className="mt-2 text-xs text-muted-foreground">No data yet</p>
       ) : (
-        <svg
-          viewBox={`0 0 ${TODAY_CHART_W} ${TODAY_CHART_H}`}
-          preserveAspectRatio="none"
-          className="mt-1 h-12 w-full"
-          role="img"
-          aria-label="Hourly battery charge and discharge today"
-        >
+        <>
+          <svg
+            viewBox={`0 0 ${TODAY_CHART_W} ${TODAY_CHART_H}`}
+            preserveAspectRatio="none"
+            className="mt-1 h-20 w-full"
+            role="img"
+            aria-label="Hourly battery charge and discharge today"
+          >
           <line
             x1={0}
             x2={TODAY_CHART_W}
@@ -555,7 +650,9 @@ function TodayBatteryChart({
             strokeDasharray="2 3"
             vectorEffect="non-scaling-stroke"
           />
-        </svg>
+          </svg>
+          <TodayBatteryLegend onDark={onDark} />
+        </>
       )}
     </div>
   )
@@ -649,7 +746,8 @@ function LiveEnergyFlow() {
       </CardContent>
       {/* The compact today charts ride beneath the flow, subordinate to
           the animated flow lines: they stack on narrow widths and sit
-          side by side from the sm breakpoint up. */}
+          side by side from the sm breakpoint up. Each leads with its
+          day total so the curves carry numbers, not just shape. */}
       <CardContent className="relative z-10">
         <div className="grid gap-3 sm:grid-cols-2">
           <TodaySolarChart
@@ -657,11 +755,14 @@ function LiveEnergyFlow() {
             forecast={forecastHours}
             onDark={onDark}
             nowFraction={now.fraction}
+            producedKwh={summary?.today.pv_kwh ?? null}
           />
           <TodayBatteryChart
             flow={summary?.battery_flow_hourly ?? []}
             onDark={onDark}
             nowFraction={now.fraction}
+            chargedKwh={summary?.today.battery_charged_kwh ?? null}
+            dischargedKwh={summary?.today.battery_discharged_kwh ?? null}
           />
         </div>
       </CardContent>
