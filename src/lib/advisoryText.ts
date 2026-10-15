@@ -7,26 +7,28 @@ import type { SummaryInsight } from "@/lib/api"
 // here. Every wording rule lives in this one place.
 
 // Money format for every monetary value in the card: the euro sign
-// always, and the pinned precision rule - two decimals whenever the
-// value is nonzero at two decimals (0.0629 renders as 0.06); more
-// decimals only when two would show 0.00 (0.0035 stays 0.0035), so a
-// nonzero value never renders as 0.00. Full precision stays in the
-// payload and the debug view; display strings are composed at
-// display time from the raw values.
+// always, flush against the amount (the app's one price display
+// convention - €0.36, like the prices widget), and the pinned
+// precision rule - two decimals whenever the value is nonzero at two
+// decimals (0.0629 renders as €0.06); more decimals only when two
+// would show 0.00 (0.0035 stays €0.0035), so a nonzero value never
+// renders as €0.00. Full precision stays in the payload and the
+// debug view; display strings are composed at display time from the
+// raw values.
 export function humanEur(value: number): string {
   if (value === 0) {
-    return "\u20AC 0.00"
+    return "\u20AC0.00"
   }
   const two = value.toFixed(2)
   if (Number(two) !== 0) {
-    return `\u20AC ${two}`
+    return `\u20AC${two}`
   }
-  return `\u20AC ${value.toFixed(4).replace(/0+$/, "").replace(/\.$/, "")}`
+  return `\u20AC${value.toFixed(4).replace(/0+$/, "").replace(/\.$/, "")}`
 }
 
 // Humanizes the euro amounts inside a precomposed payload string (the
 // candidate basis, the model's notes): "EUR 0.2671/kWh" becomes
-// "\u20AC 0.27/kWh", and any four-decimal number - debug precision -
+// "\u20AC0.27/kWh", and any four-decimal number - debug precision -
 // clamps to two. Non-monetary numbers are untouched.
 export function humanizeEurInText(text: string): string {
   return text

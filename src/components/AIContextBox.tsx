@@ -1,4 +1,5 @@
 import type { AiContextValue } from "@/lib/useAiContext"
+import { humanizeEurInText } from "@/lib/advisoryText"
 import { Sparkles } from "lucide-react"
 
 // AI insight box shared by the weather, prices and battery widgets: a
@@ -39,7 +40,12 @@ function AIContextBox({ text, error, loading }: AiContextValue) {
         <Sparkles className="size-3.5" aria-hidden="true" />
         AI insight
       </span>
-      <p className="mt-2 text-sm leading-relaxed">{text}</p>
+      <p className="mt-2 text-sm leading-relaxed">
+        {/* The server may compose prices at payload precision (EUR
+            0.267/kWh); every displayed price reads at two decimals,
+            the human register. */}
+        {humanizeEurInText(text)}
+      </p>
       {limitReached && (
         <p className="mt-2 text-xs text-white">
           Live updates paused (daily AI limit reached); the insight may lag

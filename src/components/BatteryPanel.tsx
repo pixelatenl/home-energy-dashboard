@@ -45,7 +45,7 @@ export function BatteryGauge({ soc, color }: { soc: number | null; color: string
   return (
     <div className="flex items-center">
       <div
-        className="relative flex h-14 w-28 items-center overflow-hidden rounded-md border-2 p-1"
+        className="relative flex h-20 w-40 items-center overflow-hidden rounded-md border-2 p-1.5"
         style={{ borderColor: color }}
         role="img"
         aria-label={`Battery at ${soc ?? "unknown"} percent`}
@@ -54,12 +54,12 @@ export function BatteryGauge({ soc, color }: { soc: number | null; color: string
           className="h-full rounded-[5px] transition-[width]"
           style={{ width: `${pct}%`, backgroundColor: color }}
         />
-        <span className="absolute inset-0 flex items-center justify-center text-lg font-semibold tabular-nums text-foreground">
+        <span className="absolute inset-0 flex items-center justify-center text-2xl font-semibold tabular-nums text-foreground">
           {soc === null ? "\u2014" : `${soc}%`}
         </span>
       </div>
       <div
-        className="ml-0.5 h-5 w-1.5 rounded-r-sm border-2 border-l-0"
+        className="ml-0.5 h-7 w-2.5 rounded-r-sm border-2 border-l-0"
         style={{ borderColor: color }}
         aria-hidden="true"
       />

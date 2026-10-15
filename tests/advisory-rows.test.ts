@@ -187,7 +187,7 @@ describe("the row builder: the chronological timeline", () => {
     assert.equal(today.items.length, 1);
     const action = today.items[0];
     assert.equal(action.sentence, "Run your large appliances between 13:00 and 16:00 for the best price left today");
-    assert.equal(action.valueChip, "\u20AC 0.11 potential savings");
+    assert.equal(action.valueChip, "\u20AC0.11 potential savings");
   });
 
   it("groups the defer advice and the noteworthy fact into one day card", () => {
@@ -220,7 +220,7 @@ describe("the row builder: the chronological timeline", () => {
     const sunday = content.cards.filter((card) => card.chip === "Sun");
     assert.equal(sunday.length, 1);
     assert.equal(sunday[0].items.length, 2);
-    assert.equal(sunday[0].items[0].valueChip, "\u20AC 0.06/kWh cheaper");
+    assert.equal(sunday[0].items[0].valueChip, "\u20AC0.06/kWh cheaper");
     assert.equal(sunday[0].items[1].valueChip, null);
   });
 
@@ -259,6 +259,6 @@ describe("the row builder: the chronological timeline", () => {
       item.sentence.startsWith("Largest opportunity today:")
     );
     assert.ok(largest);
-    assert.equal(largest.valueChip, "\u20AC -0.05");
+    assert.equal(largest.valueChip, "\u20AC-0.05");
   });
 });

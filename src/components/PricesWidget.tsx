@@ -38,8 +38,10 @@ interface PreparedHour {
   ts: string
 }
 
+// Every price reads at two decimals - the human register; the exact
+// per-kWh values stay in the payload and the debug views.
 function formatPrice(value: number | null): string {
-  return value === null ? "\u2014" : `€${value.toFixed(3)}`
+  return value === null ? "\u2014" : `€${value.toFixed(2)}`
 }
 
 // Green (cheap) through neutral to red (expensive), relative to the day's
@@ -210,10 +212,14 @@ function PriceBars({
               vectorEffect="non-scaling-stroke"
             />
           )}
+          {/* The Now marker pins to the current hour's bar center -
+              "now" in the hourly price context is that hour's price,
+              so it jumps one bar at each hour boundary instead of
+              gliding through it. */}
           {nowFraction !== null && (
             <line
-              x1={(nowFraction / 24) * width}
-              x2={(nowFraction / 24) * width}
+              x1={((Math.floor(nowFraction) + 0.5) / 24) * width}
+              x2={((Math.floor(nowFraction) + 0.5) / 24) * width}
               y1={top}
               y2={height}
               stroke="currentColor"
@@ -226,7 +232,9 @@ function PriceBars({
         {nowFraction !== null && (
           <span
             className="pointer-events-none absolute top-0 -translate-x-1/2 text-[10px] text-muted-foreground"
-            style={{ left: `${(nowFraction / 24) * 100}%` }}
+            style={{
+              left: `${((Math.floor(nowFraction) + 0.5) / 24) * 100}%`,
+            }}
           >
             Now
           </span>
@@ -238,7 +246,7 @@ function PriceBars({
               left: `${((block.startHour + block.endHour) / 2 / 24) * 100}%`,
             }}
           >
-            cheapest remaining window
+            Cheapest remaining window
           </span>
         )}
         {hoveredHour && (
@@ -249,16 +257,15 @@ function PriceBars({
           />
         )}
       </div>
+      {/* The hour labels sit centered under their bars - the label 12
+          beneath the 12th bar, the price of that hour - not at the
+          slot boundary where the hour starts. */}
       <div className="relative mt-1 h-4 text-xs text-muted-foreground tabular-nums">
         {[0, 3, 6, 9, 12, 15, 18, 21].map((hour) => (
           <span
             key={hour}
-            className={
-              hour === 0
-                ? "absolute top-0"
-                : "absolute top-0 -translate-x-1/2"
-            }
-            style={{ left: `${(hour / 24) * 100}%` }}
+            className="absolute top-0 -translate-x-1/2"
+            style={{ left: `${((hour + 0.5) / 24) * 100}%` }}
           >
             {String(hour).padStart(2, "0")}
           </span>

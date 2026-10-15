@@ -219,7 +219,7 @@ function SolarForecastWidget() {
         </CardHeader>
         <CardContent className="space-y-3">
           <p className="text-sm text-muted-foreground">No forecast data</p>
-          <p className="font-heading text-3xl font-medium tabular-nums">
+          <p className="font-heading text-[2.5rem] font-medium tabular-nums">
             {formatKwh(producedKwh)}
           </p>
           <p className="text-xs text-muted-foreground">
@@ -267,7 +267,7 @@ function SolarForecastWidget() {
         </CardAction>
       </CardHeader>
       <CardContent className="space-y-3">
-        <p className="font-heading text-3xl font-medium tabular-nums">
+        <p className="font-heading text-[2.5rem] font-medium tabular-nums">
           {daily.estimated_kwh.toFixed(1)} kWh
         </p>
         {/* Actual production so far toward the full-day expectation:

@@ -60,30 +60,30 @@ const countToday = (text: string) =>
 
 describe("money format", () => {
   it("always carries the euro sign", () => {
-    assert.equal(humanEur(0.16), "\u20AC 0.16");
-    assert.equal(humanEur(12), "\u20AC 12.00");
+    assert.equal(humanEur(0.16), "\u20AC0.16");
+    assert.equal(humanEur(12), "\u20AC12.00");
   });
 
   it("uses two decimals at 0.10 and above", () => {
-    assert.equal(humanEur(0.1), "\u20AC 0.10");
-    assert.equal(humanEur(12.3456), "\u20AC 12.35");
+    assert.equal(humanEur(0.1), "\u20AC0.10");
+    assert.equal(humanEur(12.3456), "\u20AC12.35");
   });
 
   it("renders two decimals whenever the value is nonzero at two decimals", () => {
-    assert.equal(humanEur(0.0629), "\u20AC 0.06");
-    assert.equal(humanEur(0.06), "\u20AC 0.06");
-    assert.equal(humanEur(1.07), "\u20AC 1.07");
-    assert.equal(humanEur(0.09), "\u20AC 0.09");
+    assert.equal(humanEur(0.0629), "\u20AC0.06");
+    assert.equal(humanEur(0.06), "\u20AC0.06");
+    assert.equal(humanEur(1.07), "\u20AC1.07");
+    assert.equal(humanEur(0.09), "\u20AC0.09");
   });
 
   it("keeps tiny nonzero values visible when two decimals would show 0.00", () => {
-    assert.equal(humanEur(0.0035), "\u20AC 0.0035");
-    assert.equal(humanEur(0.004), "\u20AC 0.004");
-    assert.notEqual(humanEur(0.0035), "\u20AC 0.00");
+    assert.equal(humanEur(0.0035), "\u20AC0.0035");
+    assert.equal(humanEur(0.004), "\u20AC0.004");
+    assert.notEqual(humanEur(0.0035), "\u20AC0.00");
   });
 
   it("renders zero honestly", () => {
-    assert.equal(humanEur(0), "\u20AC 0.00");
+    assert.equal(humanEur(0), "\u20AC0.00");
   });
 
   it("formats numbers at human precision", () => {
@@ -95,7 +95,7 @@ describe("money format", () => {
   it("humanizes euro amounts inside precomposed strings", () => {
     assert.equal(
       humanizeEurInText("EUR 0.2671/kWh against EUR 0.2574/kWh"),
-      "\u20AC 0.27/kWh against \u20AC 0.26/kWh"
+      "\u20AC0.27/kWh against \u20AC0.26/kWh"
     );
     // Bare four-decimal numbers clamp only when two decimals stay
     // nonzero; a tiny value keeps its exact digits.
@@ -204,7 +204,7 @@ describe("the advisory sentence", () => {
     );
     assert.equal(
       sentence,
-      "If you can wait: tomorrow's grid price averages \u20AC 0.24 against \u20AC 0.36 today"
+      "If you can wait: tomorrow's grid price averages \u20AC0.24 against \u20AC0.36 today"
     );
   });
 
@@ -253,7 +253,7 @@ describe("the advisory sentence", () => {
     // when the imperative would be allowed.
     assert.equal(
       sentence,
-      "Tomorrow: \u20AC 0.36 average grid price with 11.99 kWh of your own solar expected"
+      "Tomorrow: \u20AC0.36 average grid price with 11.99 kWh of your own solar expected"
     );
     assert.equal(sentence.includes("If you can wait"), false)
   });
@@ -267,14 +267,14 @@ describe("the advisory sentence", () => {
       }),
       false
     );
-    assert.equal(sentence, "Tomorrow: \u20AC 0.24 average grid price")
+    assert.equal(sentence, "Tomorrow: \u20AC0.24 average grid price")
   });
 });
 
 describe("the Phase E today modes", () => {
   it("composes the peak-avoidance line with hour and price", () => {
     const guidance = makeGuidance({ peak_ahead: true });
-    assert.equal(peakAvoidanceLine(guidance), "Avoid the 08:00 peak at \u20AC 0.51");
+    assert.equal(peakAvoidanceLine(guidance), "Avoid the 08:00 peak at \u20AC0.51");
   });
 
   it("states the evening situation as high against the day's live average", () => {
@@ -286,7 +286,7 @@ describe("the Phase E today modes", () => {
     });
     assert.equal(
       eveningPriceSentence(guidance),
-      "This evening's prices stay high, \u20AC 0.41 average until midnight"
+      "This evening's prices stay high, \u20AC0.41 average until midnight"
     );
   });
 
@@ -299,14 +299,14 @@ describe("the Phase E today modes", () => {
     });
     assert.equal(
       eveningPriceSentence(guidance),
-      "This evening's prices average \u20AC 0.30 until midnight"
+      "This evening's prices average \u20AC0.30 until midnight"
     );
   });
 
   it("composes the evening delay advice with tomorrow's window average", () => {
     assert.equal(
       delaySentence({ tomorrow_window_average_eur: 0.19 }),
-      "Delay your large appliances until tomorrow's cheaper hours, from \u20AC 0.19 average"
+      "Delay your large appliances until tomorrow's cheaper hours, from \u20AC0.19 average"
     );
   });
 });
