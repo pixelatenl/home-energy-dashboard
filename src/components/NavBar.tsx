@@ -6,7 +6,6 @@ const TABS = [
   { to: "/usage", label: "Usage", end: false },
   { to: "/solar", label: "Solar", end: false },
   { to: "/battery", label: "Battery", end: false },
-  { to: "/appliances", label: "Appliances", end: false },
   { to: "/heat", label: "Heat", end: false },
 ]
 

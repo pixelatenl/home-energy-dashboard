@@ -38,10 +38,11 @@ export function humanizeEurInText(text: string): string {
     .replace(/([\d.]+)\s?(?:EUR|\u20ac)/g, (_, amount) =>
       humanEur(Number(amount))
     )
-    // Bare four-decimal numbers follow the same pinned rule: clamp
-    // to two decimals only when two decimals stay nonzero, so a tiny
-    // value never renders as 0.00.
-    .replace(/\b(\d+\.\d{4})\b/g, (_, amount) => {
+    // Bare long-decimal numbers (three digits or more - payload
+    // precision the model copied verbatim) follow the same pinned
+    // rule: clamp to two decimals only when two decimals stay
+    // nonzero, so a tiny value never renders as 0.00.
+    .replace(/\b(\d+\.\d{3,})\b/g, (_, amount) => {
       const two = Number(amount).toFixed(2)
       return Number(two) !== 0 ? two : amount
     })

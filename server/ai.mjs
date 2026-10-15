@@ -151,28 +151,40 @@ export function buildWeatherContext(daily, hourlyResult) {
 // only when tomorrow's prices are genuinely published (rows in the
 // merged curve); otherwise the context carries the explicit unpublished
 // note instead, so the model is never offered a tomorrow slot to fill.
+// Every money value is rounded to display precision - two decimals -
+// so the model can only ever quote prices the way humans read them;
+// the payload outside the AI context keeps its full precision.
 export function buildPriceContext(priceParts, solarDaily) {
   const priceData = priceParts?.priceData ?? null;
   const cheapestBlock = priceParts?.cheapestBlock ?? null;
   const tomorrowAvailable = priceParts?.tomorrowPricesAvailable === true;
+  const eur = (value) =>
+    value === null || value === undefined
+      ? null
+      : Math.round(value * 100) / 100;
   const context = {
-    current_price: priceData?.current_price ?? null,
-    today: priceData?.today ?? null,
+    current_price: eur(priceData?.current_price ?? null),
+    today: {
+      average: eur(priceData?.today?.average ?? null),
+      min: eur(priceData?.today?.min ?? null),
+      max: eur(priceData?.today?.max ?? null),
+      peak_hour: priceData?.today?.peak_hour ?? null,
+    },
     cheapest_window: cheapestBlock
       ? {
           day: localDateKey(new Date(cheapestBlock.start)),
           start_hour: localHourLabel(cheapestBlock.start),
           end_hour: localHourLabel(cheapestBlock.end),
-          average_price: cheapestBlock.average_price,
+          average_price: eur(cheapestBlock.average_price),
         }
       : null,
   };
   if (tomorrowAvailable) {
     context.tomorrow = {
       available: true,
-      average: priceData?.tomorrow?.average ?? null,
-      min: priceData?.tomorrow?.min ?? null,
-      max: priceData?.tomorrow?.max ?? null,
+      average: eur(priceData?.tomorrow?.average ?? null),
+      min: eur(priceData?.tomorrow?.min ?? null),
+      max: eur(priceData?.tomorrow?.max ?? null),
     };
   } else {
     context.tomorrow_note =

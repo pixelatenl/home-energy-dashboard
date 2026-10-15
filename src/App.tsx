@@ -1,5 +1,10 @@
-import { BrowserRouter, Route, Routes } from "react-router-dom"
-import AppliancesPage from "@/components/AppliancesPage"
+import {
+  BrowserRouter,
+  Navigate,
+  Route,
+  Routes,
+  useLocation,
+} from "react-router-dom"
 import ArchitecturePage from "@/components/ArchitecturePage"
 import BatteryPage from "@/components/BatteryPage"
 import DebugPage from "@/components/DebugPage"
@@ -14,6 +19,15 @@ import { ModeProvider } from "@/lib/mode"
 // the content area and the footer. ModeProvider carries the global
 // Energy/Cost mode, URL-persisted so it survives navigation and
 // reload.
+
+// The appliances spoke lives on the Usage page now: any saved
+// /appliances URL lands there, the history entry replaced, with the
+// mode param carried over.
+function AppliancesRedirect() {
+  const { search } = useLocation()
+  return <Navigate to={`/usage${search}`} replace />
+}
+
 function App() {
   return (
     <BrowserRouter>
@@ -24,7 +38,7 @@ function App() {
             <Route path="/usage" element={<UsagePage />} />
             <Route path="/solar" element={<SolarPage />} />
             <Route path="/battery" element={<BatteryPage />} />
-            <Route path="/appliances" element={<AppliancesPage />} />
+            <Route path="/appliances" element={<AppliancesRedirect />} />
             <Route path="/heat" element={<HeatPage />} />
             <Route path="/debug" element={<DebugPage />} />
             <Route path="/architecture" element={<ArchitecturePage />} />
