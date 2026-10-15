@@ -95,7 +95,7 @@ function PeriodNavigator() {
       {/* Arrows and segments form one navigation unit: they sit
           directly adjacent and wrap to the next row together. */}
       <div className="flex items-center gap-1">
-        <div className="inline-flex rounded-lg border bg-muted p-1">
+        <div className="inline-flex rounded-md border p-1">
           <button
             type="button"
             aria-label="Previous period"
@@ -114,7 +114,7 @@ function PeriodNavigator() {
             <ChevronRight className="size-3.5" aria-hidden="true" />
           </button>
         </div>
-        <div className="inline-flex rounded-lg border bg-muted p-1">
+        <div className="inline-flex rounded-md border p-1">
           {KINDS.map(({ value, label }) => (
             <button
               key={value}
@@ -123,7 +123,7 @@ function PeriodNavigator() {
               onClick={() => setKind(value)}
               className={`${segmentBase} ${
                 period.kind === value
-                  ? "bg-background text-foreground shadow-card"
+                  ? "bg-white/20 text-foreground shadow-card backdrop-blur-sm"
                   : "text-muted-foreground hover:text-foreground"
               }`}
             >

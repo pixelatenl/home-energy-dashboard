@@ -3,18 +3,20 @@ import { Link } from "react-router-dom"
 import NavBar from "@/components/NavBar"
 import { useModeSearch } from "@/lib/mode"
 
-// Shared page shell: the page header (title, subtitle, actions), the
-// tab row with a per-page toolbar on its right, the content area and
-// the site footer with the secondary links. Pages pass their content
-// as children; the header and toolbar slots keep each page's own
-// controls (insight pill, range selector, debug buttons).
+// Shared page shell: the page header (logo, title, subtitle, actions),
+// the tab row with a per-page toolbar on its right, the content area
+// and the site footer with the secondary links. Pages pass their
+// content as children; the header and toolbar slots keep each page's
+// own controls (insight pill, range selector, debug buttons).
 function PageLayout({
+  logo,
   title,
   subtitle,
   actions,
   toolbar,
   children,
 }: {
+  logo?: ReactNode
   title: ReactNode
   subtitle?: ReactNode
   actions?: ReactNode
@@ -25,17 +27,20 @@ function PageLayout({
   // navigation through the utility pages too.
   const modeSearch = useModeSearch()
   return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b">
-        <div className="flex flex-wrap items-center justify-between gap-4 px-6 py-4">
-          <div>
-            <h1 className="text-xl font-semibold">{title}</h1>
-            {subtitle != null &&
-              (typeof subtitle === "string" ? (
-                <p className="text-sm text-muted-foreground">{subtitle}</p>
-              ) : (
-                subtitle
-              ))}
+    <div className="min-h-screen">
+      <header>
+        <div className="flex flex-wrap items-center justify-between gap-4 px-3 py-4 sm:px-6">
+          <div className="flex items-center gap-3">
+            {logo != null && logo}
+            <div>
+              <h1 className="text-xl font-semibold">{title}</h1>
+              {subtitle != null &&
+                (typeof subtitle === "string" ? (
+                  <p className="text-sm text-muted-foreground">{subtitle}</p>
+                ) : (
+                  subtitle
+                ))}
+            </div>
           </div>
           {actions != null && (
             <div className="flex items-center gap-3">{actions}</div>
@@ -43,17 +48,17 @@ function PageLayout({
         </div>
       </header>
 
-      <div className="px-6 pt-4">
+      <div className="px-3 pt-4 sm:px-6">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <NavBar />
           {toolbar != null && toolbar}
         </div>
       </div>
 
-      <main className="space-y-6 px-6 pt-4 pb-8">{children}</main>
+      <main className="space-y-6 px-3 pt-4 pb-8 sm:px-6">{children}</main>
 
       <footer className="border-t">
-        <div className="flex flex-wrap items-center gap-4 px-6 py-4 text-sm">
+        <div className="flex flex-wrap items-center gap-4 px-3 py-4 text-sm sm:px-6">
           <Link
             to={`/architecture${modeSearch}`}
             className="text-muted-foreground transition-colors hover:text-foreground"

@@ -12,7 +12,7 @@ const SEGMENTS: { value: Mode; label: string; icon: typeof Zap }[] = [
 function ModeToggle() {
   const { mode, setMode } = useMode()
   return (
-    <div className="inline-flex rounded-lg border bg-muted p-1">
+    <div className="inline-flex rounded-md border p-1">
       {SEGMENTS.map(({ value, label, icon: Icon }) => (
         <button
           key={value}
@@ -21,7 +21,7 @@ function ModeToggle() {
           onClick={() => setMode(value)}
           className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition focus-visible:outline-none ${
             mode === value
-              ? "bg-background text-foreground shadow-card"
+              ? "bg-white/20 text-foreground shadow-card backdrop-blur-sm"
               : "text-muted-foreground hover:text-foreground"
           }`}
         >

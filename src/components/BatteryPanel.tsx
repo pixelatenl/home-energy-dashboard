@@ -14,12 +14,12 @@ import {
   type BatterySocPoint,
 } from "@/lib/api"
 import { useAiContext } from "@/lib/useAiContext"
+import { BATTERY_IDLE_COLOR } from "@/lib/flowDiagram"
 import { useSummary } from "@/lib/useSummary"
 import { localHourFractionOf, localHourOf } from "@/lib/time"
 
 const CHARGING_COLOR = "hsl(140 70% 45%)"
 const DISCHARGING_COLOR = "#f59e0b"
-const NEUTRAL_COLOR = "#94a3b8"
 // The SOC line uses the violet accent.
 const SOC_COLOR = "#8b5cf6"
 
@@ -45,13 +45,13 @@ export function BatteryGauge({ soc, color }: { soc: number | null; color: string
   return (
     <div className="flex items-center">
       <div
-        className="relative flex h-14 w-28 items-center overflow-hidden rounded-lg border-2 p-1"
+        className="relative flex h-14 w-28 items-center overflow-hidden rounded-md border-2 p-1"
         style={{ borderColor: color }}
         role="img"
         aria-label={`Battery at ${soc ?? "unknown"} percent`}
       >
         <div
-          className="h-full rounded-[4px] transition-[width]"
+          className="h-full rounded-[5px] transition-[width]"
           style={{ width: `${pct}%`, backgroundColor: color }}
         />
         <span className="absolute inset-0 flex items-center justify-center text-lg font-semibold tabular-nums text-foreground">
@@ -329,7 +329,7 @@ function BatteryPanel() {
       ? CHARGING_COLOR
       : state === "discharging"
         ? DISCHARGING_COLOR
-        : NEUTRAL_COLOR
+        : BATTERY_IDLE_COLOR
   const statePowerText =
     state === "charging" && powerW !== null
       ? `Charging +${powerW} W`
@@ -352,8 +352,8 @@ function BatteryPanel() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <BatteryCharging className="size-5" aria-hidden="true" />
+        <CardTitle className="flex items-center gap-2 text-muted-foreground">
+          <BatteryCharging className="size-6" aria-hidden="true" />
           Battery
         </CardTitle>
         <CardDescription>

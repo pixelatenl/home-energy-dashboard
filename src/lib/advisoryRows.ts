@@ -42,19 +42,18 @@ function advisoryNumbers(avg: number | null, solar: number | null): string {
     .join(" \u00b7 ")
 }
 
-// One row of the advisory card: the eyebrow day chip and the
-// right-side value chip, the lead sentence, its supporting lines and
-// optional trailing furniture. The muted flag marks guidance-class
-// rows - the foundation for the composition modes; the current
-// renderer applies one style to every row.
+// One piece of advice inside a day card: the lead sentence with its
+// right-side value chip, its supporting lines and optional trailing
+// furniture. The muted flag marks guidance-class items - the
+// foundation for the composition modes; the current renderer applies
+// one style to every item.
 export type AdvisorySupport = { text: string; tabular?: boolean }
 
 export type AdvisoryFooter =
   | { kind: "confidence"; label: string }
   | { kind: "note"; text: string }
 
-export type AdvisoryCardRow = {
-  chip: string
+export type AdvisoryItem = {
   valueChip: string | null
   sentence: string
   supporting: AdvisorySupport[]
@@ -62,31 +61,36 @@ export type AdvisoryCardRow = {
   footer?: AdvisoryFooter
 }
 
+// One day of the advisory timeline: every piece of advice for that
+// day grouped inside a single card, the day chip carrying the
+// timeline position.
+export type AdvisoryDayCard = {
+  chip: string
+  items: AdvisoryItem[]
+}
+
 export type AdvisoryContent = {
-  rows: AdvisoryCardRow[]
-  // The largest belowThreshold candidate in the no-opportunity state,
-  // rendered as the single muted fact line with its true amount.
-  largestOpportunity: { label: string; savingEur: number } | null
+  // The day cards in calendar order: today, tomorrow, then the
+  // noteworthy days beyond, one card per day - never two cards for
+  // the same day.
+  cards: AdvisoryDayCard[]
   // The horizon note renders exactly when the outlook extends beyond
   // tomorrow.
   showOutlookNote: boolean
-  // The context note is quiet-day explaining: it renders only when no
-  // real action exists. On action days the basis line does the
-  // explaining and the note is omitted entirely.
-  contextNote: string | null
 }
 
 // Builds the advisory card's content for the current insight: the
-// ordered row list, the largest-opportunity line and the note flags.
-// Every wording rule lives here or in the sentence helpers it calls -
-// the renderer stays generic. The composition reads as a timeline:
-// TODAY (the action row, the card's only imperative when a real
-// action exists, then the guidance row - suppressed when the action
-// already carries its window, the plain timing fact otherwise),
-// TOMORROW (the advisory row), then the noteworthy days beyond
-// tomorrow in calendar order, earliest first. The best-day
-// designation travels with whichever day earns it, wherever it falls
-// in the order.
+// day cards in calendar order. Every wording rule lives here or in
+// the sentence helpers it calls - the renderer stays generic. The
+// composition reads as a timeline of days: the TODAY card (the action
+// item, the card's only imperative when a real action exists, then
+// the guidance item - suppressed when the action already carries its
+// window - and, on quiet days, the largest-opportunity and context
+// items), then one card per future day - tomorrow's advisory and the
+// noteworthy best and poor days merged into a single card when they
+// name the same day, ordered by calendar date, earliest first. The
+// best-day designation travels with whichever day earns it, wherever
+// it falls in the order.
 export function buildAdvisoryContent(
   insight: SummaryInsight,
 ): AdvisoryContent {
@@ -147,11 +151,10 @@ export function buildAdvisoryContent(
     actionCandidate.window.replace(" today", "") ===
       guidanceLine.window.replace(" today", "")
 
-  const rows: AdvisoryCardRow[] = []
+  const todayItems: AdvisoryItem[] = []
 
   if (showActionRow && primary !== null) {
-    rows.push({
-      chip: "Today",
+    todayItems.push({
       valueChip: !noOpportunity
         ? `${humanEur(primary.saving_eur)} potential savings`
         : null,
@@ -180,19 +183,17 @@ export function buildAdvisoryContent(
       ? [{ text: peakAvoidanceLine(guidanceLine), tabular: true }]
       : []
     if (actionCommand) {
-      // With a real action the guidance row carries no command - the
+      // With a real action the guidance item carries no command - the
       // plain timing fact, labeled by whether the window is the day's
       // absolute cheapest.
-      rows.push({
-        chip: "Today",
+      todayItems.push({
         valueChip,
         sentence: `${windowIsDayCheapest(guidanceLine.window, guidanceLine) ? "Cheapest window today: " : "Cheapest remaining window: "}${guidanceLine.window.replace(" today", "")} at ${humanEur(guidanceLine.cheapest_window_average_eur)} average`,
         supporting: [],
         muted: true,
       })
     } else if (guidanceLine.practical) {
-      rows.push({
-        chip: "Today",
+      todayItems.push({
         valueChip,
         sentence: todayImperative(guidanceLine.window, guidanceLine),
         supporting: [
@@ -216,8 +217,7 @@ export function buildAdvisoryContent(
     } else if (guidanceLine.day_cheapest_passed) {
       // The day's cheap hours are actually gone: the plain fact in
       // muted planning register.
-      rows.push({
-        chip: "Today",
+      todayItems.push({
         valueChip,
         sentence: `Today's cheap hours (${guidanceLine.day_cheapest_window}) have passed`,
         supporting: [],
@@ -226,10 +226,9 @@ export function buildAdvisoryContent(
     } else {
       // The evening price situation (Phase E): the day's cheap hours
       // are still ahead tonight but the pivot blocks the command, so
-      // the row states the evening honestly against live references.
-      // The number lives in the sentence; no value chip.
-      rows.push({
-        chip: "Today",
+      // the item states the evening honestly against live
+      // references. The number lives in the sentence; no value chip.
+      todayItems.push({
         valueChip: null,
         sentence: eveningPriceSentence(guidanceLine),
         supporting: [],
@@ -238,11 +237,40 @@ export function buildAdvisoryContent(
     }
   }
 
+  // The quiet-day summary as full items on the Today card, in the
+  // same glass register as the rest - not loose fine print below the
+  // rows: the largest below-threshold candidate with its true amount,
+  // then the context explaining.
+  if (noOpportunity) {
+    if (largestBelowThreshold !== null) {
+      todayItems.push({
+        valueChip: humanEur(largestBelowThreshold.saving_eur),
+        sentence: `Largest opportunity today: ${largestBelowThreshold.label}`,
+        supporting: [],
+        muted: true,
+      })
+    }
+    const contextNote = insight.context_note ?? null
+    if (contextNote !== null) {
+      todayItems.push({
+        valueChip: null,
+        sentence: humanizeEurInText(contextNote),
+        supporting: [],
+        muted: true,
+      })
+    }
+  }
+
+  // The future days' advice, keyed by calendar date so every piece of
+  // advice naming one day lands in that day's single card.
+  type PendingDay = { key: string; chip: string; item: AdvisoryItem }
+  const pending: PendingDay[] = []
+
   if (advisory) {
-    // The TOMORROW row always renders when the advisory object exists
-    // (forecast data present); the prefer chip appears only when a
-    // trigger fired. The informational row carries no command: no
-    // recommendation, no imperative.
+    // The TOMORROW item always renders when the advisory object
+    // exists (forecast data present); the prefer chip appears only
+    // when a trigger fired. The informational item carries no
+    // command: no recommendation, no imperative.
     const informational = advisory.triggered === false
     const unpublished = advisory.tomorrow_average_eur === null
     // The hedged low-solar mode (Phase E): the forecast fact is the
@@ -250,10 +278,11 @@ export function buildAdvisoryContent(
     // the horizon note is subsumed by it.
     const lowSolar =
       informational && unpublished && advisory.tomorrow_low_solar
-    // Today commands through the action row or the guidance row; the
-    // evening delay advice (Phase E) is the imperative transferred to
-    // tomorrow, so it renders only when today offers nothing - and a
-    // defer trigger (an even better later day) supersedes it.
+    // Today commands through the action item or the guidance item;
+    // the evening delay advice (Phase E) is the imperative
+    // transferred to tomorrow, so it renders only when today offers
+    // nothing - and a defer trigger (an even better later day)
+    // supersedes it.
     const todayCommands =
       actionCommand || (guidanceLine !== null && guidanceLine.practical)
     const delayData =
@@ -268,11 +297,7 @@ export function buildAdvisoryContent(
           : `tomorrow ${advisoryNumbers(advisory.tomorrow_average_eur, advisory.tomorrow_solar_kwh)} vs today ${advisoryNumbers(advisory.compare_average_eur, advisory.compare_solar_kwh)}`,
       tabular: true,
     }
-    rows.push({
-      chip:
-        informational || delayFires
-          ? "Tomorrow"
-          : advisoryDayChipLabel(advisory),
+    const advisoryItem: AdvisoryItem = {
       valueChip: delayFires
         ? "prefer tomorrow"
         : informational
@@ -290,9 +315,9 @@ export function buildAdvisoryContent(
             !actionCommand &&
               (!guidanceLine || guidanceLine.practical === false),
           ),
-      // The numbers line is price-led; on the solar-alone row it
+      // The numbers line is price-led; on the solar-alone card it
       // would duplicate the sentence, so it renders only when the
-      // prices are published. The low-solar row carries the hedged
+      // prices are published. The low-solar card carries the hedged
       // market note plus the numbers grounding it.
       supporting: lowSolar
         ? [{ text: LOW_SOLAR_MARKET_NOTE }, numbersLine]
@@ -304,23 +329,40 @@ export function buildAdvisoryContent(
         advisory.horizon_note && !lowSolar
           ? { kind: "note", text: advisory.horizon_note }
           : undefined,
-    })
+    }
+    const advisoryChip =
+      informational || delayFires ? "Tomorrow" : advisoryDayChipLabel(advisory)
+    if (advisoryChip === "Today") {
+      // A defer comparing against today belongs to the Today card.
+      todayItems.push(advisoryItem)
+    } else {
+      // Tomorrow sorts first among the dated days; a defer's
+      // comparison day takes its own calendar date from the outlook.
+      pending.push({
+        key:
+          advisoryChip === "Tomorrow"
+            ? "0 tomorrow"
+            : ((outlook?.days ?? []).find(
+                (day) => day.weekday === advisory.compare_day,
+              )?.date ?? `~${advisoryChip}`),
+        chip: advisoryChip,
+        item: advisoryItem,
+      })
+    }
   }
 
-  // The noteworthy days beyond tomorrow render in calendar order:
-  // Friday before Sunday, always the earliest upcoming day first.
-  // The best-day designation stays attached to whichever day earns
-  // it, wherever it falls in the order.
-  const noteworthy: { date: string; row: AdvisoryCardRow }[] = []
+  // The noteworthy days beyond tomorrow: the best-day designation and
+  // the poor day keep their own dates, merging into the same card as
+  // any defer advice naming the same day.
   if (showBestDay && bestDay) {
-    noteworthy.push({
-      date: bestDay.date,
-      row: {
-        chip: bestDay.weekday_short,
+    pending.push({
+      key: bestDay.date,
+      chip: bestDay.weekday_short,
+      item: {
         valueChip: null,
-        // The qualitative solar language grounded in the score (Phase
-        // E): "looks good" only when the score backs it; otherwise the
-        // honest "week's best" without the overclaim.
+        // The qualitative solar language grounded in the score
+        // (Phase E): "looks good" only when the score backs it;
+        // otherwise the honest "week's best" without the overclaim.
         sentence:
           bestDay.solar_score !== null
             ? bestDay.good
@@ -333,10 +375,10 @@ export function buildAdvisoryContent(
     })
   }
   if (poorDay) {
-    noteworthy.push({
-      date: poorDay.date,
-      row: {
-        chip: poorDay.weekday_short,
+    pending.push({
+      key: poorDay.date,
+      chip: poorDay.weekday_short,
+      item: {
         valueChip: null,
         sentence: `${poorDay.weekday} brings ${poorDay.condition} and ${
           bestDay !== null &&
@@ -350,21 +392,27 @@ export function buildAdvisoryContent(
       },
     })
   }
-  noteworthy.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0))
-  for (const entry of noteworthy) {
-    rows.push(entry.row)
+
+  // Calendar order, earliest first - never by prominence: the sort
+  // keys are dates (tomorrow's "0 tomorrow" prefix sorts before the
+  // ISO dates; a defer day missing from the outlook sorts last), and
+  // consecutive entries naming the same day merge into one card.
+  pending.sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0))
+  const cards: AdvisoryDayCard[] = []
+  if (todayItems.length > 0) {
+    cards.push({ chip: "Today", items: todayItems })
+  }
+  let current: AdvisoryDayCard | null = null
+  for (const entry of pending) {
+    if (current === null || current.chip !== entry.chip) {
+      current = { chip: entry.chip, items: [] }
+      cards.push(current)
+    }
+    current.items.push(entry.item)
   }
 
   return {
-    rows,
-    largestOpportunity:
-      noOpportunity && largestBelowThreshold !== null
-        ? {
-            label: largestBelowThreshold.label,
-            savingEur: largestBelowThreshold.saving_eur,
-          }
-        : null,
+    cards,
     showOutlookNote,
-    contextNote: noOpportunity ? (insight.context_note ?? null) : null,
   }
 }

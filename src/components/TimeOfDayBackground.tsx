@@ -9,16 +9,19 @@ import type { TimeOfDayPhase } from "@/lib/timeOfDay"
 // animation is transform/opacity only. The phase logic lives in
 // src/lib/timeOfDay.ts.
 
-// One sky per phase: light blue by day, deep blue to near-black at
-// night.
+// One sky per phase: a deep daytime blue (light horizon, darker
+// zenith - reads against the dark glass theme while staying
+// unmistakably day, with the sun carrying the daylight), deep blue to
+// near-black at night.
 const PHASE_GRADIENTS: Record<TimeOfDayPhase, string> = {
-  day: "linear-gradient(to top, #d9f4ff 0%, #b3efff 45%, #73addf 100%)",
+  day: "linear-gradient(to top, #9dc2de 0%, #5d8db5 45%, #2c5c88 100%)",
   night: "linear-gradient(to top, #17377f 0%, #0c1c46 45%, #050b1c 100%)",
 }
 
-// The sun, soft-glowed as in the reference: a radial gradient from the
-// bright disc out through translucent warm rings.
-const SUN_SIZE = 84
+// The sun: a solid disc with blurred edges only (the blur filter on a
+// uniformly filled circle softens just the rim), as in the reference.
+const SUN_SIZE = 56
+const SUN_EDGE_BLUR = 5
 
 const CLOUDS = [
   { top: "18%", width: 210, height: 56, duration: 170, delay: 0 },
@@ -93,10 +96,8 @@ function TimeOfDayBackground({
           height: SUN_SIZE,
           transform: "translate(-50%, -50%)",
           opacity: daySky ? 1 : 0,
-          background:
-            "radial-gradient(circle, #f9db5a 0%, rgba(255, 235, 222, " +
-            "0.55) 34%, rgba(255, 236, 220, 0.22) 55%, rgba(255, 236, " +
-            "220, 0) 72%)",
+          background: "#f9db5a",
+          filter: `blur(${SUN_EDGE_BLUR}px)`,
         }}
       />
       {CLOUDS.map((cloud, index) => (
@@ -109,7 +110,7 @@ function TimeOfDayBackground({
             width: cloud.width,
             height: cloud.height,
             background: "rgba(255, 255, 255, 0.9)",
-            filter: "blur(14px)",
+            filter: "blur(9px)",
             opacity: daySky ? 0.4 : 0,
             animationDuration: `${cloud.duration}s`,
             animationDelay: `${cloud.delay}s`,

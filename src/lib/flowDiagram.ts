@@ -1,19 +1,43 @@
 import { BatteryCharging, Home, Sun, UtilityPole } from "lucide-react"
 import type { CSSProperties, ComponentType } from "react"
-import type { SummaryData } from "@/lib/api"
+import type { BatteryState, SummaryData } from "@/lib/api"
 
-// Flow palette - the colors of the animated dash overlays, the only
-// per-flow difference in the diagram: solar warm yellow, grid deep
-// indigo for both directions (the moving dashes carry the direction),
-// battery green for both directions (the widget's charging accent).
-// The base lines under the overlays are a shared neutral gray in the
-// render pass; the battery node keeps its state-dependent accent.
+// Flow palette - the colors of the flows' traveling pulses, the only
+// per-flow difference in the diagram: solar warm orange, grid deep
+// indigo for both directions (the pulse's direction of travel carries
+// the flow direction), battery green for both directions (the
+// widget's charging accent). The base lines under the pulses are one
+// shared style in the render pass; the battery node keeps its
+// state-dependent accent.
 export const SOLAR_COLOR = "#f8ae17"
+// The solar flows' pulse color: the palette yellow shifted darker and
+// into orange, so the pulse stays visible against the bright day sky
+// (the today chart keeps the lighter SOLAR_COLOR on its glass panel).
+export const SOLAR_FLOW_COLOR = "#e58806"
 export const CHARGING_COLOR = "hsl(140 70% 45%)"
 export const DISCHARGING_COLOR = "#f59e0b"
 export const GRID_IMPORT_COLOR = "#3b3fbf"
 export const GRID_EXPORT_COLOR = GRID_IMPORT_COLOR
-export const NEUTRAL_COLOR = "#94a3b8"
+// The battery's idle accent: teal, between the charging green and the
+// grid indigo, so a resting battery reads as "standing by" rather
+// than disabled grey.
+export const BATTERY_IDLE_COLOR = "hsl(185 65% 45%)"
+
+// Node tile gradients: the rounded-square node surfaces, each accent
+// blooming out of a deep shade of its own hue on the AI surfaces'
+// diagonal - deep behind the icon, vivid under the figures - so the
+// white icon and text stay legible on every hue. The battery tile
+// follows its live state; idle and unavailable stay neutral slate.
+const SOLAR_TILE_GRADIENT =
+  "linear-gradient(135deg, hsl(40 94% 28%), hsl(40 94% 52%))"
+const GRID_TILE_GRADIENT =
+  "linear-gradient(135deg, hsl(238 53% 28%), hsl(238 53% 50%))"
+const BATTERY_TILE_GRADIENTS: Record<BatteryState, string> = {
+  charging: "linear-gradient(135deg, hsl(140 70% 24%), hsl(140 70% 45%))",
+  discharging: "linear-gradient(135deg, hsl(38 93% 25%), hsl(38 93% 50%))",
+  idle: "linear-gradient(135deg, hsl(185 65% 24%), hsl(185 65% 46%))",
+  unavailable: "linear-gradient(135deg, hsl(185 65% 24%), hsl(185 65% 46%))",
+}
 
 // Diagram geometry in design units. The diagram box is aspect-locked and
 // scales with the widget width; overlays position by percentage so the
@@ -52,17 +76,23 @@ export const HOUSE_IMAGE = {
 // Where the home value pill sits: below the illustration.
 export const HOME_LABEL: Point = { x: 450, y: 548 }
 
-// Fixed flow anchors: points on the node circles' rims and on the house
+// Fixed flow anchors: points on the node tiles' edges and on the house
 // illustration. The orthogonal routes are built from these exact
 // coordinates, so every corner is exactly 90 degrees.
 const ANCHORS = {
   solarRight: { x: 143, y: 130 },
   solarBottom: { x: 85, y: 188 },
   batteryTop: { x: 85, y: 542 },
+  // Where the battery-to-home line leaves the tile's top edge, right
+  // of the solar charging line at batteryTop.
+  batteryTopRight: { x: 115, y: 542 },
   batteryRight: { x: 143, y: 600 },
   gridTop: { x: 830, y: 542 },
   gridLeft: { x: 772, y: 600 },
-  gridUpperLeft: { x: 789, y: 559 },
+  // The export line lands on the tile's left edge high up; the circles
+  // used to take it on the rim's diagonal, but the square's edge
+  // reaches further out.
+  gridUpperLeft: { x: 772, y: 559 },
   houseRoof: { x: 380, y: 175 },
   houseWallLeft: { x: 340, y: 350 },
   houseWallRightUpper: { x: 620, y: 320 },
@@ -96,11 +126,12 @@ const ROUTES = {
   ],
   // Grid share of the battery charging runs beneath the house.
   grid_to_battery: [ANCHORS.gridLeft, ANCHORS.batteryRight],
-  // The battery feeds the house: up from the node, then right into the
-  // wall.
+  // The battery feeds the house: up from the node's top edge - right of
+  // the solar charging line, well clear of the right edge so it does
+  // not read as leaving from the side - then right into the wall.
   battery_to_home: [
-    ANCHORS.batteryRight,
-    { x: ANCHORS.batteryRight.x, y: ANCHORS.houseWallLeft.y },
+    ANCHORS.batteryTopRight,
+    { x: ANCHORS.batteryTopRight.x, y: ANCHORS.houseWallLeft.y },
     ANCHORS.houseWallLeft,
   ],
 }
@@ -110,8 +141,9 @@ export type IconComponent = ComponentType<{
   style?: CSSProperties
 }>
 
-// A diagram node: position, caption and live figure. Pure data; the render
-// pass turns it into a circle, or the house illustration for the home.
+// A diagram node: position, caption and live figure. Pure data; the
+// render pass turns it into a rounded gradient tile, or the house
+// illustration for the home.
 export interface FlowNode {
   key: string
   x: number
@@ -122,36 +154,54 @@ export interface FlowNode {
   icon: IconComponent
   iconColor?: string
   borderColor?: string
+  // The tile's surface: a per-flow gradient (see the palette above);
+  // absent on the home node, whose surface is the illustration.
+  gradient?: string
 }
 
-// A diagram flow: an SVG path of straight orthogonal segments, its total
-// length (for dash sizing), the live watt value, whether the flow is
-// strong enough to animate (above the 25 W threshold), the color of its
-// animated dash overlay (the only per-flow styling; base lines and
-// contrast rings are shared in the render pass), and the position of its
-// value chip. Inactive and unknown (null) flows render as the shared
-// dimmed base line with no overlay.
+// A diagram flow: an SVG path of orthogonal segments with rounded
+// corners, the live watt value, whether the flow is strong enough to
+// animate (above the 25 W threshold), the color of its solid line and
+// traveling pulse (the only per-flow styling; the contrast band and
+// inactive lines are shared in the render pass), and the position of
+// its value chip. Inactive and unknown (null) flows render as the
+// shared dimmed base line with no overlay.
 export interface FlowEdge {
   key: string
   path: string
-  length: number
   value: number | null
   active: boolean
   color: string
   chip: Point
 }
 
-// SVG path data for a polyline through the points, plus its total length.
-function polyline(points: Point[]): { path: string; length: number } {
-  let length = 0
-  let previous = points[0]
-  const parts = [`M ${previous.x} ${previous.y}`]
-  for (const point of points.slice(1)) {
-    parts.push(`L ${point.x} ${point.y}`)
-    length += Math.hypot(point.x - previous.x, point.y - previous.y)
-    previous = point
+// The corner radius of the flow lines' 90-degree bends, in design
+// units; each bend clamps to half its adjacent legs so the fillet
+// never overruns a short segment.
+const CORNER_RADIUS = 24
+
+// SVG path data for a polyline through the points, with every
+// interior corner rounded: the path stops radius-short of the corner
+// on the incoming leg and turns through a quadratic fillet centered on
+// it, so the traveling pulse glides around each bend.
+function polyline(points: Point[]): string {
+  const parts = [`M ${points[0].x} ${points[0].y}`]
+  for (let i = 1; i < points.length - 1; i++) {
+    const previous = points[i - 1]
+    const corner = points[i]
+    const next = points[i + 1]
+    const before = Math.hypot(corner.x - previous.x, corner.y - previous.y)
+    const after = Math.hypot(next.x - corner.x, next.y - corner.y)
+    const radius = Math.min(CORNER_RADIUS, before / 2, after / 2)
+    const ax = corner.x - ((corner.x - previous.x) / before) * radius
+    const ay = corner.y - ((corner.y - previous.y) / before) * radius
+    const bx = corner.x + ((next.x - corner.x) / after) * radius
+    const by = corner.y + ((next.y - corner.y) / after) * radius
+    parts.push(`L ${ax} ${ay}`, `Q ${corner.x} ${corner.y} ${bx} ${by}`)
   }
-  return { path: parts.join(" "), length }
+  const last = points[points.length - 1]
+  parts.push(`L ${last.x} ${last.y}`)
+  return parts.join(" ")
 }
 
 // The midpoint of a route's longest segment, where its value chip sits
@@ -258,19 +308,18 @@ export function buildFlowDiagram(summary: SummaryData | null): FlowData {
 
   const edges: FlowEdge[] = []
   // Adds a flow from its fixed orthogonal route; every connection always
-  // renders, as an animated dash line above the 25 W threshold and as a
-  // faint static line at or near zero.
+  // renders, as a solid line with a traveling pulse above the 25 W
+  // threshold and as a faint static line at or near zero.
   const addFlow = (
     key: string,
     route: Point[],
     value: number | null,
     color: string
   ) => {
-    const { path, length } = polyline(route)
+    const path = polyline(route)
     edges.push({
       key,
       path,
-      length,
       value,
       active: isShown(value),
       color,
@@ -279,12 +328,17 @@ export function buildFlowDiagram(summary: SummaryData | null): FlowData {
   }
   // Solar feeds the roof and, in parallel, can charge the battery
   // straight down the left side.
-  addFlow("solar_to_home", ROUTES.solar_to_home, solarToHome, SOLAR_COLOR)
+  addFlow(
+    "solar_to_home",
+    ROUTES.solar_to_home,
+    solarToHome,
+    SOLAR_FLOW_COLOR
+  )
   addFlow(
     "solar_to_battery",
     ROUTES.solar_to_battery,
     solarToBattery,
-    SOLAR_COLOR
+    SOLAR_FLOW_COLOR
   )
   // Import arrives at the upper right of the house, export leaves from
   // the lower right; the two orthogonal routes never cross.
@@ -334,7 +388,7 @@ export function buildFlowDiagram(summary: SummaryData | null): FlowData {
       ? CHARGING_COLOR
       : batteryState === "discharging"
         ? DISCHARGING_COLOR
-        : NEUTRAL_COLOR
+        : BATTERY_IDLE_COLOR
 
   const nodes: FlowNode[] = [
     {
@@ -344,6 +398,7 @@ export function buildFlowDiagram(summary: SummaryData | null): FlowData {
       figure: pvW != null ? `${pvW} W` : "\u2014",
       icon: Sun,
       iconColor: SOLAR_COLOR,
+      gradient: SOLAR_TILE_GRADIENT,
     },
     {
       key: "home",
@@ -358,6 +413,7 @@ export function buildFlowDiagram(summary: SummaryData | null): FlowData {
       name: "Grid",
       figure: gridFigure,
       icon: UtilityPole,
+      gradient: GRID_TILE_GRADIENT,
     },
     {
       key: "battery",
@@ -371,6 +427,7 @@ export function buildFlowDiagram(summary: SummaryData | null): FlowData {
       icon: BatteryCharging,
       iconColor: batteryColor,
       borderColor: batteryColor,
+      gradient: BATTERY_TILE_GRADIENTS[batteryState ?? "idle"],
     },
   ]
 

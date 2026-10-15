@@ -117,25 +117,25 @@ describe("the row builder: the chronological timeline", () => {
   it("renders today, tomorrow, then the noteworthy days by date", () => {
     // The best day (Sunday) earns its designation on the LAST
     // noteworthy date while the poor rain day (Friday) falls earlier:
-    // the rows must follow the calendar, not the prominence.
+    // the cards must follow the calendar, not the prominence.
     const content = buildAdvisoryContent(makeInsight());
     assert.deepEqual(
-      content.rows.map((row) => row.chip),
+      content.cards.map((card) => card.chip),
       ["Today", "Tomorrow", "Fri", "Sun"],
     );
   });
 
   it("keeps the best-day designation attached to its own day", () => {
     const content = buildAdvisoryContent(makeInsight());
-    const sunday = content.rows.find((row) => row.chip === "Sun");
+    const sunday = content.cards.find((card) => card.chip === "Sun");
     assert.ok(sunday);
     assert.equal(
-      sunday.sentence,
+      sunday.items[0].sentence,
       "Sunday brings the week's best solar: score 29, 12.55 kWh expected",
     );
-    const friday = content.rows.find((row) => row.chip === "Fri");
+    const friday = content.cards.find((card) => card.chip === "Fri");
     assert.ok(friday);
-    assert.match(friday.sentence, /^Friday brings rain/);
+    assert.match(friday.items[0].sentence, /^Friday brings rain/);
   });
 
   it("orders the noteworthy days ascending whatever earns which title", () => {
@@ -174,20 +174,91 @@ describe("the row builder: the chronological timeline", () => {
       };
     }
     const content = buildAdvisoryContent(insight);
-    const beyond = content.rows
-      .map((row) => row.chip)
+    const beyond = content.cards
+      .map((card) => card.chip)
       .filter((chip) => chip !== "Today" && chip !== "Tomorrow");
     assert.deepEqual(beyond, ["Sat", "Sun"]);
   });
 
-  it("suppresses the guidance row when the action carries its window", () => {
+  it("suppresses the guidance item when the action carries its window", () => {
     const content = buildAdvisoryContent(makeInsight());
-    assert.equal(
-      content.rows.filter((row) => row.chip === "Today").length,
-      1,
-    );
-    const action = content.rows[0];
+    const today = content.cards.find((card) => card.chip === "Today");
+    assert.ok(today);
+    assert.equal(today.items.length, 1);
+    const action = today.items[0];
     assert.equal(action.sentence, "Run your large appliances between 13:00 and 16:00 for the best price left today");
     assert.equal(action.valueChip, "\u20AC 0.11 potential savings");
+  });
+
+  it("groups the defer advice and the noteworthy fact into one day card", () => {
+    // A defer to Sunday while Sunday also carries the best-solar
+    // designation: one Sun card in calendar order (after Friday),
+    // never two.
+    const content = buildAdvisoryContent(
+      makeInsight({
+        no_opportunity: true,
+        advisory: {
+          type: "defer",
+          triggered: true,
+          tomorrow_average_eur: 0.36,
+          tomorrow_solar_kwh: 4,
+          tomorrow_solar_score: 28,
+          tomorrow_low_solar: false,
+          compare_day: "Sunday",
+          compare_average_eur: 0.3,
+          compare_solar_kwh: 12.55,
+          price_difference_per_kwh: -0.06,
+          horizon_note: "",
+          line: "",
+        },
+      }),
+    );
+    assert.deepEqual(
+      content.cards.map((card) => card.chip),
+      ["Today", "Fri", "Sun"],
+    );
+    const sunday = content.cards.filter((card) => card.chip === "Sun");
+    assert.equal(sunday.length, 1);
+    assert.equal(sunday[0].items.length, 2);
+    assert.equal(sunday[0].items[0].valueChip, "\u20AC 0.06/kWh cheaper");
+    assert.equal(sunday[0].items[1].valueChip, null);
+  });
+
+  it("renders the quiet-day summary as Today items, not loose lines", () => {
+    const content = buildAdvisoryContent(
+      makeInsight({
+        no_opportunity: true,
+        candidates: [
+          {
+            label: "Washing machine energy",
+            load_kwh: 0.8,
+            window: "09:00-12:00 today",
+            saving_eur: -0.05,
+            below_threshold: true,
+            basis: "your washing machine used 0.8 kWh so far today",
+          },
+        ],
+        context_note:
+          "Your appliances have already used most of their daily power at low rates",
+      }),
+    );
+    const today = content.cards.find((card) => card.chip === "Today");
+    assert.ok(today);
+    const sentences = today.items.map((item) => item.sentence);
+    assert.ok(
+      sentences.some((sentence) =>
+        sentence.startsWith("Largest opportunity today: Washing machine energy")
+      ),
+    );
+    assert.ok(
+      sentences.includes(
+        "Your appliances have already used most of their daily power at low rates"
+      ),
+    );
+    const largest = today.items.find((item) =>
+      item.sentence.startsWith("Largest opportunity today:")
+    );
+    assert.ok(largest);
+    assert.equal(largest.valueChip, "\u20AC -0.05");
   });
 });
