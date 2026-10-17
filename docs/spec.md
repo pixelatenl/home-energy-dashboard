@@ -23,6 +23,10 @@ is not consumption on the charging day; it counts on the day the
 battery discharges it. The two battery terms are zeroed only when
 both battery entities are missing, and the total is floored at zero.
 
+Energy figures come from the cumulative counters via `energy_delta`
+sums, never from power integrals. Power streams are diagnostic
+only; the counters are the source of truth.
+
 ### 1.1 Battery netting audit (U1c, 2026-10-16)
 
 The claim audited: charged energy was double counted - once when it
@@ -54,10 +58,26 @@ Two data findings from the audit, for future reference:
   cross-check against `energy_daily`-based views will disagree and
   can read as a double count. Cross-check against `energy_delta`
   sums instead.
-- The Anker Solarbank has its own DC solar input (up to 5.8 kW
-  observed), measured only as instantaneous power. Its stored share
-  flows through the charge counter, so - if anything - the total
-  under-counts by the home-served share of that second array.
+- An earlier revision of this section claimed the Anker Solarbank
+  had its own DC solar input (up to 5.8 kW observed), measured only
+  as instantaneous power. A diagnostic disproved that claim: the
+  Solarbank has no second array, and `solar_power` is an internal
+  flow of the unit, not generation. The verified total is exactly
+  the five-term counter formula above; no generation term is
+  missing and nothing is under-counted. (The claim's origin in a
+  power stream is also why energy figures must come from the
+  counters via `energy_delta`, never from power integrals.)
+
+Counter cadence caveat: the cumulative counters do not tick every
+sample interval, so hourly attribution is only as granular as the
+counter cadence. A battery charge or discharge bucket can land a
+whole counter delta in one hour (a bursty bucket), and a low-cadence
+PV counter leaves hours with no PV rows at all. Both are expected
+hourly-attribution behavior: period totals stay exact because they
+sum `energy_delta`, only the per-hour placement of energy can shift.
+Consumers of hourly figures (the per-slot chart, the base load
+method in section 6.1) guard against the bursts instead of treating
+them as consumption shape.
 
 ## 2. Periods
 
@@ -268,33 +288,84 @@ tile's top-left corner, clamped inside the panel:
 
 ## 6. Home model registry
 
-The steady background devices without their own measured counter
-are estimated per local day by the HOME_MODEL registry in
-`server/queries.mjs`. Extensible like the category registry; each
-entry carries a name, an estimated kWh per day and a basis note
-stating where the estimate comes from.
+The background devices without their own measured counter are
+estimated per local day by the HOME_MODEL registry in
+`server/queries.mjs`: the static entries below, plus one data-derived
+entry, the base load, computed per covered day from that day's own
+data instead of a static estimate. Extensible like the category
+registry; each entry carries a name, its figure and a basis note
+stating where the figure comes from. The base load's basis note
+states the data-derived method.
+
+### 6.1 Base load (data-derived)
+
+The base load absorbs the always-on static draw - the refrigerators,
+the network and standby, and the standby share of the lighting - so
+the static entries exclude it and nothing is double counted. Per
+covered day it is computed from the day's own data:
+
+1. Hourly consumption: the five-counter formula of section 1 per
+   hour, floored at zero per hour, from the same `energy_delta`
+   counters as the period total.
+2. Candidate hours: the day's quiet nighttime hours (default 22:00
+   to 06:00 local, wrapping midnight), widened to the day's full
+   24 hours when too few nighttime hours survive the guards.
+3. Guards: an hour whose battery charge exceeds the configured
+   threshold (default 0.05 kWh) never qualifies - the charge term
+   is a sink, and a bursty battery bucket (the counter-cadence
+   caveat in section 1.1) lands its whole delta in one hour, reading
+   that hour's consumption artificially low; a day with fewer than
+   the configured minimum candidate hours (default 3) carries no
+   base load at all, so sparse counter cadence cannot fabricate one.
+4. Statistic: the default method ("median_low") takes the median of
+   the day's lowest few candidate hours (default 4); the alternative
+   ("percentile") takes a low percentile of the candidates (default
+   10). Both are robust against a residual bursty bucket reading
+   high. The per-day figure is the hourly statistic times 24 hours,
+   capped at the day's own total consumption and rounded to two
+   decimals, so period sums stay exact.
+
+The method is tunable in config (environment variables; unset, empty
+or invalid values fall back to the default):
+
+| knob | default | meaning |
+| --- | --- | --- |
+| `EMS_BASELOAD_METHOD` | `median_low` | `median_low` or `percentile` |
+| `EMS_BASELOAD_LOW_HOURS` | 4 | the lowest candidate hours the median method uses |
+| `EMS_BASELOAD_PERCENTILE` | 10 | the percentile method's percentile |
+| `EMS_BASELOAD_NIGHT_START` | 22 | quiet window start, local hour |
+| `EMS_BASELOAD_NIGHT_END` | 6 | quiet window end, local hour |
+| `EMS_BASELOAD_MIN_HOURS` | 3 | minimum candidate hours for a day to carry a base load |
+| `EMS_BASELOAD_MAX_CHARGE_KWH` | 0.05 | battery-charge guard threshold in kWh |
+
+### 6.2 Static entries
 
 | key | entry | kWh/day | basis |
 | --- | --- | --- | --- |
-| lighting | Lighting | 1.5 | 36 Hue lights including standby draw; evening use plus idle |
-| refrigerators | Refrigerators | 2.5 | two compressor refrigerators at roughly 50 W average each |
+| lighting | Lighting | 1.1 | evening use of the 36 Hue lights; the lights' standby draw is covered by the data-derived base load |
 | kitchen_boiler | Kitchen boiler | 1.0 | small keep-hot water boiler at roughly 40 W average |
 | microwave | Microwave | 0.2 | standby draw plus a few minutes of daily use |
 | coffee_machine | Coffee machine | 0.3 | keep-hot element plus the daily brews |
-| network_standby | Network and standby | 0.6 | router, switches and hub idle draw |
 
-Per period, each entry's estimate is `kwh_per_day` times the
+Per period, each static entry's estimate is `kwh_per_day` times the
 window's data-covered days - the local days that carry measured
 data, from the grid import counter's first to last row in the
 window, capped at the calendar days. A fully covered period scales
 by its calendar days; an in-progress month (or a window that
 starts before the data history) never models a whole month of
-standby draw against the days that actually have usage. The
-breakdown payload carries `home_model` with `days`, the scaled
-`entries`, `modeled_kwh` and `unexplained_kwh` = `max(0, remainder -
+standby draw against the days that actually have usage. The base
+load's per-period figure is the exact sum of its per-day figures
+over those same covered days; days the guards reject contribute
+nothing.
+
+The breakdown payload carries `home_model` with `days`, the scaled
+`entries` (the base load entry first, with `derived: true`),
+`modeled_kwh` and `unexplained_kwh` = `max(0, remainder -
 modeled_kwh)`, plus `avg_price_eur` (the window's average hourly
 price, null without price rows) as the flat basis for costing
-modeled energy.
+modeled energy. Every per-period entry figure is exact at two
+decimals, so the entries plus the unexplained share equal the
+remainder exactly for all periods.
 
 ## 7. Right column and summary card (Usage tab)
 
@@ -352,18 +423,22 @@ stays available). The strip is the predecessor of the U6 widget 1.
 
 - Header line: the remainder for the period and its share of the
   period total - the same figures as the treemap's gray remainder
-  tile, from the same payload numbers.
+  tile, from the same payload numbers. The panel header's
+  description carries the one-line basis note: household
+  consumption, grid export excluded.
 - One horizontal bar per modeled device: the estimate times the
   window's days, with its percentage of the remainder (shares
   against the remainder, not the period total) and its basis note.
-  Every modeled number carries the "model" label.
+  Every modeled number carries the "model" label; the data-derived
+  base load bar carries the "data" label instead.
 - A final striped bar: the unexplained remainder the model does not
   cover. The bar percentages plus the unexplained share equal 100
   percent of the remainder (or, when the model over-explains a
   low-usage period, 100 percent of the modeled sum with no
   unexplained bar).
 - One-line footnote: every category is measured except the heat
-  pump (Est.); the bars are home-model averages.
+  pump (Est.); the base load is data-derived, the other bars are
+  home-model averages.
 - Cost mode costs every modeled figure flat at the window's average
   price; without price rows the cost figures read unavailable, never
   zero.

@@ -383,7 +383,10 @@ export interface UsageBreakdown {
   export_credit_eur: number | null
   // The home model (docs/spec.md section 6): the steady background
   // devices without their own counter, per-day estimates scaled to
-  // the window, plus the unexplained share of the remainder.
+  // the window, plus the unexplained share of the remainder. The
+  // base load entry is data-derived (derived: true): computed per
+  // covered day from the day's own hourly consumption, not a static
+  // estimate.
   home_model: {
     days: number
     modeled_kwh: number
@@ -394,6 +397,7 @@ export interface UsageBreakdown {
       kwh_per_day: number
       basis: string
       kwh: number
+      derived?: boolean
     }[]
   }
   // The per-slot chart series (docs/spec.md section 8): the window's

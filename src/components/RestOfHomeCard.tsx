@@ -40,7 +40,7 @@ function RestOfHomeCard({ data, status, mode }: RestOfHomeCardProps) {
       <PanelHeader
         icon={Lamp}
         title="Rest of your home"
-        description="Per-day model averages of the unmeasured background"
+        description="Per-day model averages of the unmeasured background; household consumption, grid export excluded"
       />
       <CardContent className="flex flex-1 flex-col">
         {data === null ? (
@@ -122,9 +122,13 @@ function RestOfHomeBody({
                 <span className="truncate">{entry.name}</span>
                 <span
                   className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium leading-none text-muted-foreground"
-                  title="Per-day home model estimate"
+                  title={
+                    entry.derived
+                      ? "Derived per day from this period's own hourly consumption"
+                      : "Per-day home model estimate"
+                  }
                 >
-                  model
+                  {entry.derived ? "data" : "model"}
                 </span>
               </span>
               <span className="shrink-0 tabular-nums">
@@ -172,7 +176,8 @@ function RestOfHomeBody({
       </div>
       <p className="mt-4 border-t pt-3 text-xs text-muted-foreground">
         Every category is measured except the heat pump (Est.); the
-        bars above are home-model averages.
+        base load is data-derived, the other bars are home-model
+        averages.
       </p>
     </>
   )

@@ -1444,23 +1444,22 @@ export const USAGE_CATEGORIES = [
 // measured. The remainder bucket is neither; it is what is left.
 const HEAT_PUMP_CATEGORY = { key: "heat_pump", label: "Heat pump" };
 
-// The home model: the steady background devices without their own
-// measured counter, estimated per local day (docs/spec.md section 6).
-// Every entry's basis note states where its estimate comes from; the
-// UI labels every modeled number as a model average. Extensible like
-// the category registry.
+// The home model: the background devices without their own measured
+// counter, estimated per local day (docs/spec.md section 6). Every
+// entry's basis note states where its estimate comes from; the UI
+// labels every modeled number as a model average. Extensible like
+// the category registry. The always-on static draw - the
+// refrigerators, the network and standby, and the standby share of
+// the lighting - is not a static entry here: the data-derived base
+// load (baseLoadForWindow below) absorbs it from the day's own
+// hourly consumption, so the remaining entries never double count
+// it.
 const HOME_MODEL = [
   {
     key: "lighting",
     name: "Lighting",
-    kwhPerDay: 1.5,
-    basis: "36 Hue lights including standby draw; evening use plus idle",
-  },
-  {
-    key: "refrigerators",
-    name: "Refrigerators",
-    kwhPerDay: 2.5,
-    basis: "two compressor refrigerators at roughly 50 W average each",
+    kwhPerDay: 1.1,
+    basis: "evening use of the 36 Hue lights; the lights' standby draw is covered by the data-derived base load",
   },
   {
     key: "kitchen_boiler",
@@ -1479,12 +1478,6 @@ const HOME_MODEL = [
     name: "Coffee machine",
     kwhPerDay: 0.3,
     basis: "keep-hot element plus the daily brews",
-  },
-  {
-    key: "network_standby",
-    name: "Network and standby",
-    kwhPerDay: 0.6,
-    basis: "router, switches and hub idle draw",
   },
 ];
 
@@ -1509,8 +1502,15 @@ export function windowDays(fromMs, toMs) {
 // counter's first and last row in the window, capped at the window's
 // own days.
 export async function windowDataDays(fromMs, toMs, importId) {
+  return (await windowDataDayKeys(fromMs, toMs, importId)).length;
+}
+
+// The same covered days as windowDataDays, as the ordered local date
+// keys themselves: the base load is computed per covered day, so it
+// needs the day set, not just its count.
+export async function windowDataDayKeys(fromMs, toMs, importId) {
   if (importId === null) {
-    return 0;
+    return [];
   }
   const { rows } = await pool.query(
     `SELECT min(d.ts) AS first_ts, max(d.ts) AS last_ts
@@ -1523,30 +1523,228 @@ export async function windowDataDays(fromMs, toMs, importId) {
   const first = rows[0]?.first_ts ?? null;
   const last = rows[0]?.last_ts ?? null;
   if (first === null || last === null) {
-    return 0;
+    return [];
   }
+  const keys = [];
   let day = localDateKey(new Date(first));
   const lastDay = localDateKey(new Date(Math.min(last.getTime(), toMs - 1)));
-  let count = 0;
   while (day <= lastDay) {
-    count += 1;
+    keys.push(day);
     day = nextDateKey(day, 1);
   }
-  return Math.min(count, windowDays(fromMs, toMs));
+  return keys.slice(0, windowDays(fromMs, toMs));
 }
 
-// The model's per-period entries: each per-day estimate times the
-// window's days, plus the modeled sum. The per-day values are single
-// decimals, so the products stay exact at two decimals and the
-// displayed figures reconcile exactly with the remainder.
-export function homeModelEntries(days) {
-  const entries = HOME_MODEL.map((entry) => ({
-    key: entry.key,
-    name: entry.name,
-    kwh_per_day: entry.kwhPerDay,
-    basis: entry.basis,
-    kwh: round2(entry.kwhPerDay * days),
-  }));
+// The baseload method config (docs/spec.md section 6), every knob
+// from the environment with safe defaults; unset, empty or invalid
+// values fall back. method "median_low" (default) takes the median
+// of the day's lowest lowHours candidate hours; "percentile" takes
+// the percentile-th percentile of the candidates. Candidates are
+// the quiet nighttime hours (nightStart to nightEnd local, wrapping
+// midnight), hours whose battery charge exceeds maxChargeKwh never
+// qualify, and a day needs at least minHours candidates at all.
+export function baseLoadConfig() {
+  const num = (name, fallback, min, max) => {
+    const raw = process.env[name];
+    if (raw === undefined || raw === "") {
+      return fallback;
+    }
+    const parsed = Number(raw);
+    return Number.isFinite(parsed) && parsed >= min && parsed <= max
+      ? parsed
+      : fallback;
+  };
+  const method =
+    process.env.EMS_BASELOAD_METHOD === "percentile"
+      ? "percentile"
+      : "median_low";
+  const lowHours = Math.max(
+    1,
+    Math.round(num("EMS_BASELOAD_LOW_HOURS", 4, 1, 24))
+  );
+  const percentile = num("EMS_BASELOAD_PERCENTILE", 10, 0, 100);
+  const nightStart = Math.round(num("EMS_BASELOAD_NIGHT_START", 22, 0, 23));
+  const nightEnd = Math.round(num("EMS_BASELOAD_NIGHT_END", 6, 0, 23));
+  const minHours = Math.max(
+    1,
+    Math.round(num("EMS_BASELOAD_MIN_HOURS", 3, 1, 24))
+  );
+  const maxChargeKwh = num("EMS_BASELOAD_MAX_CHARGE_KWH", 0.05, 0, 1000);
+  const stat =
+    method === "percentile"
+      ? `the day's ${percentile}th-percentile quiet-hour consumption`
+      : `the median of the day's ${lowHours} lowest quiet-hour consumption values`;
+  return {
+    method,
+    lowHours,
+    percentile,
+    nightStart,
+    nightEnd,
+    minHours,
+    maxChargeKwh,
+    basis: `data-derived per day: ${stat}, preferring quiet nighttime hours, guarded against battery-charge buckets and sparse counter cadence`,
+  };
+}
+
+// The per-day baseload: a robust low statistic of the day's own
+// hourly consumption (docs/spec.md section 6). Pure, so the method
+// is testable: hour entries per local day in, kWh per day out. The
+// quiet nighttime hours are the candidates, widened to the whole
+// day when too few survive the charge guard; hours whose battery
+// charge exceeds the threshold never qualify (a bursty charge
+// bucket lands its whole counter delta in one hour and reads that
+// hour's consumption artificially low); a day below minHours
+// candidates carries no baseload at all (sparse counter cadence
+// must not fabricate one); and the result is capped at the day's
+// own total consumption. The per-day figure is the hourly statistic
+// times 24 hours, rounded to two decimals so period sums reconcile
+// exactly.
+export function baseloadKwhPerDay(dayHours, config) {
+  const out = new Map();
+  for (const [day, hours] of dayHours) {
+    if (hours.length === 0) {
+      continue;
+    }
+    const unguarded = hours.filter(
+      (entry) => entry.chargeKwh <= config.maxChargeKwh
+    );
+    const quiet = unguarded.filter(
+      (entry) =>
+        entry.hour >= config.nightStart || entry.hour < config.nightEnd
+    );
+    const pool = quiet.length >= config.minHours ? quiet : unguarded;
+    if (pool.length < config.minHours) {
+      continue;
+    }
+    const sorted = pool.map((entry) => entry.kwh).sort((a, b) => a - b);
+    let stat;
+    if (config.method === "percentile") {
+      const index = Math.round(
+        (config.percentile / 100) * (sorted.length - 1)
+      );
+      stat = sorted[Math.min(sorted.length - 1, Math.max(0, index))];
+    } else {
+      const low = sorted.slice(0, Math.min(config.lowHours, sorted.length));
+      const mid = Math.floor((low.length - 1) / 2);
+      stat = low.length % 2 === 1 ? low[mid] : (low[mid] + low[mid + 1]) / 2;
+    }
+    const dayTotal = hours.reduce((sum, entry) => sum + entry.kwh, 0);
+    const kwh = Math.min(round2(stat * 24), round2(dayTotal));
+    if (kwh > 0) {
+      out.set(day, kwh);
+    }
+  }
+  return out;
+}
+
+// The window's per-day baseload from its own measured counters:
+// the five-counter consumption formula per hour (the same terms as
+// the period total, docs/spec.md section 1, floored at zero per
+// hour) fed to baseloadKwhPerDay, restricted to the window's
+// data-covered days so the base load never models a day without
+// measured data. Returns the per-day map plus the config's basis
+// note.
+export async function baseLoadForWindow(fromMs, toMs) {
+  const config = baseLoadConfig();
+  const map = await resolveEntityMap();
+  const ids = COUNTER_ROLES.map((role) => map[role]).filter((id) =>
+    Number.isFinite(id)
+  );
+  if (ids.length === 0) {
+    return { perDay: new Map(), basis: config.basis };
+  }
+  const { rows } = await pool.query(
+    `SELECT date_trunc('hour', ts) AS hour, entity_id, sum(delta_kwh) AS kwh
+       FROM energy_delta
+      WHERE entity_id = ANY($1::smallint[])
+        AND ts >= $2::timestamptz
+        AND ts < $3::timestamptz
+      GROUP BY 1, 2`,
+    [ids, new Date(fromMs), new Date(toMs)]
+  );
+  const bothBatteryMissing =
+    map.batteryCharging === null && map.batteryDischarging === null;
+  const perHour = new Map(); // day key -> Map(local hour -> counter terms)
+  for (const row of rows) {
+    const ts = new Date(row.hour.getTime());
+    const day = localDateKey(ts);
+    const hour = localHourIndex(ts);
+    let dayMap = perHour.get(day);
+    if (dayMap === undefined) {
+      dayMap = new Map();
+      perHour.set(day, dayMap);
+    }
+    let terms = dayMap.get(hour);
+    if (terms === undefined) {
+      terms = { import: 0, export: 0, pv: 0, charge: 0, discharge: 0 };
+      dayMap.set(hour, terms);
+    }
+    const kwh = Number(row.kwh ?? 0);
+    if (map.import !== null && row.entity_id === map.import) {
+      terms.import += kwh;
+    } else if (map.export !== null && row.entity_id === map.export) {
+      terms.export += kwh;
+    } else if (map.pv !== null && row.entity_id === map.pv) {
+      terms.pv += kwh;
+    } else if (map.batteryCharging !== null && row.entity_id === map.batteryCharging) {
+      terms.charge += kwh;
+    } else if (map.batteryDischarging !== null && row.entity_id === map.batteryDischarging) {
+      terms.discharge += kwh;
+    }
+  }
+  const dayHours = new Map();
+  for (const [day, dayMap] of perHour) {
+    dayHours.set(
+      day,
+      [...dayMap.entries()].map(([hour, terms]) => ({
+        hour,
+        kwh: Math.max(
+          0,
+          terms.import +
+            terms.pv +
+            terms.discharge -
+            terms.export -
+            (bothBatteryMissing ? 0 : terms.charge)
+        ),
+        chargeKwh: bothBatteryMissing ? 0 : terms.charge,
+      }))
+    );
+  }
+  const covered = new Set(await windowDataDayKeys(fromMs, toMs, map.import));
+  const perDay = baseloadKwhPerDay(dayHours, config);
+  for (const day of [...perDay.keys()]) {
+    if (!covered.has(day)) {
+      perDay.delete(day);
+    }
+  }
+  return { perDay, basis: config.basis };
+}
+
+// The model's per-period entries: the data-derived base load first
+// (each covered day's own figure, summed), then each static per-day
+// estimate times the window's data-covered days, plus the modeled
+// sum. Every kWh is exact at two decimals, so the displayed figures
+// reconcile exactly with the remainder.
+export function homeModelEntries(days, baseLoad = null) {
+  const perDay = baseLoad?.perDay ?? new Map();
+  const baseKwh = [...perDay.values()].reduce((sum, kwh) => sum + kwh, 0);
+  const entries = [
+    {
+      key: "base_load",
+      name: "Base load",
+      derived: true,
+      kwh_per_day: perDay.size > 0 ? round2(baseKwh / perDay.size) : 0,
+      basis: baseLoad?.basis ?? baseLoadConfig().basis,
+      kwh: round2(baseKwh),
+    },
+    ...HOME_MODEL.map((entry) => ({
+      key: entry.key,
+      name: entry.name,
+      kwh_per_day: entry.kwhPerDay,
+      basis: entry.basis,
+      kwh: round2(entry.kwhPerDay * days),
+    })),
+  ];
   const modeledKwh = entries.reduce((sum, entry) => sum + entry.kwh, 0);
   return { entries, modeledKwh };
 }
@@ -2084,16 +2282,18 @@ export async function getUsageBreakdown(fromMs, toMs) {
   const entityNames = USAGE_CATEGORIES.flatMap(
     (category) => category.entities
   );
-  const [metrics, measured, priceRows, heatPump, map, slots] = await Promise.all([
-    getRangeMetrics(fromMs, toMs),
-    entityNames.length > 0
-      ? measuredEntityTotals(entityNames, fromMs, toMs)
-      : Promise.resolve(new Map()),
-    dbHourlyPrices(fromMs, toMs),
-    heatPumpEstimate(fromMs, toMs),
-    resolveEntityMap(),
-    getUsageSlots(fromMs, toMs),
-  ]);
+  const [metrics, measured, priceRows, heatPump, map, slots, baseLoad] =
+    await Promise.all([
+      getRangeMetrics(fromMs, toMs),
+      entityNames.length > 0
+        ? measuredEntityTotals(entityNames, fromMs, toMs)
+        : Promise.resolve(new Map()),
+      dbHourlyPrices(fromMs, toMs),
+      heatPumpEstimate(fromMs, toMs),
+      resolveEntityMap(),
+      getUsageSlots(fromMs, toMs),
+      baseLoadForWindow(fromMs, toMs),
+    ]);
   const avgPriceEur =
     priceRows.length > 0
       ? priceRows.reduce((sum, row) => sum + Number(row.price_eur), 0) /
@@ -2170,13 +2370,15 @@ export async function getUsageBreakdown(fromMs, toMs) {
       : round2(measuredCost + estimatedCost + remainderCost);
 
   // The home model over the window and the unexplained share of the
-  // remainder it does not cover (docs/spec.md section 6): each
-  // per-day estimate times the window's data-covered days, floored
-  // at zero so no value is negative. Computed from the rounded
-  // remainder so the displayed figures reconcile exactly.
+  // remainder it does not cover (docs/spec.md section 6): the
+  // data-derived base load - each covered day's own figure, summed
+  // exactly - plus each static per-day estimate times the window's
+  // data-covered days, floored at zero so no value is negative.
+  // Computed from the rounded remainder so the displayed figures
+  // reconcile exactly.
   const remainderRounded = round2(unroundedRemainder);
   const modelDays = await windowDataDays(fromMs, toMs, map.import);
-  const model = homeModelEntries(modelDays);
+  const model = homeModelEntries(modelDays, baseLoad);
   const unexplainedKwh = Math.max(0, round2(remainderRounded - model.modeledKwh));
 
   return {
