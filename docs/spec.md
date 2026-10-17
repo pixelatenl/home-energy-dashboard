@@ -421,10 +421,11 @@ widget's (`grid gap-3 sm:grid-cols-3`).
   so the headline pops), with the kWh that never drew net from the
   grid (total minus net, self-supplied plus exported) beneath and the
   window's average price as its detail line.
-- One footnote line at the panel's bottom carries both caveats: the
-  valuation basis (household usage includes self-supplied energy,
-  costed as if all imported at the dynamic hourly price) and the
-  fixed network fees excluded from the provider billing view.
+- The corner info tooltip (the home page stat cards' idiom) carries
+  both caveats: the valuation basis (household usage includes
+  self-supplied energy, costed as if all imported at the dynamic
+  hourly price) and the fixed network fees excluded from the
+  provider billing view.
 
 The payload's grid statistics back the figures: `grid_import_kwh`,
 `grid_export_kwh`, `import_cost_eur` (hourly import energy times

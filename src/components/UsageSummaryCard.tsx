@@ -1,4 +1,5 @@
 import { Gauge } from "lucide-react"
+import InfoTooltip from "@/components/InfoTooltip"
 import PanelHeader from "@/components/PanelHeader"
 import { Card, CardContent } from "@/components/ui/card"
 import type { UsageBreakdown } from "@/lib/api"
@@ -50,8 +51,8 @@ interface UsageSummaryCardProps {
 // eyebrow, big value, secondary lines. Stat 1 is household usage
 // (the same usage costed as if all of it were imported at the dynamic
 // hourly price), stat 2 the net grid, stat 3 saved and earned with
-// the self-supplied kWh. The two caveats ride in one footnote at the
-// panel's bottom. All figures, sign handling and the null-cost rule
+// the self-supplied kWh. The two caveats ride in the corner info
+// tooltip, the home page stat cards' idiom. All figures, sign handling and the null-cost rule
 // are exactly those of section 7.1.
 function UsageSummaryCard({
   data,
@@ -65,8 +66,17 @@ function UsageSummaryCard({
     data !== null && mode === "cost" && data.total.cost_eur === null
   const noPrices = data !== null && data.import_cost_eur === null
 
+  // The two caveats, in the corner info tooltip the home page stat
+  // cards use instead of a footnote line.
+  const CAVEATS_TOOLTIP =
+    "Household usage includes self-supplied energy, costed as if all of it were imported at the dynamic hourly price. Net grid is the provider billing view at dynamic hourly prices; fixed network fees are excluded, so it may deviate slightly from the provider\u2019s invoice."
+
   return (
-    <Card>
+    <Card className="relative">
+      {/* The corner info tooltip, the home page stat cards' idiom. */}
+      <div className="absolute right-3 top-3 z-20">
+        <InfoTooltip text={CAVEATS_TOOLTIP} />
+      </div>
       <PanelHeader
         icon={Gauge}
         title="Period summary"
@@ -149,16 +159,6 @@ function UsageSummaryCard({
                 </p>
               </div>
             </div>
-
-            {/* The two caveats as one footnote line at the panel's
-                bottom. */}
-            <p className="mt-3 border-t pt-2 text-xs leading-snug text-muted-foreground">
-              Household usage includes self-supplied energy, costed as
-              if all of it were imported at the dynamic hourly price.
-              Net grid is the provider billing view at dynamic hourly
-              prices; fixed network fees are excluded, so it may
-              deviate slightly from the provider&rsquo;s invoice.
-            </p>
 
             {noPrices && (
               <p className="mt-2 text-xs italic text-muted-foreground">

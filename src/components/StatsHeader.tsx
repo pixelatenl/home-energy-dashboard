@@ -1,4 +1,5 @@
-import { House, Info, PlugZap, Recycle } from "lucide-react"
+import { House, PlugZap, Recycle } from "lucide-react"
+import InfoTooltip from "@/components/InfoTooltip"
 import {
   Card,
   CardHeader,
@@ -29,25 +30,6 @@ const GRID_TOOLTIP =
 // only on the day the battery discharges it.
 const USAGE_TOOLTIP =
   "Home usage today: everything the household consumed - grid import plus solar used directly plus battery discharge, minus export. Energy that charged the battery today is not counted here; it counts on the day the battery discharges it. Self-consumption: the share of today's solar production that stayed on site - used directly or stored in the battery."
-
-// Corner info tooltip: shows on hover, keyboard focus and tap.
-function InfoTooltip({ text }: { text: string }) {
-  return (
-    <button
-      type="button"
-      aria-label={text}
-      className="group relative rounded-full text-muted-foreground outline-none"
-    >
-      <Info className="size-3.5" aria-hidden="true" />
-      <span
-        aria-hidden="true"
-        className="pointer-events-none absolute right-0 top-full z-20 mt-1 w-64 rounded-lg border bg-popover p-2 text-left text-xs leading-relaxed text-popover-foreground opacity-0 shadow-md transition-opacity group-hover:opacity-100 group-focus:opacity-100"
-      >
-        {text}
-      </span>
-    </button>
-  )
-}
 
 // The three state glyphs of the grid renewables share, one per
 // server-computed color state: leaf (fully renewable grid), pylon
