@@ -1,6 +1,7 @@
 import type { ReactNode } from "react"
 import { Link } from "react-router-dom"
 import BrandLogo from "@/components/BrandLogo"
+import LiveGridBadge from "@/components/LiveGridBadge"
 import NavBar from "@/components/NavBar"
 import { useModeSearch } from "@/lib/mode"
 
@@ -45,9 +46,15 @@ function PageLayout({
                 ))}
             </div>
           </div>
-          {actions != null && (
-            <div className="flex items-center gap-3">{actions}</div>
-          )}
+          {/* The right cluster: the shell's ambient grid signal
+              first, then the page's own actions - the hub's insight
+              pill and refresh button ride behind the badge. The
+              cluster always renders so the badge keeps its place on
+              pages without actions. */}
+          <div className="flex items-center gap-3">
+            <LiveGridBadge />
+            {actions != null && actions}
+          </div>
         </div>
       </header>
 
