@@ -4,6 +4,7 @@ import {
   applicablePrice,
   assembleProduction,
   dailyProductionIntervals,
+  feedInTariffEur,
   hourlyProductionIntervals,
   SOLAR_DATA_START,
 } from "../server/solar-production.mjs";
@@ -28,6 +29,40 @@ describe("applicablePrice: the hour's price with the gas fallback", () => {
 
   it("is null before any price exists", () => {
     assert.equal(applicablePrice(PRICES, new Date("2026-10-10T21:00:00Z").getTime()), null);
+  });
+});
+
+describe("feedInTariffEur: the flat export rate from the environment", () => {
+  const withEnv = (value, fn) => () => {
+    const saved = process.env.EMS_FEED_IN_TARIFF_EUR;
+    if (value === undefined) {
+      delete process.env.EMS_FEED_IN_TARIFF_EUR;
+    } else {
+      process.env.EMS_FEED_IN_TARIFF_EUR = value;
+    }
+    try {
+      fn();
+    } finally {
+      if (saved === undefined) {
+        delete process.env.EMS_FEED_IN_TARIFF_EUR;
+      } else {
+        process.env.EMS_FEED_IN_TARIFF_EUR = saved;
+      }
+    }
+  };
+
+  it("reads a positive tariff", () => {
+    withEnv("0.12", () => {
+      assert.equal(feedInTariffEur(), 0.12);
+    })();
+  });
+
+  it("treats unset, empty, zero and invalid values as not configured", () => {
+    for (const value of [undefined, "", "0", "0.00", "abc", "-0.1"]) {
+      withEnv(value, () => {
+        assert.equal(feedInTariffEur(), null);
+      })();
+    }
   });
 });
 
@@ -98,6 +133,112 @@ describe("hourlyProductionIntervals: bottom-up per interval", () => {
     assert.equal(series[0].solarToGridKwh, 0);
     assert.equal(series[0].solarToBatteryKwh, 0);
     assert.equal(series[0].selfConsumptionAvoidedCostEur, 0);
+  });
+
+  it("carries the export counter's raw kWh, coalescing absent hours to 0", () => {
+    const rows = [
+      bucket("2026-10-10T22:00:00Z", 0.5),
+      bucket("2026-10-10T23:00:00Z", 1.0),
+    ];
+    const exportByTs = new Map([
+      [new Date("2026-10-10T23:00:00Z").getTime(), 0.6],
+    ]);
+    const [a, b] = hourlyProductionIntervals(
+      rows,
+      PRICES,
+      new Map(),
+      exportByTs
+    );
+    assert.equal(a.exportKwh, 0);
+    assert.equal(b.exportKwh, 0.6);
+  });
+
+  it("carries a null exportKwh when the export counter is not registered", () => {
+    const rows = [bucket("2026-10-10T22:00:00Z", 0.5)];
+    const [hour] = hourlyProductionIntervals(rows, PRICES, new Map(), null);
+    assert.equal(hour.exportKwh, null);
+  });
+
+  it("gives export-only hours their own interval with 0 kWh produced", () => {
+    // Evening battery export (21:00Z, after the price rows) rides
+    // the export counter in an hour with no PV row: it must not
+    // silently drop out of the series, must not flag an unknown
+    // price (nothing was produced), and must carry its earnings.
+    const rows = [bucket("2026-10-10T22:00:00Z", 0.5)];
+    const exportByTs = new Map([
+      [new Date("2026-10-11T21:00:00Z").getTime(), 0.6],
+    ]);
+    const { series, totals } = assembleProduction(
+      hourlyProductionIntervals(rows, PRICES, new Map(), exportByTs),
+      0.12
+    );
+    const evening = series[1];
+    assert.equal(series.length, 2);
+    assert.equal(evening.kwh, 0);
+    assert.equal(evening.avoidedCostEur, 0);
+    assert.equal(evening.exportKwh, 0.6);
+    assert.equal(evening.exportEarningsEur, 0.07);
+    assert.equal(totals.exportKwh, 0.6);
+    assert.equal(totals.exportEarningsEur, 0.07);
+    assert.equal(totals.hasUnknownPrice, false);
+  });
+});
+
+describe("export earnings: the flat tariff, never the dynamic price", () => {
+  const rows = [bucket("2026-10-10T22:00:00Z", 0.5)];
+  const exportByTs = new Map([
+    [new Date("2026-10-10T22:00:00Z").getTime(), 0.6],
+  ]);
+  const intervals = () =>
+    hourlyProductionIntervals(rows, PRICES, new Map(), exportByTs);
+
+  it("prices the export kWh at the flat tariff, independent of the hour's price", () => {
+    // 0.6 kWh exported at a 0.12 EUR/kWh tariff: 0.07 EUR, never the
+    // 0.10 grid price the hour itself costs.
+    const { series, totals } = assembleProduction(intervals(), 0.12);
+    assert.equal(series[0].exportKwh, 0.6);
+    assert.equal(series[0].exportEarningsEur, 0.07);
+    assert.equal(totals.exportKwh, 0.6);
+    assert.equal(totals.exportEarningsEur, 0.07);
+  });
+
+  it("earnings stay null, never a silent 0, when the tariff is unset", () => {
+    const { series, totals } = assembleProduction(intervals());
+    assert.equal(series[0].exportEarningsEur, null);
+    // The measured export kWh is still reported.
+    assert.equal(series[0].exportKwh, 0.6);
+    assert.equal(totals.exportKwh, 0.6);
+    assert.equal(totals.exportEarningsEur, null);
+    assert.equal(totals.totalCostNetEur, null);
+  });
+
+  it("earnings and export kWh stay null when the export counter is not registered", () => {
+    const { series, totals } = assembleProduction(
+      hourlyProductionIntervals(rows, PRICES, new Map(), null),
+      0.12
+    );
+    assert.equal(series[0].exportKwh, null);
+    assert.equal(series[0].exportEarningsEur, null);
+    assert.equal(totals.exportKwh, null);
+    assert.equal(totals.exportEarningsEur, null);
+    assert.equal(totals.totalCostNetEur, null);
+  });
+
+  it("combines the self-consumption savings with the export earnings", () => {
+    const splitByTs = new Map([
+      [
+        new Date("2026-10-10T22:00:00Z").getTime(),
+        { solarToHomeKwh: 0.3, solarToGridKwh: 0.2, solarToBatteryKwh: 0 },
+      ],
+    ]);
+    const { series, totals } = assembleProduction(
+      hourlyProductionIntervals(rows, PRICES, splitByTs, exportByTs),
+      0.12
+    );
+    assert.equal(series[0].selfConsumptionAvoidedCostEur, 0.03);
+    assert.equal(series[0].exportEarningsEur, 0.07);
+    // Savings plus earnings: 0.03 + 0.07.
+    assert.equal(totals.totalCostNetEur, 0.1);
   });
 });
 
@@ -204,6 +345,50 @@ describe("dailyProductionIntervals: kWh from the daily aggregate, cost bottom-up
     assert.equal(day.selfConsumedCostEur, null);
   });
 
+  it("aggregates the local day's export counter sum, keeping midnight-crossing hours with their day", () => {
+    // 22:00Z on 2026-10-11 is local midnight of 2026-10-12: that
+    // export hour must not leak into local day 2026-10-11's sum.
+    const exportByDay = new Map([
+      ["2026-10-11", 0.8],
+      ["2026-10-12", 0.4],
+    ]);
+    const [day] = dailyProductionIntervals(
+      dayRows,
+      hourRows,
+      PRICES,
+      new Map(),
+      exportByDay
+    );
+    assert.equal(day.exportKwh, 0.8);
+    // The same map priced at a flat tariff: 0.8 x 0.12.
+    const { series, totals } = assembleProduction(
+      dailyProductionIntervals(dayRows, hourRows, PRICES, new Map(), exportByDay),
+      0.12
+    );
+    assert.equal(series[0].exportEarningsEur, 0.1);
+    assert.equal(totals.exportKwh, 0.8);
+    assert.equal(totals.exportEarningsEur, 0.1);
+  });
+
+  it("reads a day absent from the export series as 0 exported, a null map as unknown", () => {
+    const [day] = dailyProductionIntervals(
+      dayRows,
+      hourRows,
+      PRICES,
+      new Map(),
+      new Map()
+    );
+    assert.equal(day.exportKwh, 0);
+    const [unknown] = dailyProductionIntervals(
+      dayRows,
+      hourRows,
+      PRICES,
+      new Map(),
+      null
+    );
+    assert.equal(unknown.exportKwh, null);
+  });
+
   it("costs the self-consumed share null when a self-consuming hour has no known price", () => {
     const splitByDay = new Map([
       [
@@ -279,6 +464,10 @@ describe("assembleProduction: series, totals and peak", () => {
       // Null, never 0: nothing was produced, so no share exists.
       selfConsumedShare: null,
       selfConsumptionAvoidedCostEur: 0,
+      exportKwh: 0,
+      // Null, never 0: no tariff is configured, so no earnings exist.
+      exportEarningsEur: null,
+      totalCostNetEur: null,
     });
     assert.equal(peak, null);
     assert.equal(SOLAR_DATA_START, "2026-10-10");

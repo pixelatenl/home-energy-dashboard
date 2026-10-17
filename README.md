@@ -85,6 +85,7 @@ cp .env.example .env
 | `DB_PASSWORD`| Database password                        |
 | `API_PORT`   | Optional; API server port (default `5273`, separate from Vite's `5173`) |
 | `BATTERY_CAPACITY_KWH` | Optional; usable battery capacity for the charge/discharge time estimates (unset hides them) |
+| `EMS_FEED_IN_TARIFF_EUR` | Optional; flat feed-in tariff in EUR/kWh for the Solar page's export earnings (unset/0 hides them) |
 
 `.env` is git-ignored and must never be committed: this repository is public,
 and credentials or LAN IP addresses must not leak into it.
