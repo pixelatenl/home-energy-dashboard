@@ -76,10 +76,14 @@ const WEATHER_ICONS: Record<number, IconComponent> = {
   99: CloudLightning,
 }
 
+// The score ring's band color: muted, warm-leaning tones from the
+// app's shared data-viz palette - muted gold for mostly sunny,
+// terracotta for mixed, warm gray for overcast - instead of bright
+// signal colors.
 function solarScoreColor(score: number): string {
-  if (score >= 70) return "#eab308" // mostly sunny
-  if (score >= 40) return "#f97316" // mixed
-  return "#64748b" // overcast
+  if (score >= 70) return "hsl(45 45% 42%)" // mostly sunny
+  if (score >= 40) return "hsl(28 40% 42%)" // mixed
+  return "#6b6157" // overcast
 }
 
 function ScoreRing({ score }: { score: number }) {
@@ -88,7 +92,7 @@ function ScoreRing({ score }: { score: number }) {
     <div
       className="flex size-14 items-center justify-center rounded-full"
       style={{
-        background: `conic-gradient(${color} ${score}%, rgba(100,116,139,0.25) ${score}%)`,
+        background: `conic-gradient(${color} ${score}%, rgba(138,127,112,0.25) ${score}%)`,
       }}
       title={`Solar score ${score}/100`}
     >
@@ -136,11 +140,11 @@ function ChartLegend() {
         Temperature
       </span>
       <span className="flex items-center gap-1.5">
-        <span className="size-3 rounded-sm bg-[#94a3b8]/30" />
+        <span className="size-3 rounded-sm bg-[#8a7f70]/30" />
         Cloud cover
       </span>
       <span className="flex items-center gap-1.5">
-        <span className="size-3 rounded-sm bg-[#f8ae17]" />
+        <span className="size-3 rounded-sm bg-[hsl(38_45%_42%)]" />
         PV estimate (Wh)
       </span>
     </div>
@@ -174,8 +178,21 @@ function ChartTooltip({ hour, leftPercent }: { hour: WeatherHour; leftPercent: n
 // Hourly strip: temperature curve over cloud-cover shading, with a PV
 // estimate bar per hour. Hovering (desktop) or tapping (mobile) a slot
 // shows a tooltip with its values.
-function HourlyChart({ hours }: { hours: WeatherHour[] }) {
-  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
+// A bar with rounded top corners only and a flat base, the solar
+// production chart's bar idiom, so the forecast's PV bars match its
+// geometry. The radius clamps to the bar's width and height, so a
+// short bar never over-rounds.
+function pvBarPath(
+  x: number,
+  width: number,
+  top: number,
+  base: number
+): string {
+  const r = Math.min(5, width / 2, base - top)
+  return `M ${x} ${base} V ${top + r} A ${r} ${r} 0 0 1 ${x + r} ${top} H ${x + width - r} A ${r} ${r} 0 0 1 ${x + width} ${top + r} V ${base} Z`
+}
+
+function HourlyChart({ hours }: { hours: WeatherHour[] }) {  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
   // Suppresses the synthetic mouse events browsers fire after a touch, so
   // the tap toggle is not immediately undone.
   const lastTouchAt = useRef(0)
@@ -319,17 +336,23 @@ function HourlyChart({ hours }: { hours: WeatherHour[] }) {
                     y={topBand}
                     width={slot}
                     height={height - topBand}
-                    fill="#94a3b8"
+                    fill="#8a7f70"
                     opacity={(hour.cloud_cover / 100) * 0.3}
                   />
-                  <rect
-                    x={x(index) - slot * 0.3}
-                    y={pvBase - pvHeight}
-                    width={slot * 0.6}
-                    height={pvHeight}
-                    rx={2}
-                    fill="#f8ae17"
-                  />
+                  {/* The PV bar, the production chart's idiom: rounded
+                      top corners only, flat at the base, never a
+                      zero-height bar. */}
+                  {pvHeight > 0 && (
+                    <path
+                      d={pvBarPath(
+                        x(index) - slot * 0.3,
+                        slot * 0.6,
+                        pvBase - pvHeight,
+                        pvBase
+                      )}
+                      fill="hsl(38 45% 42%)"
+                    />
+                  )}
                 </g>
               )
             })}
@@ -413,25 +436,33 @@ function HourlyChart({ hours }: { hours: WeatherHour[] }) {
           ))}
         </div>
       </div>
-      <div className="ml-10 mr-8 mt-1 flex items-center justify-between text-xs text-muted-foreground tabular-nums">
-        <span className="flex items-center gap-1">
-          <Sunrise className="size-4" aria-hidden="true" />
-          {hours[0]?.hour.slice(11, 13)}
-        </span>
-        {hours
-          .filter(
-            (_, index) =>
-              index % 3 === 0 &&
-              index !== 0 &&
-              index !== hours.length - 1
-          )
-          .map((hour) => (
-            <span key={hour.hour}>{hour.hour.slice(11, 13)}</span>
-          ))}
-        <span className="flex items-center gap-1">
-          {hours[hours.length - 1]?.hour.slice(11, 13)}
-          <Sunset className="size-4" aria-hidden="true" />
-        </span>
+      {/* The hour row, aligned with the bars: every hour label centers
+          exactly on its hour's bar (the slot centers), with the
+          sunrise and sunset icons at the plot's edges - hidden on
+          narrow widths, where the first and last labels would
+          collide with them. The mx-10 padding matches the chart
+          row's two w-8 + gap-2 gutters, so the row spans the plot
+          width exactly. */}
+      <div className="relative mx-10 mt-1 h-4 text-xs text-muted-foreground tabular-nums">
+        <Sunrise
+          className="absolute left-0 top-0 hidden size-4 sm:block"
+          aria-hidden="true"
+        />
+        <Sunset
+          className="absolute right-0 top-0 hidden size-4 sm:block"
+          aria-hidden="true"
+        />
+        {hours.map((hour, index) => (
+          <span
+            key={hour.hour}
+            className="absolute top-0 -translate-x-1/2"
+            style={{
+              left: `${((index + 0.5) / hours.length) * 100}%`,
+            }}
+          >
+            {hour.hour.slice(11, 13)}
+          </span>
+        ))}
       </div>
       <ChartLegend />
     </div>
@@ -494,7 +525,7 @@ function DayCard({
       {actual !== null && (
         <span className="h-1 w-full overflow-hidden rounded-full bg-muted">
           <span
-            className="block h-full rounded-full bg-[#f59e0b]"
+            className="block h-full rounded-full bg-[hsl(38_45%_42%)]"
             style={{ width: `${share}%` }}
           />
         </span>
