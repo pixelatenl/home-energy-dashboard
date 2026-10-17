@@ -1,16 +1,51 @@
 import { useEffect, useState } from "react"
+import { Thermometer } from "lucide-react"
+import PanelHeader from "@/components/PanelHeader"
 import { Card, CardContent } from "@/components/ui/card"
 import type { HeatZonePoint, HeatZonesData } from "@/lib/api"
 import type { PeriodKind } from "@/lib/period"
+import { localTimeOf } from "@/lib/time"
 
 // The zone timeline hero: one row per zone plus the outdoor reference
 // row, all sharing one time axis that spans the period window, so
 // temperatures align vertically across rows. Hand-built in the app's
 // div-and-SVG chart idiom: shaded bands for the heating intervals, a
-// solid temperature line and a lighter stepped setpoint line.
+// solid temperature line and a lighter stepped setpoint line. Each
+// row's chart carries a hover tooltip with that line's own figures:
+// the nearest sample's time, temperature and setpoint.
 
 const VIEW_W = 100
 const VIEW_H = 40
+
+// The tooltip's date half for periods longer than a day, the app's
+// Europe/Amsterdam formatting convention.
+const TOOLTIP_DATE = new Intl.DateTimeFormat("en-GB", {
+  weekday: "short",
+  day: "numeric",
+  month: "short",
+  timeZone: "Europe/Amsterdam",
+})
+
+// The sample nearest a hovered instant; rows are short enough that a
+// linear scan is fine on every mouse move.
+function nearestPoint(
+  points: HeatZonePoint[],
+  ms: number
+): HeatZonePoint | null {
+  if (points.length === 0) {
+    return null
+  }
+  let best = points[0]
+  let bestDelta = Infinity
+  for (const point of points) {
+    const delta = Math.abs(Date.parse(point.ts) - ms)
+    if (delta < bestDelta) {
+      bestDelta = delta
+      best = point
+    }
+  }
+  return best
+}
 
 // Time -> percentage across the shared window, clamped to the axis.
 function timePct(ms: number, fromMs: number, toMs: number): number {
@@ -99,7 +134,9 @@ function setpointPath(
 
 // One timeline row: fixed-width label, then the chart area. Every row
 // uses the same left column and flex-1 chart area, so the time axis
-// lines up across all rows.
+// lines up across all rows. Hovering the chart pins a thin guide line
+// at the pointer's instant and floats a tooltip with that row's own
+// line figures: the nearest sample's time, temperature and setpoint.
 function TimelineRow({
   label,
   points,
@@ -110,6 +147,7 @@ function TimelineRow({
   showNow,
   lineClass,
   withSetpoint,
+  kind,
 }: {
   label: string
   points: HeatZonePoint[]
@@ -120,14 +158,41 @@ function TimelineRow({
   showNow: boolean
   lineClass: string
   withSetpoint: boolean
+  kind: PeriodKind
 }) {
   const stepD = withSetpoint ? setpointPath(points, fromMs, toMs) : ""
+  // The hovered instant, in window milliseconds; the tooltip reads
+  // the sample nearest it.
+  const [hoverMs, setHoverMs] = useState<number | null>(null)
+  const hovered =
+    hoverMs === null ? null : nearestPoint(points, hoverMs)
+  const hoverPct =
+    hoverMs === null
+      ? null
+      : Math.min(100, Math.max(0, ((hoverMs - fromMs) / (toMs - fromMs)) * 100))
+  const hoveredTimeLabel =
+    hovered === null
+      ? ""
+      : kind === "day"
+        ? localTimeOf(hovered.ts)
+        : `${TOOLTIP_DATE.format(new Date(hovered.ts))} ${localTimeOf(hovered.ts)}`
   return (
     <div className="flex items-center gap-3">
       <span className="w-24 shrink-0 truncate text-sm text-muted-foreground sm:w-28 lg:w-32">
         {label}
       </span>
-      <div className="relative h-10 min-w-0 flex-1">
+      <div
+        className="relative h-10 min-w-0 flex-1"
+        onMouseMove={(event) => {
+          const rect = event.currentTarget.getBoundingClientRect()
+          const frac = Math.min(
+            1,
+            Math.max(0, (event.clientX - rect.left) / rect.width)
+          )
+          setHoverMs(fromMs + frac * (toMs - fromMs))
+        }}
+        onMouseLeave={() => setHoverMs(null)}
+      >
         {intervals.map((interval, index) => {
           const from = timePct(Date.parse(interval.from), fromMs, toMs)
           const to = timePct(Date.parse(interval.to), fromMs, toMs)
@@ -144,6 +209,13 @@ function TimelineRow({
           <div
             className="absolute inset-y-0 w-px bg-foreground/40"
             style={{ left: `${timePct(nowMs, fromMs, toMs)}%` }}
+            aria-hidden="true"
+          />
+        )}
+        {hoverPct !== null && (
+          <div
+            className="pointer-events-none absolute inset-y-0 w-px bg-foreground/20"
+            style={{ left: `${hoverPct}%` }}
             aria-hidden="true"
           />
         )}
@@ -170,6 +242,26 @@ function TimelineRow({
             vectorEffect="non-scaling-stroke"
           />
         </svg>
+        {hovered !== null && hoverPct !== null && (
+          <div
+            className="pointer-events-none absolute top-1/2 z-10 min-w-36 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded-lg border bg-popover px-2.5 py-1.5 text-popover-foreground shadow-md"
+            style={{ left: `${Math.min(Math.max(hoverPct, 12), 88)}%` }}
+          >
+            <p className="text-xs font-medium">
+              {label} &middot; {hoveredTimeLabel}
+            </p>
+            <p className="text-xs text-muted-foreground tabular-nums">
+              {`${hovered.temp.toFixed(1)} \u00b0C`}
+            </p>
+            {withSetpoint && (
+              <p className="text-xs text-muted-foreground tabular-nums">
+                {hovered.setpoint === null
+                  ? "setpoint unknown"
+                  : `setpoint ${hovered.setpoint.toFixed(1)} \u00b0C`}
+              </p>
+            )}
+          </div>
+        )}
       </div>
     </div>
   )
@@ -270,8 +362,12 @@ function ZoneTimeline({
 
   return (
     <Card>
+      <PanelHeader
+        icon={Thermometer}
+        title="Zones"
+        description="Per-zone temperature with setpoints and heating intervals"
+      />
       <CardContent className="space-y-1.5">
-        <p className="text-sm font-medium">Zones</p>
         <div className="space-y-1.5">
           {data.zones.map((zone) => (
             <TimelineRow
@@ -285,6 +381,7 @@ function ZoneTimeline({
               showNow={showNow}
               lineClass="stroke-foreground"
               withSetpoint={true}
+              kind={kind}
             />
           ))}
         </div>
@@ -297,8 +394,9 @@ function ZoneTimeline({
             toMs={toMs}
             nowMs={nowMs}
             showNow={showNow}
-            lineClass="stroke-sky-500"
+            lineClass="stroke-[#3d6470]"
             withSetpoint={false}
+            kind={kind}
           />
         </div>
         <TickRow fromMs={fromMs} toMs={toMs} kind={kind} />
