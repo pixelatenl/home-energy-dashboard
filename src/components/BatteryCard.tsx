@@ -6,11 +6,10 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import type { SummaryData } from "@/lib/api"
+import { CHARGING_COLOR, DISCHARGING_COLOR } from "@/lib/flowDiagram"
 
-// Palette shared with the charts: green charging, amber discharging,
-// neutral gray idle.
-const CHARGING_COLOR = "hsl(140 70% 45%)"
-const DISCHARGING_COLOR = "#f59e0b"
+// Charging and discharging share the flow diagram's muted battery
+// palette; idle stays a neutral gray.
 const IDLE_COLOR = "#94a3b8"
 
 function stateColor(state: string): string {

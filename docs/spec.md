@@ -249,8 +249,10 @@ your home card (section 7.2) owns it completely.
   appliances and heat pump estimate, 14.5 of 91.4 kWh, 16% of the
   period" (in the active mode's metric).
 - The heat pump tile carries the "Est." badge.
-- Category colors are fixed per key (dishwasher blue, dryer orange,
-  washing machine purple, heat pump rose), fixed per key.
+- Category colors are fixed per key (dishwasher slate-teal, dryer
+  terracotta, washing machine plum, heat pump brick), fixed per key -
+  muted, warm-leaning tones that sit with the dashboard's warm
+  dark-brown glass aesthetic.
 - Within the known set, categories under 2 percent of the period's
   primary total collapse into one "Other" tile (darker neutral) - 2
   percent is the smallest share that still fits a label and value on

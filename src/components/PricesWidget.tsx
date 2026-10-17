@@ -40,12 +40,14 @@ function formatPrice(value: number | null): string {
 }
 
 // Green (cheap) through neutral to red (expensive), relative to the day's
-// own min and max.
+// own min and max - muted and mid-dark, the same depth as the usage
+// treemap's palette, so the bars sit with the warm glass aesthetic
+// instead of bright signal colors.
 function priceColor(price: number, min: number, max: number): string {
   const span = max - min || 1
   const t = Math.min(1, Math.max(0, (price - min) / span))
   const hue = 140 * (1 - t)
-  return `hsl(${hue} 70% 45%)`
+  return `hsl(${hue} 40% 38%)`
 }
 
 function prepareHours(hours: PriceHour[], dateKey: string): PreparedHour[] {
@@ -279,7 +281,7 @@ function PriceChartLegend() {
           className="h-3 w-6 rounded-sm"
           style={{
             background:
-              "linear-gradient(90deg, hsl(140 70% 45%), hsl(0 70% 45%))",
+              "linear-gradient(90deg, hsl(140 40% 38%), hsl(0 40% 38%))",
           }}
         />
         Hourly price (green cheap, red expensive)

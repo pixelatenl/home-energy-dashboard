@@ -297,13 +297,16 @@ function SolarForecastWidget() {
             </span>
           )}
           <div className="relative h-2 overflow-hidden rounded-full bg-muted">
+            {/* The produced fill and the beyond-forecast segment ride the
+                muted battery/solar amber and green of the app's data-viz
+                palette, matching the prices and treemap panels. */}
             <div
-              className="absolute inset-y-0 left-0 bg-[#f59e0b]"
+              className="absolute inset-y-0 left-0 bg-[hsl(38_45%_42%)]"
               style={{ width: `${Math.min(producedPct, forecastPct)}%` }}
             />
             {overPct > 0 && (
               <div
-                className="absolute inset-y-0 bg-emerald-600 dark:bg-emerald-500"
+                className="absolute inset-y-0 bg-[hsl(140_40%_38%)]"
                 style={{ left: `${forecastPct}%`, width: `${overPct}%` }}
               />
             )}

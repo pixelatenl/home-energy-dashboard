@@ -7,19 +7,19 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
-import { BATTERY_IDLE_COLOR } from "@/lib/flowDiagram"
+import {
+  BATTERY_IDLE_COLOR,
+  CHARGING_COLOR,
+  DISCHARGING_COLOR,
+} from "@/lib/flowDiagram"
 import { useSummary } from "@/lib/useSummary"
 
 // The hub's compact battery presence: current charge percentage with a
 // state-colored fill indicator, plus today's charged and discharged
 // totals, all from the same summary payload the battery panel reads.
 // The full battery panel moves to the Battery tab in a later phase.
-
-// Palette shared with the battery panel and its charts: green
-// charging, amber discharging, teal idle (the flow diagram's idle
-// accent).
-const CHARGING_COLOR = "hsl(140 70% 45%)"
-const DISCHARGING_COLOR = "#f59e0b"
+// The state colors are the flow diagram's shared battery palette:
+// muted green charging, muted amber discharging, muted teal idle.
 
 function formatKwh(value: number | null): string {
   return value === null ? "\u2014" : `${value.toFixed(1)} kWh`

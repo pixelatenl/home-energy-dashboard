@@ -14,14 +14,17 @@ import {
   type BatterySocPoint,
 } from "@/lib/api"
 import { useAiContext } from "@/lib/useAiContext"
-import { BATTERY_IDLE_COLOR } from "@/lib/flowDiagram"
+import {
+  BATTERY_IDLE_COLOR,
+  CHARGING_COLOR,
+  DISCHARGING_COLOR,
+} from "@/lib/flowDiagram"
 import { useSummary } from "@/lib/useSummary"
 import { localHourFractionOf, localHourOf } from "@/lib/time"
 
-const CHARGING_COLOR = "hsl(140 70% 45%)"
-const DISCHARGING_COLOR = "#f59e0b"
-// The SOC line uses the violet accent.
-const SOC_COLOR = "#8b5cf6"
+// The SOC line uses a muted plum, the same family as the usage
+// treemap's muted palette.
+const SOC_COLOR = "#6f5d7e"
 
 function formatKwh(value: number | null): string {
   return value === null ? "\u2014" : `${value.toFixed(1)} kWh`

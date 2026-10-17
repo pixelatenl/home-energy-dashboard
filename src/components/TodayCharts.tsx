@@ -6,7 +6,11 @@ import {
   type PvFlowHour,
   type WeatherHour,
 } from "@/lib/api"
-import { DISCHARGING_COLOR, SOLAR_COLOR } from "@/lib/flowDiagram"
+import {
+  CHARGING_COLOR,
+  DISCHARGING_COLOR,
+  SOLAR_COLOR,
+} from "@/lib/flowDiagram"
 import { useSummary } from "@/lib/useSummary"
 import { useDataRefreshListener } from "@/lib/useDataRefresh"
 import { amsterdamNow, todayInAmsterdam, localHourFractionOf } from "@/lib/time"
@@ -26,9 +30,9 @@ import { amsterdamNow, todayInAmsterdam, localHourFractionOf } from "@/lib/time"
 const TODAY_CHART_W = 240
 const TODAY_CHART_H = 48
 
-// Palette: the flow's solar yellow for actual production; the battery
-// panel's green/amber pair for charge and discharge.
-const CHARGING_COLOR = "hsl(140 70% 45%)"
+// Palette: the flow's solar yellow for actual production; the
+// battery's muted green/amber pair for charge and discharge (the
+// flow diagram's shared battery palette).
 
 // The now marker's x position for the full-day 0-24h axis.
 function nowXOf(nowFraction: number): number {

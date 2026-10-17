@@ -14,14 +14,18 @@ export const SOLAR_COLOR = "#f8ae17"
 // into orange, so the pulse stays visible against the bright day sky
 // (the today chart keeps the lighter SOLAR_COLOR on its glass panel).
 export const SOLAR_FLOW_COLOR = "#e58806"
-export const CHARGING_COLOR = "hsl(140 70% 45%)"
-export const DISCHARGING_COLOR = "#f59e0b"
+// The battery state colors: the same muted, mid-dark depth as the
+// usage treemap's palette (see applianceColors.ts), so the state
+// identity reads without bright signal colors - green charging,
+// muted amber discharging, teal idle.
+export const CHARGING_COLOR = "hsl(140 40% 38%)"
+export const DISCHARGING_COLOR = "hsl(38 45% 42%)"
 export const GRID_IMPORT_COLOR = "#3b3fbf"
 export const GRID_EXPORT_COLOR = GRID_IMPORT_COLOR
 // The battery's idle accent: teal, between the charging green and the
 // grid indigo, so a resting battery reads as "standing by" rather
 // than disabled grey.
-export const BATTERY_IDLE_COLOR = "hsl(185 65% 45%)"
+export const BATTERY_IDLE_COLOR = "hsl(185 40% 38%)"
 
 // Node tile gradients: the rounded-square node surfaces, each accent
 // blooming out of a deep shade of its own hue on the AI surfaces'
@@ -33,10 +37,10 @@ const SOLAR_TILE_GRADIENT =
 const GRID_TILE_GRADIENT =
   "linear-gradient(135deg, hsl(238 53% 28%), hsl(238 53% 50%))"
 const BATTERY_TILE_GRADIENTS: Record<BatteryState, string> = {
-  charging: "linear-gradient(135deg, hsl(140 70% 24%), hsl(140 70% 45%))",
-  discharging: "linear-gradient(135deg, hsl(38 93% 25%), hsl(38 93% 50%))",
-  idle: "linear-gradient(135deg, hsl(185 65% 24%), hsl(185 65% 46%))",
-  unavailable: "linear-gradient(135deg, hsl(185 65% 24%), hsl(185 65% 46%))",
+  charging: "linear-gradient(135deg, hsl(140 40% 20%), hsl(140 40% 38%))",
+  discharging: "linear-gradient(135deg, hsl(38 45% 24%), hsl(38 45% 42%))",
+  idle: "linear-gradient(135deg, hsl(185 40% 20%), hsl(185 40% 38%))",
+  unavailable: "linear-gradient(135deg, hsl(185 40% 20%), hsl(185 40% 38%))",
 }
 
 // Diagram geometry in design units. The diagram box is aspect-locked and
