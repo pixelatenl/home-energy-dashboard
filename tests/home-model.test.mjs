@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { homeModelEntries, windowDays } from "../server/queries.mjs";
+import {
+  homeModelEntries,
+  slotUnitForDays,
+  windowDays,
+} from "../server/queries.mjs";
 import { localDayStartUtcMs } from "../server/time.mjs";
 
 // A half-open local window [startKey, nextKey).
@@ -99,5 +103,18 @@ describe("homeModelEntries: the per-period model", () => {
     const { modeledKwh } = homeModelEntries(1);
     const unexplained = Math.max(0, remainder - modeledKwh);
     assert.equal(unexplained, 0);
+  });
+});
+
+describe("slotUnitForDays: the chart granularity rule", () => {
+  it("renders hours for a single day, days for weeks and months, months for years", () => {
+    assert.equal(slotUnitForDays(1), "hour");
+    assert.equal(slotUnitForDays(7), "day");
+    assert.equal(slotUnitForDays(28), "day");
+    assert.equal(slotUnitForDays(31), "day");
+    assert.equal(slotUnitForDays(62), "day");
+    assert.equal(slotUnitForDays(63), "month");
+    assert.equal(slotUnitForDays(365), "month");
+    assert.equal(slotUnitForDays(366), "month");
   });
 });

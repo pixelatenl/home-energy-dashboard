@@ -2,7 +2,7 @@ import * as React from "react"
 import { cn } from "cn"
 
 // Glass surface: every Card is translucent (white fill, translucent
-// white border) over the midnight gradient body, without a backdrop
+// white border) over the dark-earth gradient body, without a backdrop
 // blur so the background gradient stays crisp behind the tint. The
 // fill, border and elevation all come from the theme tokens in
 // index.css.

@@ -568,6 +568,15 @@ app.get(
       // window, for the Usage tab's right-column cards.
       avg_price_eur: current.avg_price_eur,
       home_model: current.home_model,
+      // The grid statistics for the period summary strip's net view
+      // (docs/spec.md section 7.1).
+      grid_import_kwh: current.grid_import_kwh,
+      grid_export_kwh: current.grid_export_kwh,
+      import_cost_eur: current.import_cost_eur,
+      export_credit_eur: current.export_credit_eur,
+      // The per-slot chart series for the hourly/daily/monthly chart
+      // (docs/spec.md section 8).
+      slots: current.slots,
       assumptions: current.assumptions,
     });
   })

@@ -146,36 +146,36 @@
   * {
     @apply border-border outline-ring/50;
     }
-  /* Midnight-blue field with magenta and violet blooms for variation:
-     several soft radial patches (magenta lower left, violet upper
-     right, indigo along the bottom) layered over the base gradient
-     from https://css.glass. Fixed attachment keeps the composition
-     anchored to the viewport on tall pages. */
+  /* Dark-earth field with orange and green blooms for variation:
+     several soft radial patches (dark orange lower left, dark green
+     upper right, deep amber along the bottom) layered over a dark
+     brown base gradient, after https://css.glass. Fixed attachment
+     keeps the composition anchored to the viewport on tall pages. */
   body {
     @apply text-foreground;
     min-height: 100vh;
     background:
       radial-gradient(
         ellipse 65% 55% at 12% 88%,
-        rgb(155 28 102 / 0.5),
+        rgb(180 83 9 / 0.42),
         transparent 65%
       ),
       radial-gradient(
         ellipse 55% 50% at 88% 12%,
-        rgb(76 29 149 / 0.45),
+        rgb(20 83 45 / 0.4),
         transparent 65%
       ),
       radial-gradient(
         ellipse 80% 45% at 55% 105%,
-        rgb(59 25 173 / 0.3),
+        rgb(146 64 14 / 0.32),
         transparent 70%
       ),
       radial-gradient(
         ellipse at bottom,
-        #9b1c66 15%,
-        #191970 45%,
-        #0d0d3a 75%,
-        #020211 100%
+        #4a2c14 15%,
+        #241610 45%,
+        #120c08 75%,
+        #060402 100%
       )
       fixed;
     }

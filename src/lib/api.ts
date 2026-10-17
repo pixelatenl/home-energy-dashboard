@@ -332,56 +332,6 @@ export function fetchSummary(force = false): Promise<SummaryData> {
   return promise
 }
 
-// GET /api/appliances: smart plug disaggregation (domain = 'plug' only).
-export type ApplianceRange = "today" | "week" | "month" | "year"
-
-// Anchored window: the concrete period containing the date, as the
-// PeriodNavigator produces. When given, the server filters to that
-// period instead of the relative range.
-export interface ApplianceAnchor {
-  period: PeriodKind
-  date: string
-}
-
-export interface Appliance {
-  appliance: string
-  kwh: number | null
-  cost_eur: number | null
-  power_w: number | null
-  power_ts: string | null
-}
-
-export interface ApplianceHour {
-  hour: string
-  appliance: string
-  kwh: number
-}
-
-export interface ApplianceSummary {
-  range: ApplianceRange
-  from: string
-  appliances: Appliance[]
-  hourly: ApplianceHour[]
-  totals: {
-    plug_kwh: number
-    plug_cost: number
-  }
-}
-
-export function fetchAppliances(
-  range: ApplianceRange,
-  anchor?: ApplianceAnchor
-): Promise<ApplianceSummary> {
-  return getJson<ApplianceSummary>(
-    withParams(
-      "/api/appliances",
-      anchor === undefined
-        ? { range }
-        : { period: anchor.period, date: anchor.date }
-    )
-  )
-}
-
 // GET /api/usage/breakdown: the category breakdown of household usage
 // for a calendar period (docs/spec.md section 3). Every category
 // carries kWh and cost for the period and the previous period; the
@@ -423,6 +373,14 @@ export interface UsageBreakdown {
   // The window's average hourly electricity price (the flat basis for
   // costing model estimates); null when the window has no price rows.
   avg_price_eur: number | null
+  // The grid statistics for the period summary strip's net view
+  // (docs/spec.md section 7.1): physical volumes plus the hourly-priced
+  // import cost and export credit; the priced fields are null without
+  // usable price rows, never zero.
+  grid_import_kwh: number
+  grid_export_kwh: number
+  import_cost_eur: number | null
+  export_credit_eur: number | null
   // The home model (docs/spec.md section 6): the steady background
   // devices without their own counter, per-day estimates scaled to
   // the window, plus the unexplained share of the remainder.
@@ -438,6 +396,14 @@ export interface UsageBreakdown {
       kwh: number
     }[]
   }
+  // The per-slot chart series (docs/spec.md section 8): the window's
+  // household consumption per hour, day or month, with the slot's
+  // average hourly price and the active categories' kWh for the
+  // tooltip breakdown.
+  slots: {
+    unit: UsageSlotUnit
+    series: UsageSlot[]
+  }
   assumptions: {
     flat_cop: number
     heating_gas_m3: number
@@ -445,6 +411,27 @@ export interface UsageBreakdown {
     gas_non_heating_baseline_m3_per_month: number
     setpoint_staleness_hours: number
   }
+}
+
+// One per-slot chart entry (docs/spec.md section 8): the slot's total
+// household consumption, its average hourly price, its cost at that
+// price, and the active categories' kWh (the heat pump carries its
+// "Est." class).
+export type UsageSlotUnit = "hour" | "day" | "month"
+
+export interface UsageSlotCategory {
+  key: string
+  label: string
+  kwh: number
+  class: "measured" | "Est."
+}
+
+export interface UsageSlot {
+  ts: string
+  kwh: number
+  price_eur: number | null
+  cost_eur: number | null
+  categories: UsageSlotCategory[]
 }
 
 export function fetchUsageBreakdown(

@@ -215,10 +215,31 @@ async function counterEntitiesWithData(ids) {
   return new Set(rows.map((row) => row.entity_id));
 }
 
+// Hourly-priced grid figures: the import energy and the export
+// energy in each priced hour, each times that hour's price. Hours
+// without a price row count toward kWh but not toward cost or
+// credit. Pure: hour maps (bucket start ms -> kWh) and price rows in,
+// import cost and export credit out.
+export function pricedGridFigures(importByHour, exportByHour, priceRows) {
+  let importCost = 0;
+  let exportCredit = 0;
+  for (const price of priceRows) {
+    if (price.price_eur === null) {
+      continue;
+    }
+    const hour = price.ts.getTime();
+    importCost += (importByHour.get(hour) ?? 0) * Number(price.price_eur);
+    exportCredit += (exportByHour.get(hour) ?? 0) * Number(price.price_eur);
+  }
+  return { importCost, exportCredit };
+}
+
 // Range metrics from the verified energy_delta counters: sum(delta_kwh)
 // per entity within the range, bucketed per hour so cost can join the
-// price table. Hours without a price row count toward kWh but not toward
-// cost. Total home consumption (docs/spec.md section 1) is the explicit
+// price table. Hours without a price row count toward kWh but not
+// toward cost. The hourly-priced figures cover both grid directions:
+// import cost (cost_eur) and export credit (export_credit_eur).
+// Total home consumption (docs/spec.md section 1) is the explicit
 // five-counter form: grid import + PV yield + battery discharge -
 // grid export - battery charge. The charge term is a sink (energy
 // leaving the home circuit into the battery is not consumption);
@@ -234,6 +255,7 @@ export async function getRangeMetrics(startMs, endMs) {
     self_consumption_pct: null,
     total_usage_kwh: 0,
     cost_eur: 0,
+    export_credit_eur: 0,
     battery_charged_kwh: null,
     battery_discharged_kwh: null,
   };
@@ -252,6 +274,7 @@ export async function getRangeMetrics(startMs, endMs) {
     [ids, new Date(startMs), new Date(endMs)]
   );
   const importByHour = new Map(); // bucket start (ms) -> kWh
+  const exportByHour = new Map(); // bucket start (ms) -> kWh
   let importKwh = 0;
   let exportKwh = 0;
   let pvKwh = 0;
@@ -267,6 +290,10 @@ export async function getRangeMetrics(startMs, endMs) {
       );
     } else if (map.export !== null && row.entity_id === map.export) {
       exportKwh += kwh;
+      exportByHour.set(
+        row.bucket.getTime(),
+        (exportByHour.get(row.bucket.getTime()) ?? 0) + kwh
+      );
     } else if (map.pv !== null && row.entity_id === map.pv) {
       pvKwh += kwh;
     } else if (
@@ -282,15 +309,9 @@ export async function getRangeMetrics(startMs, endMs) {
     }
   }
   const prices = await dbHourlyPrices(startMs, endMs);
-  for (const price of prices) {
-    if (price.price_eur === null) {
-      continue;
-    }
-    const hourKwh = importByHour.get(price.ts.getTime());
-    if (hourKwh !== undefined) {
-      metrics.cost_eur += hourKwh * price.price_eur;
-    }
-  }
+  const priced = pricedGridFigures(importByHour, exportByHour, prices);
+  metrics.cost_eur = priced.importCost;
+  metrics.export_credit_eur = priced.exportCredit;
   metrics.import_kwh = round2(importKwh);
   metrics.export_kwh = round2(exportKwh);
   if (map.pv !== null) {
@@ -331,6 +352,7 @@ export async function getRangeMetrics(startMs, endMs) {
     metrics.total_usage_kwh = metrics.import_kwh;
   }
   metrics.cost_eur = round2(metrics.cost_eur);
+  metrics.export_credit_eur = round2(metrics.export_credit_eur);
   return metrics;
 }
 
@@ -1529,6 +1551,296 @@ export function homeModelEntries(days) {
   return { entries, modeledKwh };
 }
 
+// ---- Per-slot chart series ----
+
+// The slot unit for a window (docs/spec.md section 8): hours for a
+// single-day window, days up to two months, months beyond. Pure, so
+// the granularity rule is testable.
+export function slotUnitForDays(days) {
+  if (days <= 1) {
+    return "hour";
+  }
+  if (days <= 62) {
+    return "day";
+  }
+  return "month";
+}
+
+// The heat pump estimate per heating-active local day: the day's
+// heating gas (measured gas minus the day's baseline share) through
+// the hybrid model conversion. Day and month slots sum their days;
+// hourly slots cannot attribute the daily gas figure, so they carry
+// no heat pump entry.
+async function heatPumpKwhPerActiveDay(fromMs, toMs) {
+  const out = new Map();
+  if (localDateKey(new Date(toMs - 1)) < GAS_DATA_START) {
+    return out;
+  }
+  const activeDays = await heatingActiveDays(fromMs, toMs);
+  if (activeDays.size === 0) {
+    return out;
+  }
+  const entityIds = await gasCounterEntityIds();
+  if (entityIds.length === 0) {
+    return out;
+  }
+  const rows = await gasDaily(entityIds, fromMs, toMs);
+  const perDay = new Map();
+  for (const row of rows) {
+    const day = localDateKey(new Date(row.bucket.getTime()));
+    perDay.set(day, (perDay.get(day) ?? 0) + Number(row.kwh));
+  }
+  const assumptions = heatModelAssumptions();
+  const baseline = gasNonHeatingBaselineM3PerMonth();
+  for (const [day, volume] of perDay) {
+    if (!activeDays.has(day)) {
+      continue;
+    }
+    const gas = Math.max(0, volume - baseline / daysInMonthOf(day));
+    if (gas > 0) {
+      out.set(day, heatPumpKwhFromHeatingGas(gas, assumptions));
+    }
+  }
+  return out;
+}
+
+// The per-slot chart series (docs/spec.md section 8): the window's
+// household consumption bucketed per hour, day or month - the same
+// five-counter formula as the period total (docs/spec.md section 1),
+// computed per slot and floored at zero - with each slot's average
+// hourly price and the registry categories' per-slot kWh for the
+// tooltip breakdown. Day and month slots carry the heat pump
+// estimate with its "Est." class. Every slot of the period is
+// emitted, including the ones without data yet: they sit on the axis
+// without a bar.
+export async function getUsageSlots(fromMs, toMs) {
+  const map = await resolveEntityMap();
+  const days = windowDays(fromMs, toMs);
+  const unit = slotUnitForDays(days);
+  const bothBatteryMissing =
+    map.batteryCharging === null && map.batteryDischarging === null;
+
+  // The entities: the five grid/PV/battery counters plus the
+  // registry's plug counters.
+  const ids = [];
+  for (const role of COUNTER_ROLES) {
+    const id = map[role];
+    if (id !== null) {
+      ids.push(id);
+    }
+  }
+  const plugRows = await pool.query(
+    `SELECT id, ha_entity_id FROM entity WHERE ha_entity_id = ANY($1::text[])`,
+    [USAGE_CATEGORIES.flatMap((category) => category.entities)]
+  );
+  const plugIdToCategory = new Map();
+  for (const row of plugRows.rows) {
+    for (const category of USAGE_CATEGORIES) {
+      if (category.entities.includes(row.ha_entity_id)) {
+        plugIdToCategory.set(row.id, category);
+      }
+    }
+  }
+  for (const id of plugIdToCategory.keys()) {
+    ids.push(id);
+  }
+
+  const { rows } =
+    ids.length > 0
+      ? await pool.query(
+          `SELECT date_trunc('hour', ts) AS hour, entity_id, sum(delta_kwh) AS kwh
+             FROM energy_delta
+            WHERE entity_id = ANY($1::smallint[])
+              AND ts >= $2::timestamptz
+              AND ts < $3::timestamptz
+            GROUP BY 1, 2
+            ORDER BY 1`,
+          [ids, new Date(fromMs), new Date(toMs)]
+        )
+      : { rows: [] };
+
+  // Per-hour accumulation, keyed by local slot. Hour slots use
+  // "YYYY-MM-DDTHH", day slots the local date key, month slots
+  // "YYYY-MM".
+  const hours = new Map();
+  for (const row of rows) {
+    const bucketMs = row.hour.getTime();
+    const dateKey = localDateKey(new Date(bucketMs));
+    const hourIndex = localHourIndex(new Date(bucketMs));
+    const slotKey =
+      unit === "hour"
+        ? `${dateKey}T${String(hourIndex).padStart(2, "0")}`
+        : unit === "day"
+          ? dateKey
+          : dateKey.slice(0, 7);
+    const kwh = Number(row.kwh ?? 0);
+    let entry = hours.get(slotKey);
+    if (entry === undefined) {
+      entry = {
+        import: 0,
+        export: 0,
+        pv: 0,
+        charge: 0,
+        discharge: 0,
+        plugs: new Map(),
+      };
+      hours.set(slotKey, entry);
+    }
+    const category = plugIdToCategory.get(row.entity_id);
+    if (category !== undefined) {
+      entry.plugs.set(
+        category.key,
+        (entry.plugs.get(category.key) ?? 0) + kwh
+      );
+      continue;
+    }
+    if (map.import !== null && row.entity_id === map.import) {
+      entry.import += kwh;
+    } else if (map.export !== null && row.entity_id === map.export) {
+      entry.export += kwh;
+    } else if (map.pv !== null && row.entity_id === map.pv) {
+      entry.pv += kwh;
+    } else if (map.batteryCharging !== null && row.entity_id === map.batteryCharging) {
+      entry.charge += kwh;
+    } else if (map.batteryDischarging !== null && row.entity_id === map.batteryDischarging) {
+      entry.discharge += kwh;
+    }
+  }
+
+  // The slot keys to emit, in order.
+  const startKey = localDateKey(new Date(fromMs));
+  const endKey = localDateKey(new Date(toMs - 1));
+  const keys = [];
+  if (unit === "hour") {
+    for (let hour = 0; hour < 24; hour += 1) {
+      keys.push(`${startKey}T${String(hour).padStart(2, "0")}`);
+    }
+  } else if (unit === "day") {
+    // Every calendar day of the window: days without data sit on
+    // the axis without a bar, so an in-progress month still shows
+    // its full span.
+    let day = startKey;
+    while (day <= endKey) {
+      keys.push(day);
+      day = nextDateKey(day, 1);
+    }
+  } else {
+    const year = Number(startKey.slice(0, 4));
+    for (let month = 1; month <= 12; month += 1) {
+      keys.push(`${year}-${String(month).padStart(2, "0")}`);
+    }
+  }
+
+  // The heat pump estimate per day, for day and month slots.
+  const heatPumpPerDay =
+    unit === "day" || unit === "month"
+      ? await heatPumpKwhPerActiveDay(fromMs, toMs)
+      : new Map();
+
+  // Prices per slot: the average of the slot's non-null hourly
+  // prices.
+  const priceRows = await dbHourlyPrices(fromMs, toMs);
+  const priceSums = new Map();
+  for (const row of priceRows) {
+    if (row.price_eur === null) {
+      continue;
+    }
+    const tsMs = row.ts.getTime();
+    const dateKey = localDateKey(new Date(tsMs));
+    const slotKey =
+      unit === "hour"
+        ? `${dateKey}T${String(localHourIndex(new Date(tsMs))).padStart(2, "0")}`
+        : unit === "day"
+          ? dateKey
+          : dateKey.slice(0, 7);
+    const entry = priceSums.get(slotKey) ?? { sum: 0, count: 0 };
+    entry.sum += Number(row.price_eur);
+    entry.count += 1;
+    priceSums.set(slotKey, entry);
+  }
+
+  const series = keys.map((key) => {
+    const entry = hours.get(key);
+    const importKwh = entry?.import ?? 0;
+    const exportKwh = entry?.export ?? 0;
+    const pvKwh = entry?.pv ?? 0;
+    const charge = bothBatteryMissing ? 0 : entry?.charge ?? 0;
+    const discharge = bothBatteryMissing ? 0 : entry?.discharge ?? 0;
+    const kwh = Math.max(
+      0,
+      importKwh + pvKwh + discharge - exportKwh - charge
+    );
+    const price = priceSums.get(key);
+    const avgPrice = price === undefined ? null : price.sum / price.count;
+    const categories = [];
+    if (entry !== undefined) {
+      for (const category of USAGE_CATEGORIES) {
+        const plugKwh = entry.plugs.get(category.key);
+        if (plugKwh !== undefined && round2(plugKwh) > 0) {
+          categories.push({
+            key: category.key,
+            label: category.label,
+            kwh: round2(plugKwh),
+            class: "measured",
+          });
+        }
+      }
+    }
+    if (unit !== "hour") {
+      const dayKeys =
+        unit === "day"
+          ? [key]
+          : keysOfMonth(key).filter((day) => heatPumpPerDay.has(day));
+      const heatPumpKwh = dayKeys.reduce(
+        (sum, day) => sum + (heatPumpPerDay.get(day) ?? 0),
+        0
+      );
+      if (heatPumpKwh > 0) {
+        categories.push({
+          key: "heat_pump",
+          label: "Heat pump",
+          kwh: round2(heatPumpKwh),
+          class: "Est.",
+        });
+      }
+    }
+    return {
+      ts: slotKeyToIso(key, unit),
+      kwh: round2(kwh),
+      price_eur: avgPrice === null ? null : Math.round(avgPrice * 10_000) / 10_000,
+      cost_eur: avgPrice === null ? null : round2(kwh * avgPrice),
+      categories,
+    };
+  });
+
+  return { unit, series };
+}
+
+// The local date keys of one "YYYY-MM" month key.
+function keysOfMonth(monthKey) {
+  const [year, month] = monthKey.split("-").map(Number);
+  const last = daysInMonthOf(`${monthKey}-01`);
+  const keys = [];
+  for (let day = 1; day <= last; day += 1) {
+    keys.push(`${monthKey}-${String(day).padStart(2, "0")}`);
+  }
+  return keys;
+}
+
+// The UTC ISO instant of a slot key's local start, for the frontend's
+// labeling.
+function slotKeyToIso(key, unit) {
+  if (unit === "hour") {
+    const dateKey = key.slice(0, 10);
+    const hour = Number(key.slice(11, 13));
+    return new Date(localDayStartUtcMs(dateKey) + hour * 3_600_000).toISOString();
+  }
+  if (unit === "day") {
+    return new Date(localDayStartUtcMs(key)).toISOString();
+  }
+  return new Date(localDayStartUtcMs(`${key}-01`)).toISOString();
+}
+
 // Days in the calendar month of a "YYYY-MM-DD" key, for prorating the
 // monthly non-heating gas baseline to a per-day share.
 function daysInMonthOf(dateKey) {
@@ -1772,7 +2084,7 @@ export async function getUsageBreakdown(fromMs, toMs) {
   const entityNames = USAGE_CATEGORIES.flatMap(
     (category) => category.entities
   );
-  const [metrics, measured, priceRows, heatPump, map] = await Promise.all([
+  const [metrics, measured, priceRows, heatPump, map, slots] = await Promise.all([
     getRangeMetrics(fromMs, toMs),
     entityNames.length > 0
       ? measuredEntityTotals(entityNames, fromMs, toMs)
@@ -1780,12 +2092,16 @@ export async function getUsageBreakdown(fromMs, toMs) {
     dbHourlyPrices(fromMs, toMs),
     heatPumpEstimate(fromMs, toMs),
     resolveEntityMap(),
+    getUsageSlots(fromMs, toMs),
   ]);
   const avgPriceEur =
     priceRows.length > 0
       ? priceRows.reduce((sum, row) => sum + Number(row.price_eur), 0) /
         priceRows.length
       : null;
+  // Usable price data exists at all: gates the priced grid fields
+  // (the null-cost rule).
+  const hasPrices = priceRows.some((row) => row.price_eur !== null);
   // Unattributed energy (the estimate and the remainder) is costed
   // flat at the window's average hourly price: no hourly shape exists
   // for it. Zero energy costs zero even without price rows.
@@ -1881,12 +2197,22 @@ export async function getUsageBreakdown(fromMs, toMs) {
       avgPriceEur === null
         ? null
         : Math.round(avgPriceEur * 10_000) / 10_000,
+    // The grid statistics (docs/spec.md section 7.1): physical
+    // volumes plus the hourly-priced import cost and export credit.
+    // The null-cost rule: without usable price rows the two priced
+    // fields are null, never zero.
+    grid_import_kwh: metrics.import_kwh,
+    grid_export_kwh: metrics.export_kwh,
+    import_cost_eur: hasPrices ? metrics.cost_eur : null,
+    export_credit_eur: hasPrices ? metrics.export_credit_eur : null,
     home_model: {
       days: modelDays,
       entries: model.entries,
       modeled_kwh: round2(model.modeledKwh),
       unexplained_kwh: unexplainedKwh,
     },
+    // The per-slot chart series (docs/spec.md section 8).
+    slots: slots,
     assumptions: {
       flat_cop: heatPump.flatCop,
       heating_gas_m3: round2(heatPump.heatingGasM3),

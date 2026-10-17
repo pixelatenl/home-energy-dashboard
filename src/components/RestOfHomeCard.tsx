@@ -114,7 +114,7 @@ function RestOfHomeBody({
           not zero.
         </p>
       )}
-      <div className="mt-3 space-y-2.5">
+      <div className="mt-4 space-y-4">
         {model.entries.map((entry) => (
           <div key={entry.key}>
             <div className="flex items-baseline justify-between gap-2 text-xs">
@@ -131,7 +131,7 @@ function RestOfHomeBody({
                 {value(entry.kwh)} &middot; {pct(entry.kwh)}%
               </span>
             </div>
-            <div className="mt-1 h-2 rounded-full bg-muted">
+            <div className="mt-1.5 h-2 rounded-full bg-muted">
               <div
                 className="h-2 rounded-full transition-[width] duration-300 ease-out"
                 style={{
@@ -140,7 +140,7 @@ function RestOfHomeBody({
                 }}
               />
             </div>
-            <p className="mt-0.5 text-[10px] leading-tight text-muted-foreground">
+            <p className="mt-1 text-[10px] leading-tight text-muted-foreground">
               {entry.basis}
             </p>
           </div>
@@ -161,7 +161,7 @@ function RestOfHomeBody({
                 {unexplainedValue} &middot; {pct(unexplained)}%
               </span>
             </div>
-            <div className="mt-1 h-2 rounded-full bg-muted">
+            <div className="mt-1.5 h-2 rounded-full bg-muted">
               <div
                 className="h-2 rounded-full transition-[width] duration-300 ease-out"
                 style={{ width: `${pct(unexplained)}%`, background: UNEXPLAINED_FILL }}
@@ -170,7 +170,7 @@ function RestOfHomeBody({
           </div>
         )}
       </div>
-      <p className="mt-3 border-t pt-2 text-xs text-muted-foreground">
+      <p className="mt-4 border-t pt-3 text-xs text-muted-foreground">
         Every category is measured except the heat pump (Est.); the
         bars above are home-model averages.
       </p>

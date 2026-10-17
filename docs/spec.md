@@ -230,8 +230,7 @@ your home card (section 7.2) owns it completely.
   period" (in the active mode's metric).
 - The heat pump tile carries the "Est." badge.
 - Category colors are fixed per key (dishwasher blue, dryer orange,
-  washing machine purple, heat pump rose), shared with the appliance
-  widgets where the categories overlap.
+  washing machine purple, heat pump rose), fixed per key.
 - Within the known set, categories under 2 percent of the period's
   primary total collapse into one "Other" tile (darker neutral) - 2
   percent is the smallest share that still fits a label and value on
@@ -261,8 +260,8 @@ tile's top-left corner, clamped inside the panel:
   (no remount, no flicker).
 - Toggling Energy/Cost swaps primary and secondary everywhere on the
   tab at once: the treemap areas and tile figures, the panel header,
-  the totals table's leading column, and the appliance tiles' primary
-  figure.
+  the period summary's stats, the Rest of your home card's figures,
+  and the per-slot chart's bars.
 - Periods before the data start, periods with no recorded usage and
   fetch failures each show their own empty or error state inside the
   panel.
@@ -297,24 +296,57 @@ modeled_kwh)`, plus `avg_price_eur` (the window's average hourly
 price, null without price rows) as the flat basis for costing
 modeled energy.
 
-## 7. Summary strip and right column (Usage tab)
+## 7. Right column and summary card (Usage tab)
 
-The tab's grid is two columns: the left column stacks the period
-summary strip above the Usage breakdown panel, the right column
-holds the Rest of your home card alone. On narrow screens the
-single-column order is summary, treemap, Rest of your home. Both
-panels use the shared PanelHeader. Toggling Energy/Cost swaps
-their metrics in place, no remount.
+The Usage tab's final layout: the two-column grid holds the left
+column (the period summary card stacked above the Usage breakdown
+panel) and the right column (the Rest of your home card alone);
+beneath the grid, the per-slot chart (section 8) spans the full
+width. On narrow screens the single-column order is summary,
+treemap, Rest of your home, chart. Every panel uses the shared
+PanelHeader. Toggling Energy/Cost swaps their metrics in place, no
+remount.
 
 ### 7.1 Period summary strip
 
-The period at a glance, inline across the full width: the mode's
-primary metric large with the secondary metric beside it, the
-window's average price, and the previous-period delta in both
-metrics (signed, "+64.9 kWh · +€25.20"). Cost figures over a window
-without price rows show the unavailable state - a dash and an
-explicit note - never zero. The strip is the predecessor of the U6
-widget 1.
+The period summary card (stacked above the treemap in the left
+column) presents the with-and-without comparison as a three-stat
+glass row in the price widget's stat composition. Each stat carries
+the same shape: eyebrow, big primary, secondary line, one muted
+detail line. On narrow screens the stats wrap like the price
+widget's (`grid gap-3 sm:grid-cols-3`).
+
+- Stat 1, Household usage: the mode's primary metric large with the
+  secondary beneath, the previous-period delta (both metrics) as its
+  detail line. The actual physical total and its cost - what the same
+  usage would cost without solar and battery, all imported at the
+  dynamic hourly price.
+- Stat 2, Net grid: net grid volume (import minus export) with the
+  net grid cost beneath and the gross import and export volumes as
+  its detail line - the provider billing view.
+- Stat 3, Saved and earned: the difference between the two cost
+  figures (money by definition, in either mode, accented light green
+  so the headline pops), with the kWh that never drew net from the
+  grid (total minus net, self-supplied plus exported) beneath and the
+  window's average price as its detail line.
+- One footnote line at the panel's bottom carries both caveats: the
+  valuation basis (household usage includes self-supplied energy,
+  costed as if all imported at the dynamic hourly price) and the
+  fixed network fees excluded from the provider billing view.
+
+The payload's grid statistics back the figures: `grid_import_kwh`,
+`grid_export_kwh`, `import_cost_eur` (hourly import energy times
+the hourly price) and `export_credit_eur` (hourly export energy
+times the hourly price). Without usable price rows the two priced
+fields are null, never zero.
+
+Sign handling: net figures carry their own sign. A positive net
+reads plain ("7.3 kWh"); a net-exporter period reads negative
+("\u22120.5 kWh"), and the net cost reads negative when the feed-in
+credit exceeds the import cost ("\u2212€0.35"). Saved and earned is
+signed the same way. Without price data the net cost and saved
+figures read unavailable, never zero (the net kWh is physical and
+stays available). The strip is the predecessor of the U6 widget 1.
 
 ### 7.2 Rest of your home
 
@@ -335,3 +367,38 @@ widget 1.
 - Cost mode costs every modeled figure flat at the window's average
   price; without price rows the cost figures read unavailable, never
   zero.
+
+## 8. The per-slot chart (Usage tab)
+
+The full-width chart beneath the two-column area, with the shared
+PanelHeader: one neutral bar per slot showing the slot's total
+household consumption - the same five-counter formula as the period
+total (section 1), computed per slot and floored at zero - so the
+bars sum to the period total within that floor.
+
+- Period granularity: every slot of the period is plotted, including
+  the ones without data yet - a day period renders 24 hourly bars (a
+  consistent 0 to 24 axis), a week 7 daily bars, a month one slot per
+  calendar day (the days ahead sit on the axis without a bar), a year
+  12 monthly slots.
+- The bars carry rounded top corners (flat on the axis) and the y
+  axis shows gridlines with labels at round step values; the x axis
+  labels each slot (every third hour, the week's days or the
+  day-of-month, the month abbreviation).
+- The bars follow the mode: kWh in energy mode, the slot's EUR at
+  the slot's average hourly price in cost mode.
+- The hourly price overlay: an amber line on its own scale (min to
+  max of the slot prices, labeled at the right edge), always
+  EUR/kWh in both modes, on by default with a single toggle.
+- The now marker: the dashed vertical line at the current local
+  hour, on the current day period only.
+- No per-series legend.
+- The shared hover tooltip, one shape for every granularity: the
+  slot's label (hour, day or month), the slot's total kWh, its EUR
+  at the slot price, and the per-category breakdown of the slot's
+  active categories - the measured plug categories plus the heat
+  pump with its "Est." label at day and month granularity (the
+  daily gas figure cannot be attributed to hours, so hourly slots
+  carry the measured categories only).
+- Without price rows a slot's price and cost read null (the
+  null-cost rule), never zero.
