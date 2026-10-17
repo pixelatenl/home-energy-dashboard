@@ -728,7 +728,7 @@ app.get(
       },
       ...gas,
       meta: {
-        note: "gas day totals miss roughly the first half hour after midnight",
+        note: "Gas day totals miss roughly the first half hour after midnight",
       },
     });
   })
