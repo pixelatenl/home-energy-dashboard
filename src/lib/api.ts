@@ -1047,3 +1047,49 @@ export function fetchBatteryContext(force = false): Promise<BatteryContext> {
     return value
   })
 }
+
+// One interval of the period-anchored battery flow: charged and
+// discharged kWh with their money dimensions, both carried so the
+// Energy/Cost toggle restyles without a refetch. Null money means
+// the interval carried flow but no known price, never a silent 0.
+export interface BatteryFlowInterval {
+  ts: string
+  in_kwh: number
+  out_kwh: number
+  in_cost_eur: number | null
+  out_value_eur: number | null
+}
+
+// The battery flow for a period: hourly intervals (with the SOC
+// series) for a day, daily aggregates for a week or month, monthly
+// aggregates for a year. The totals sum the series bottom-up; a
+// money total is null when any flowing interval lacks its price,
+// and the arbitrage - discharge value minus charge cost - is null
+// while either money figure is null.
+export interface BatteryFlowData {
+  period: PeriodKind
+  date: string
+  window: { start: string; end: string }
+  dataStart: string
+  resolution: "hour" | "day" | "month"
+  series: BatteryFlowInterval[]
+  soc_series: BatterySocPoint[]
+  battery_available: boolean
+  totals: {
+    charged_kwh: number
+    discharged_kwh: number
+    net_kwh: number
+    charge_cost_eur: number | null
+    discharge_value_eur: number | null
+    arbitrage_eur: number | null
+  }
+}
+
+export function fetchBatteryFlow(
+  period: PeriodKind,
+  date: string
+): Promise<BatteryFlowData> {
+  return getJson<BatteryFlowData>(
+    withParams("/api/battery/flow", { period, date })
+  )
+}

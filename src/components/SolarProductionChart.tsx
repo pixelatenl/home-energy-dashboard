@@ -20,6 +20,7 @@ import {
   type DaylightWindow,
   type SolarSlot,
 } from "@/lib/solarChart"
+import { niceStep } from "@/lib/chartScale"
 import { dateKeyPlus, localHourOf } from "@/lib/time"
 
 // The chart's geometry, the per-slot chart's idiom: the viewBox height
@@ -32,14 +33,6 @@ const TOP = 10
 const BASE = HEIGHT - 6
 const GRID_LINES = 3
 const UNKNOWN_HEIGHT = 12
-
-// A nice step for the y axis: 1, 2, 2.5 or 5 times a power of ten.
-function niceStep(raw: number): number {
-  const power = Math.pow(10, Math.floor(Math.log10(Math.max(raw, 1e-9))))
-  const factor = raw / power
-  const nice = factor <= 1 ? 1 : factor <= 2 ? 2 : factor <= 2.5 ? 2.5 : factor <= 5 ? 5 : 10
-  return nice * power
-}
 
 // A bar with rounded top corners only (the per-slot chart's path).
 function barPath(

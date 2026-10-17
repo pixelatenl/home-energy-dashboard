@@ -4,6 +4,7 @@ import PanelHeader from "@/components/PanelHeader"
 import { Card, CardContent } from "@/components/ui/card"
 import type { GasUsageData } from "@/lib/api"
 import { useMode } from "@/lib/mode"
+import { niceStep } from "@/lib/chartScale"
 import { amsterdamDayStartMs, localDateOf } from "@/lib/time"
 
 // Bucket length of one series interval: hours and days are fixed, a
@@ -44,15 +45,6 @@ function intervalLabel(ts: string, granularity: "hour" | "day" | "month"): strin
     })
   }
   return date.toLocaleDateString("en-GB", { month: "long", year: "numeric" })
-}
-
-// A nice step for the y axis: 1, 2, 2.5 or 5 times a power of ten,
-// the production chart's idiom.
-function niceStep(raw: number): number {
-  const power = Math.pow(10, Math.floor(Math.log10(Math.max(raw, 1e-9))))
-  const factor = raw / power
-  const nice = factor <= 1 ? 1 : factor <= 2 ? 2 : factor <= 2.5 ? 2.5 : factor <= 5 ? 5 : 10
-  return nice * power
 }
 
 // The chart's geometry in percent of the plot box: the top band
@@ -246,6 +238,10 @@ function GasSection({
         <div className="mt-4 flex gap-2">
           {/* The y-axis labels, on the gridlines. */}
           <div className="relative h-36 w-8 shrink-0 text-[10px] text-muted-foreground tabular-nums">
+            {/* The axis unit: the mode's primary dimension. */}
+            <span className="absolute -top-3.5 left-0">
+              {mode === "cost" ? "\u20AC" : "m3"}
+            </span>
             {[axisMax, step * 2, step, 0].map((value) => (
               <span
                 key={value}
