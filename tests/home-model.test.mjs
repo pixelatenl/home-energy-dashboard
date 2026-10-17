@@ -280,12 +280,9 @@ describe("homeModelEntries: the per-period model", () => {
     );
   });
 
-  it("covers the base load plus the four static background devices", () => {
+  it("covers the base load plus the lighting entry", () => {
     const { entries } = homeModelEntries(1);
-    assert.deepEqual(
-      entries.map((e) => e.key),
-      ["base_load", "lighting", "kitchen_boiler", "microwave", "coffee_machine"]
-    );
+    assert.deepEqual(entries.map((e) => e.key), ["base_load", "lighting"]);
   });
 
   it("absorbs the always-on static entries into the base load without double counting", () => {
@@ -293,6 +290,9 @@ describe("homeModelEntries: the per-period model", () => {
     const keys = entries.map((e) => e.key);
     assert.ok(!keys.includes("refrigerators"));
     assert.ok(!keys.includes("network_standby"));
+    assert.ok(!keys.includes("kitchen_boiler"));
+    assert.ok(!keys.includes("microwave"));
+    assert.ok(!keys.includes("coffee_machine"));
     const lighting = entries.find((e) => e.key === "lighting");
     assert.ok(lighting.basis.includes("base load"));
   });

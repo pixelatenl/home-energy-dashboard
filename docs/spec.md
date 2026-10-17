@@ -295,14 +295,20 @@ entry, the base load, computed per covered day from that day's own
 data instead of a static estimate. Extensible like the category
 registry; each entry carries a name, its figure and a basis note
 stating where the figure comes from. The base load's basis note
-states the data-derived method.
+states the data-derived method. The base load absorbs all always-on
+standby - the refrigerators, the network and standby, and the
+standby and keep-hot draw of devices without their own entry, the
+kitchen boiler, microwave and coffee machine included - so those
+devices carry no static entry; their occasional usage bursts belong
+to the unexplained remainder.
 
 ### 6.1 Base load (data-derived)
 
-The base load absorbs the always-on static draw - the refrigerators,
-the network and standby, and the standby share of the lighting - so
-the static entries exclude it and nothing is double counted. Per
-covered day it is computed from the day's own data:
+The base load absorbs all always-on standby - the refrigerators,
+the network and standby, the standby share of the lighting, and the
+kitchen devices' standby and keep-hot draw (the boiler, the
+microwave, the coffee machine) - so no static entry double counts
+it. Per covered day it is computed from the day's own data:
 
 1. Hourly consumption: the five-counter formula of section 1 per
    hour, floored at zero per hour, from the same `energy_delta`
@@ -343,9 +349,12 @@ or invalid values fall back to the default):
 | key | entry | kWh/day | basis |
 | --- | --- | --- | --- |
 | lighting | Lighting | 1.1 | evening use of the 36 Hue lights; the lights' standby draw is covered by the data-derived base load |
-| kitchen_boiler | Kitchen boiler | 1.0 | small keep-hot water boiler at roughly 40 W average |
-| microwave | Microwave | 0.2 | standby draw plus a few minutes of daily use |
-| coffee_machine | Coffee machine | 0.3 | keep-hot element plus the daily brews |
+
+The kitchen boiler, microwave and coffee machine carry no static
+entry: their standby and keep-hot draw is part of the always-on
+standby the base load absorbs from the quiet-night hours, so a
+static entry would double count it, and their occasional usage
+bursts belong to the unexplained remainder below.
 
 Per period, each static entry's estimate is `kwh_per_day` times the
 window's data-covered days - the local days that carry measured
@@ -432,10 +441,13 @@ stays available). The strip is the predecessor of the U6 widget 1.
   Every modeled number carries the "model" label; the data-derived
   base load bar carries the "data" label instead.
 - A final striped bar: the unexplained remainder the model does not
-  cover. The bar percentages plus the unexplained share equal 100
-  percent of the remainder (or, when the model over-explains a
-  low-usage period, 100 percent of the modeled sum with no
-  unexplained bar).
+  cover - the occasional usage of unnamed devices, since the base
+  load already absorbs all always-on standby, the kitchen boiler,
+  microwave and coffee machine included, and only their usage
+  bursts and other unattributed draw land here. The bar percentages
+  plus the unexplained share equal 100 percent of the remainder
+  (or, when the model over-explains a low-usage period, 100 percent
+  of the modeled sum with no unexplained bar).
 - One-line footnote: every category is measured except the heat
   pump (Est.); the base load is data-derived, the other bars are
   home-model averages.

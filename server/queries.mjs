@@ -1449,35 +1449,20 @@ const HEAT_PUMP_CATEGORY = { key: "heat_pump", label: "Heat pump" };
 // entry's basis note states where its estimate comes from; the UI
 // labels every modeled number as a model average. Extensible like
 // the category registry. The always-on static draw - the
-// refrigerators, the network and standby, and the standby share of
-// the lighting - is not a static entry here: the data-derived base
-// load (baseLoadForWindow below) absorbs it from the day's own
-// hourly consumption, so the remaining entries never double count
-// it.
+// refrigerators, the network and standby, the standby share of the
+// lighting, and the kitchen devices' standby and keep-hot draw (the
+// boiler, the microwave, the coffee machine) - is not a static entry
+// here: the data-derived base load (baseLoadForWindow below)
+// absorbs it from the day's own quiet-night hours, so no static
+// entry double counts it. Those devices' occasional usage bursts
+// carry no static entry either: they belong to the unexplained
+// remainder.
 const HOME_MODEL = [
   {
     key: "lighting",
     name: "Lighting",
     kwhPerDay: 1.1,
     basis: "evening use of the 36 Hue lights; the lights' standby draw is covered by the data-derived base load",
-  },
-  {
-    key: "kitchen_boiler",
-    name: "Kitchen boiler",
-    kwhPerDay: 1.0,
-    basis: "small keep-hot water boiler at roughly 40 W average",
-  },
-  {
-    key: "microwave",
-    name: "Microwave",
-    kwhPerDay: 0.2,
-    basis: "standby draw plus a few minutes of daily use",
-  },
-  {
-    key: "coffee_machine",
-    name: "Coffee machine",
-    kwhPerDay: 0.3,
-    basis: "keep-hot element plus the daily brews",
   },
 ];
 
