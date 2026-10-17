@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from "react"
 import BatteryStatusWidget from "@/components/BatteryStatusWidget"
-import BrandLogo from "@/components/BrandLogo"
 import LiveEnergyFlow from "@/components/LiveEnergyFlow"
 import PageLayout from "@/components/PageLayout"
 import PricesWidget from "@/components/PricesWidget"
@@ -75,7 +74,6 @@ function TodayPage() {
 
   return (
     <PageLayout
-      logo={<BrandLogo className="h-10 w-[72px]" />}
       title={greetingFor(nowTick)}
       subtitle="Monitor your household energy use"
       actions={

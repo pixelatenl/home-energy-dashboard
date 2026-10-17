@@ -1,13 +1,16 @@
 import type { ReactNode } from "react"
 import { Link } from "react-router-dom"
+import BrandLogo from "@/components/BrandLogo"
 import NavBar from "@/components/NavBar"
 import { useModeSearch } from "@/lib/mode"
 
 // Shared page shell: the page header (logo, title, subtitle, actions),
 // the tab row with a per-page toolbar on its right, the content area
-// and the site footer with the secondary links. Pages pass their
-// content as children; the header and toolbar slots keep each page's
-// own controls (insight pill, range selector, debug buttons).
+// and the site footer with the secondary links. The brand logo always
+// appears in the header - pages rarely pass their own logo, so the
+// slot only exists to override it. Pages pass their content as
+// children; the header and toolbar slots keep each page's own
+// controls (insight pill, range selector, debug buttons).
 function PageLayout({
   logo,
   title,
@@ -31,7 +34,7 @@ function PageLayout({
       <header>
         <div className="flex flex-wrap items-center justify-between gap-4 px-3 py-4 sm:px-6">
           <div className="flex items-center gap-3">
-            {logo != null && logo}
+            {logo ?? <BrandLogo className="h-10 w-[72px]" />}
             <div>
               <h1 className="text-xl font-semibold">{title}</h1>
               {subtitle != null &&
