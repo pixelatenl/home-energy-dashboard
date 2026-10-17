@@ -6,6 +6,7 @@ import PricesWidget from "@/components/PricesWidget"
 import SolarForecastWidget from "@/components/SolarForecastWidget"
 import StatsHeader from "@/components/StatsHeader"
 import SummaryInsight from "@/components/SummaryInsight"
+import TodayCharts from "@/components/TodayCharts"
 import { RefreshCw } from "lucide-react"
 import { fetchSummary, type SummaryInsight as SummaryInsightData } from "@/lib/api"
 import { greetingFor } from "@/lib/time"
@@ -124,8 +125,14 @@ function TodayPage() {
         <SummaryInsight insight={insight} loading={insightLoading} />
       </div>
 
+      {/* The flow hero and the prices widget side by side; the
+          compact solar and battery today charts sit directly below
+          the flow, next to each other, as their own widget pair. */}
       <div className="grid gap-6 lg:grid-cols-2">
-        <LiveEnergyFlow />
+        <div className="grid content-start gap-6">
+          <LiveEnergyFlow />
+          <TodayCharts />
+        </div>
         <PricesWidget />
       </div>
     </PageLayout>
