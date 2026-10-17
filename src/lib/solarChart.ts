@@ -27,22 +27,45 @@ export interface SolarSlot {
   kwh: number
 }
 
+// The day view's daylight window in local hours, inclusive on both
+// ends - the same sunrise-to-sunset clip the 5-day forecast's hourly
+// chart applies. Null (or an invalid range) keeps the full 24-hour
+// axis.
+export interface DaylightWindow {
+  startHour: number
+  endHour: number
+}
+
 // The full-period slot axis. Hourly resolution (day and week): one
-// slot per local hour of the window - 24 for a day, 7 * 24 for a
-// week. Daily resolution (month and year): one slot per calendar
-// day of the window. Points are placed by their local hour (hourly)
-// or the local date of their bucket start (daily); a point outside
-// the window (a UTC bucket straddling the window edge) is dropped
-// rather than forced onto the axis.
+// slot per local hour of the window - 24 for a day (a daylight
+// window narrows it to sunrise-sunset, inclusive), 7 * 24 for a
+// week (the window never applies to weeks). Daily resolution (month
+// and year): one slot per calendar day of the window. Points are
+// placed by their local hour (hourly) or the local date of their
+// bucket start (daily); a point outside the window (a UTC bucket
+// straddling the window edge) is dropped rather than forced onto
+// the axis.
 export function solarSlots(
   points: SolarProductionPoint[],
-  period: Period
+  period: Period,
+  daylight: DaylightWindow | null = null
 ): SolarSlot[] {
   const start = periodStart(period)
   const hourly = period.kind === "day" || period.kind === "week"
+  const dayWindow =
+    period.kind === "day" &&
+    daylight !== null &&
+    daylight.startHour >= 0 &&
+    daylight.endHour <= 23 &&
+    daylight.endHour > daylight.startHour
+      ? daylight
+      : null
+  const startHour = dayWindow?.startHour ?? 0
   const count = hourly
     ? period.kind === "day"
-      ? 24
+      ? dayWindow === null
+        ? 24
+        : dayWindow.endHour - dayWindow.startHour + 1
       : 7 * 24
     : daysInPeriod(period)
   const slots: SolarSlot[] = Array.from({ length: count }, (_, index) => ({
@@ -54,7 +77,7 @@ export function solarSlots(
     let index: number
     if (hourly) {
       const dayOffset = dayNumber(localDateOf(point.ts)) - dayNumber(start)
-      index = dayOffset * 24 + localHourOf(point.ts)
+      index = dayOffset * 24 + localHourOf(point.ts) - startHour
     } else {
       index = dayNumber(localDateOf(point.ts)) - dayNumber(start)
     }

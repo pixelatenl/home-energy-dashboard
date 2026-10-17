@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { Sun } from "lucide-react"
+import { Sun, Sunrise, Sunset } from "lucide-react"
 import PanelHeader from "@/components/PanelHeader"
 import { Card, CardContent } from "@/components/ui/card"
 import type { SolarProductionData, WeatherHour } from "@/lib/api"
@@ -17,6 +17,7 @@ import {
   solarSlotLabel,
   solarSlots,
   solarSplitOf,
+  type DaylightWindow,
   type SolarSlot,
 } from "@/lib/solarChart"
 import { dateKeyPlus, localHourOf } from "@/lib/time"
@@ -70,12 +71,19 @@ interface SolarProductionChartProps {
   period: Period
   isCurrent: boolean
   forecast: WeatherHour[] | null
+  // The day view's sunrise-to-sunset axis window (local hours,
+  // inclusive); null keeps the full 24-hour day axis.
+  dayWindow?: DaylightWindow | null
 }
 
 // The Solar Production chart, the page's first content block: PV
 // production per hour (day and week periods, bars for a day and a
 // production curve for a week) or per day (month and year, daily
-// bars), on a full-period axis. Energy mode reads kWh; Cost mode
+// bars), on a full-period axis. The day view's axis narrows to the
+// sunrise-to-sunset daylight window (the same clip as the 5-day
+// forecast's hourly chart, the seasonal defaults approximating past
+// days), falling back to the full 24 hours only while the window
+// fetch fails. Energy mode reads kWh; Cost mode
 // switches the primary axis to the avoided cost (bottom-up per
 // interval) - intervals without a known price get a hatched marker,
 // are excluded from the total and never render 0. Tooltips always
@@ -93,12 +101,17 @@ function SolarProductionChart({
   period,
   isCurrent,
   forecast,
+  dayWindow = null,
 }: SolarProductionChartProps) {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
 
   const hourly = period.kind === "day" || period.kind === "week"
   const curve = hourly && period.kind === "week"
-  const slots = data ? solarSlots(data.series, period) : []
+  const dayStart =
+    period.kind === "day" && dayWindow !== null ? dayWindow.startHour : 0
+  const slots = data
+    ? solarSlots(data.series, period, period.kind === "day" ? dayWindow : null)
+    : []
   const slotCount = Math.max(1, slots.length)
   const slotWidth = WIDTH / slotCount
 
@@ -127,20 +140,24 @@ function SolarProductionChart({
     BASE - Math.min(value / axisMax, 1) * (BASE - TOP)
 
   // The day view's now marker: the current local hour, on the current
-  // day period only.
+  // day period only, and only while it falls inside the axis - on a
+  // daylight window that means while the sun is up.
   const nowHour =
     isCurrent && hourly && period.kind === "day" && data !== null
       ? // eslint-disable-next-line react/purity
         localHourOf(new Date().toISOString())
       : null
+  const nowVisible =
+    nowHour !== null && nowHour >= dayStart && nowHour < dayStart + slotCount
 
   // The dashed forecast overlay, on the current day in energy mode:
-  // one point per forecast hour, on the same kWh axis.
+// one point per forecast hour, on the same kWh axis and shifted
+  // into the day's axis window.
   const forecastPoints =
     mode === "energy" && period.kind === "day" && forecast
       ? forecast
           .map((hour) => {
-            const index = Number(hour.hour.slice(11, 13))
+            const index = Number(hour.hour.slice(11, 13)) - dayStart
             if (index < 0 || index >= slotCount) {
               return null
             }
@@ -159,14 +176,15 @@ function SolarProductionChart({
     return value.toFixed(step < 0.1 ? 2 : 1)
   }
 
-  // The x-axis label beneath each slot, the per-slot chart's idiom.
+  // The x-axis label beneath each slot, centered on its slot's bar:
+  // the day view labels every clock hour of its window (in sync with
+  // the daylight offset), the week its midnights, month and year
+  // their calendar days.
   const axisLabel = (slot: SolarSlot): string => {
-    if (hourly) {
-      if (period.kind === "day") {
-        return slot.index % 3 === 0
-          ? String(slot.index).padStart(2, "0")
-          : ""
-      }
+    if (period.kind === "day") {
+      return String(dayStart + slot.index).padStart(2, "0")
+    }
+    if (period.kind === "week") {
       // The week curve: a weekday at each local midnight.
       if (slot.index % 24 !== 0) {
         return ""
@@ -216,20 +234,14 @@ function SolarProductionChart({
     )
   }
 
-  // The compact header's period total: kWh in energy mode; in cost
-  // mode the primary money figure is the combined benefit - the
-  // self-consumption savings plus the export earnings - when both
-  // exist, falling back to the self-consumption avoided cost alone
-  // while an export hour lacks a known return price. The individual
-  // figures ride as muted secondary stats; the export earnings can
-  // read negative when negative prices outweigh the fees.
+  // Both modes render their figures as the usage tab's
+  // period-summary stat row - small muted label, big bold value -
+  // one stat per figure, no cards: energy mode the total and peak,
+  // cost mode the five money figures. The export earnings can read
+  // negative when negative prices outweigh the fees; the combined
+  // benefit stays null (an em dash, never 0) while any component is
+  // unknown.
   const costNet = data?.totals.totalCostNetEur ?? null
-  const totalLabel =
-    mode === "energy"
-      ? `${formatKwh(data?.totals.kwh ?? 0)} total`
-      : costNet !== null
-        ? `${formatEur(costNet)} solar benefit (savings + export)`
-        : `${formatEur(data?.totals.selfConsumptionAvoidedCostEur ?? 0)} avoided cost (self-consumed)`
 
   return (
     <Card>
@@ -253,66 +265,132 @@ function SolarProductionChart({
           </p>
         ) : (
           <>
-            {/* The compact header row: the mode's period total, the
-                production peak with its hour or day label, and the
-                resolution. */}
-            <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 text-xs text-muted-foreground">
-              <span className="text-sm font-medium tabular-nums text-foreground">
-                {totalLabel}
-              </span>
-              {mode === "cost" && (
-                <>
-                  {costNet !== null && (
-                    <span className="tabular-nums">
-                      {formatEur(data.totals.selfConsumptionAvoidedCostEur)}{" "}
-                      avoided cost (self-consumed)
-                    </span>
-                  )}
-                  {data.totals.exportEarningsEur === null ? (
-                    <span className="tabular-nums opacity-60">
-                      export earnings unknown
-                    </span>
-                  ) : (
-                    <span className="tabular-nums">
-                      {formatEur(data.totals.exportEarningsEur)} export
-                      earnings
-                    </span>
-                  )}
-                  <span className="tabular-nums">
-                    {formatEur(data.totals.avoidedCostEur)} if all
-                    production were self-consumed
-                  </span>
-                </>
-              )}
-              {data.peak !== null && (
-                <span className="tabular-nums">
-                  Peak {formatKwh(data.peak.kwh)} at{" "}
-                  {solarSlotLabel(data.peak.ts, hourly)}
-                </span>
-              )}
-              <span>{hourly ? "Hourly" : "Daily"} resolution</span>
-              {mode === "cost" && data.totals.hasUnknownPrice && (
-                <span>unpriced hours excluded</span>
-              )}
-            </div>
-            <div
-              className="relative mt-2 pl-9"
-              onMouseLeave={() => setHoveredIndex(null)}
-            >
+            {mode === "cost" ? (
+              <>
+                {/* The cost figures as the usage tab's period-summary
+                    stat row: label above, big bold value below, one
+                    plain div per stat - no cards. */}
+                <div className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-3 lg:grid-cols-5">
+                  <div>
+                    <p className="text-xs text-muted-foreground">
+                      Solar benefit (savings + export)
+                    </p>
+                    <p className="text-2xl font-semibold tabular-nums sm:text-3xl">
+                      {costNet === null ? "\u2014" : formatEur(costNet)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">
+                      Avoided cost (self-consumed)
+                    </p>
+                    <p className="text-2xl font-semibold tabular-nums sm:text-3xl">
+                      {formatEur(data.totals.selfConsumptionAvoidedCostEur)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">
+                      Export earnings
+                    </p>
+                    {data.totals.exportEarningsEur === null ? (
+                      <p className="text-2xl font-semibold tabular-nums opacity-60 sm:text-3xl">
+                        unknown
+                      </p>
+                    ) : (
+                      <p className="text-2xl font-semibold tabular-nums sm:text-3xl">
+                        {formatEur(data.totals.exportEarningsEur)}
+                      </p>
+                    )}
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">
+                      If all production were self-consumed
+                    </p>
+                    <p className="text-2xl font-semibold tabular-nums sm:text-3xl">
+                      {formatEur(data.totals.avoidedCostEur)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Peak</p>
+                    {data.peak === null ? (
+                      <p className="text-2xl font-semibold tabular-nums sm:text-3xl">
+                        {"\u2014"}
+                      </p>
+                    ) : (
+                      <>
+                        <p className="text-2xl font-semibold tabular-nums sm:text-3xl">
+                          {formatKwh(data.peak.kwh)}
+                        </p>
+                        <p className="text-xs text-muted-foreground tabular-nums">
+                          at {solarSlotLabel(data.peak.ts, hourly)}
+                        </p>
+                      </>
+                    )}
+                  </div>
+                </div>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  {hourly ? "Hourly" : "Daily"} resolution
+                  {data.totals.hasUnknownPrice && " \u00b7 unpriced hours excluded"}
+                </p>
+              </>
+            ) : (
+              <>
+                {/* The energy figures in the same period-summary
+                    stat row as cost mode: label above, big bold
+                    value below, no cards. */}
+                <div className="grid grid-cols-2 gap-x-6 gap-y-3">
+                  <div>
+                    <p className="text-xs text-muted-foreground">Total</p>
+                    <p className="text-2xl font-semibold tabular-nums sm:text-3xl">
+                      {formatKwh(data.totals.kwh)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Peak</p>
+                    {data.peak === null ? (
+                      <p className="text-2xl font-semibold tabular-nums sm:text-3xl">
+                        {"\u2014"}
+                      </p>
+                    ) : (
+                      <>
+                        <p className="text-2xl font-semibold tabular-nums sm:text-3xl">
+                          {formatKwh(data.peak.kwh)}
+                        </p>
+                        <p className="text-xs text-muted-foreground tabular-nums">
+                          at {solarSlotLabel(data.peak.ts, hourly)}
+                        </p>
+                      </>
+                    )}
+                  </div>
+                </div>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  {hourly ? "Hourly" : "Daily"} resolution
+                </p>
+              </>
+            )}
+            {/* The mt-4 leaves room above the chart for the Now
+                label, the same breathing room the 5-day forecast's
+                hourly chart reserves in its top band. The chart row
+                mirrors the forecast's flex geometry exactly - w-8
+                label column, gap-2, full-width plot, gap-2, w-8
+                spacer - so on the day view the same clock hour sits
+                at the same pixel in both charts. */}
+            <div className="mt-4 flex gap-2">
               {/* The y-axis labels, on the gridlines. */}
-              {Array.from({ length: GRID_LINES + 1 }, (_, i) => i * step).map(
-                (value) => (
-                  <span
-                    key={value}
-                    className="pointer-events-none absolute left-0 w-8 -translate-y-1/2 text-right text-[10px] text-muted-foreground tabular-nums"
-                    style={{ top: valueY(value) }}
-                  >
-                    {tickLabel(value)}
-                  </span>
-                )
-              )}
+              <div className="relative h-56 w-8 shrink-0">
+                {Array.from({ length: GRID_LINES + 1 }, (_, i) => i * step).map(
+                  (value) => (
+                    <span
+                      key={value}
+                      className="pointer-events-none absolute right-0 -translate-y-1/2 text-right text-[10px] text-muted-foreground tabular-nums"
+                      style={{ top: valueY(value) }}
+                    >
+                      {tickLabel(value)}
+                    </span>
+                  )
+                )}
+              </div>
               <div
-                className="relative"
+                className="relative h-56 w-full"
                 onMouseMove={(event) => {
                   const rect = event.currentTarget.getBoundingClientRect()
                   const index = Math.floor(
@@ -322,6 +400,7 @@ function SolarProductionChart({
                     index >= 0 && index < slotCount ? index : null
                   )
                 }}
+                onMouseLeave={() => setHoveredIndex(null)}
               >
                 <svg
                   viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
@@ -406,9 +485,9 @@ function SolarProductionChart({
                         return (
                           <rect
                             key={slot.index}
-                            x={slot.index * slotWidth + slotWidth * 0.15}
+                            x={slot.index * slotWidth + slotWidth * 0.2}
                             y={BASE - UNKNOWN_HEIGHT}
-                            width={slotWidth * 0.7}
+                            width={slotWidth * 0.6}
                             height={UNKNOWN_HEIGHT}
                             fill="url(#solar-unknown)"
                           />
@@ -421,8 +500,8 @@ function SolarProductionChart({
                         <path
                           key={slot.index}
                           d={barPath(
-                            slot.index * slotWidth + slotWidth * 0.15,
-                            slotWidth * 0.7,
+                            slot.index * slotWidth + slotWidth * 0.2,
+                            slotWidth * 0.6,
                             valueY(value),
                             BASE,
                             5
@@ -452,10 +531,10 @@ function SolarProductionChart({
                       opacity={0.08}
                     />
                   )}
-                  {nowHour !== null && (
+                  {nowVisible && nowHour !== null && (
                     <line
-                      x1={(nowHour + 0.5) * slotWidth}
-                      x2={(nowHour + 0.5) * slotWidth}
+                      x1={(nowHour - dayStart + 0.5) * slotWidth}
+                      x2={(nowHour - dayStart + 0.5) * slotWidth}
                       y1={TOP}
                       y2={HEIGHT}
                       stroke="currentColor"
@@ -465,6 +544,18 @@ function SolarProductionChart({
                     />
                   )}
                 </svg>
+                {/* The Now label above the marker's hour, the 5-day
+                    forecast's wording and placement. */}
+                {nowVisible && nowHour !== null && (
+                  <span
+                    className="pointer-events-none absolute -top-4 -translate-x-1/2 text-[10px] text-muted-foreground"
+                    style={{
+                      left: `${((nowHour - dayStart + 0.5) / slotCount) * 100}%`,
+                    }}
+                  >
+                    Now
+                  </span>
+                )}
                 {hovered && (
                   <div
                     className="pointer-events-none absolute top-0 z-10 min-w-40 rounded-lg border bg-popover px-2.5 py-1.5 text-popover-foreground shadow-md"
@@ -478,7 +569,7 @@ function SolarProductionChart({
                         : hourly
                           ? `${String(
                               period.kind === "day"
-                                ? hovered.index
+                                ? dayStart + hovered.index
                                 : hovered.index % 24
                             ).padStart(2, "0")}:00`
                           : new Intl.DateTimeFormat("en-GB", {
@@ -565,8 +656,32 @@ function SolarProductionChart({
                   </div>
                 )}
               </div>
+              {/* The right spacer: no axis lives here, but it keeps
+                  the plot width identical to the 5-day forecast's
+                  (whose Wh column rides in this position), so the
+                  day view's hours line up across both charts. */}
+              <div className="h-56 w-8 shrink-0" aria-hidden="true" />
             </div>
-            <div className="relative mt-1 h-4 pl-9 text-xs text-muted-foreground tabular-nums">
+            {/* The x-axis label row, aligned with the bars: every
+                label centers exactly on its slot's bar, at the
+                same fraction as the bars themselves. The day view
+                adds the sunrise and sunset icons at the plot's
+                edges, the 5-day forecast's idiom - hidden on narrow
+                widths, where the first and last labels would
+                collide with them. */}
+            <div className="relative mx-10 mt-1 h-4 text-xs text-muted-foreground tabular-nums">
+              {period.kind === "day" && (
+                <>
+                  <Sunrise
+                    className="absolute left-0 top-0 hidden size-4 sm:block"
+                    aria-hidden="true"
+                  />
+                  <Sunset
+                    className="absolute right-0 top-0 hidden size-4 sm:block"
+                    aria-hidden="true"
+                  />
+                </>
+              )}
               {slots.map((slot) => {
                 const label = axisLabel(slot)
                 if (label === "") {
@@ -577,7 +692,7 @@ function SolarProductionChart({
                     key={slot.index}
                     className="absolute top-0 -translate-x-1/2"
                     style={{
-                      left: `calc(2.25rem + ${(slot.index + 0.5) / slotCount} * (100% - 2.25rem))`,
+                      left: `${((slot.index + 0.5) / slotCount) * 100}%`,
                     }}
                   >
                     {label}
@@ -589,10 +704,10 @@ function SolarProductionChart({
               <p className="mt-3 text-xs text-muted-foreground">
                 Solar benefit (savings + export) prices only the solar
                 your home used at the grid price plus what the raw
-                export counter earned; the muted figure values all
-                production. Split figures are estimates - the P1
-                meter is net per hour and the battery can export
-                during peak hours.{" "}
+                export counter earned; "if all production were
+                self-consumed" values all production. Split figures
+                are estimates - the P1 meter is net per hour and the
+                battery can export during peak hours.{" "}
                 {exportPricingLabel(data.meta.returnPricing)}
               </p>
             )}

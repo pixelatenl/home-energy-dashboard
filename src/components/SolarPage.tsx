@@ -9,6 +9,7 @@ import { forecastPanelVisible } from "@/lib/solarChart"
 import { usePeriod } from "@/lib/usePeriod"
 import {
   useSolarProduction,
+  useDaylightWindow,
   useTodayPvForecast,
 } from "@/lib/useSolarProduction"
 
@@ -33,6 +34,10 @@ function SolarPage() {
   const todayForecast = useTodayPvForecast(
     period.kind === "day" && isCurrent
   )
+  // The day view's sunrise-to-sunset axis window, seasonal defaults
+  // approximating past days the forecast does not cover; null only
+  // while the fetch fails, keeping the full axis.
+  const dayWindow = useDaylightWindow(period.kind === "day", period.date)
 
   return (
     <PageLayout
@@ -53,6 +58,7 @@ function SolarPage() {
           period={period}
           isCurrent={isCurrent}
           forecast={mode === "energy" ? todayForecast : null}
+          dayWindow={dayWindow}
         />
         {showForecast && <WeatherForecast />}
       </div>

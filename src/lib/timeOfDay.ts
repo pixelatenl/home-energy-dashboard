@@ -26,6 +26,18 @@ const SEASONAL_DEFAULTS: { sunrise: string; sunset: string }[] = [
   { sunrise: "08:50", sunset: "16:35" }, // December
 ]
 
+// The month's default sunrise/sunset ("HH:MM") for a date key - the
+// same Netherlands approximation the sky phase logic falls back on.
+// Exported so the solar day chart's daylight window can approximate
+// dates outside the daily forecast's range (past days).
+export function seasonalSunTimes(dateKey: string): {
+  sunrise: string
+  sunset: string
+} {
+  const month = Number(dateKey.slice(5, 7)) - 1
+  return SEASONAL_DEFAULTS[Math.min(Math.max(month, 0), 11)]
+}
+
 export function phaseFor(
   nowMs: number,
   sunriseMs: number,

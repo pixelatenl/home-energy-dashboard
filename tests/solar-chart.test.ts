@@ -104,6 +104,49 @@ describe("solarSlots: the full-period axis", () => {
     assert.equal(slots[9].kwh, 0.36);
     assert.equal(slots[9].point?.avoidedCostEur, null);
   });
+
+  it("narrows the day axis to the daylight window, sunrise to sunset inclusive", () => {
+    const period: Period = { kind: "day", date: "2026-10-17" };
+    // Sunrise 07:45, sunset 18:20 local: hours 7 through 18, 12
+    // slots. The window's points place by their local hour minus the
+    // start hour - 07:00Z is 09:00 local, slot 2 - and a point
+    // before the window (local midnight, 22:00Z the day before) is
+    // dropped, not clamped onto the axis.
+    const slots = solarSlots(
+      [point("2026-10-16T22:00:00Z", 0.03), point("2026-10-17T07:00:00Z", 0.36)],
+      period,
+      { startHour: 7, endHour: 18 }
+    );
+    assert.equal(slots.length, 12);
+    assert.equal(slots[2].kwh, 0.36);
+    assert.equal(slots.filter((slot) => slot.kwh > 0).length, 1);
+  });
+
+  it("ignores the daylight window on weeks and invalid ranges", () => {
+    const week: Period = { kind: "week", date: "2026-10-15" };
+    assert.equal(
+      solarSlots([point("2026-10-16T22:00:00Z", 1.2)], week, {
+        startHour: 7,
+        endHour: 18,
+      }).length,
+      7 * 24
+    );
+    const day: Period = { kind: "day", date: "2026-10-17" };
+    assert.equal(
+      solarSlots([point("2026-10-17T07:00:00Z", 0.36)], day, {
+        startHour: 18,
+        endHour: 7,
+      }).length,
+      24
+    );
+    assert.equal(
+      solarSlots([point("2026-10-17T07:00:00Z", 0.36)], day, {
+        startHour: 7,
+        endHour: 24,
+      }).length,
+      24
+    );
+  });
 });
 
 describe("intervalPriceOf: the derived interval price", () => {
