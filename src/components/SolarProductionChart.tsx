@@ -15,6 +15,7 @@ import {
   intervalPriceOf,
   solarSlotLabel,
   solarSlots,
+  solarSplitOf,
   type SolarSlot,
 } from "@/lib/solarChart"
 import { dateKeyPlus, localHourOf } from "@/lib/time"
@@ -209,10 +210,14 @@ function SolarProductionChart({
     )
   }
 
+  // The compact header's period total: kWh in energy mode; in cost
+  // mode the primary money figure is the self-consumption avoided
+  // cost - only the solar the home used - with the all-production
+  // avoided cost carried as the secondary muted figure.
   const totalLabel =
     mode === "energy"
       ? `${formatKwh(data?.totals.kwh ?? 0)} total`
-      : `${formatEur(data?.totals.avoidedCostEur ?? 0)} avoided cost`
+      : `${formatEur(data?.totals.selfConsumptionAvoidedCostEur ?? 0)} avoided cost (self-consumed)`
 
   return (
     <Card>
@@ -243,6 +248,12 @@ function SolarProductionChart({
               <span className="text-sm font-medium tabular-nums text-foreground">
                 {totalLabel}
               </span>
+              {mode === "cost" && (
+                <span className="tabular-nums">
+                  {formatEur(data.totals.avoidedCostEur)} if all
+                  production were self-consumed
+                </span>
+              )}
               {data.peak !== null && (
                 <span className="tabular-nums">
                   Peak {formatKwh(data.peak.kwh)} at{" "}
@@ -454,19 +465,54 @@ function SolarProductionChart({
                     </div>
                     {/* The tooltip always carries kWh, the interval
                         price and the avoided cost together; unknown
-                        reads unknown, never 0. */}
+                        reads unknown, never 0. Cost mode adds the
+                        solar disposition split - to home (with its
+                        avoided cost), to grid, to battery - and
+                        labels the all-production figure distinctly,
+                        since both definitions coexist. */}
                     {hovered.point !== null && (
                       <div className="text-xs text-muted-foreground tabular-nums">
                         {(() => {
                           const price = intervalPriceOf(hovered.point)
-                          return price === null
-                            ? "price unknown"
-                            : `≈ €${price.toFixed(3)}/kWh`
+                          const split = solarSplitOf(hovered.point)
+                          return (
+                            <>
+                              {price === null
+                                ? "price unknown"
+                                : `≈ €${price.toFixed(3)}/kWh`}
+                              {mode === "cost" &&
+                                (split === null ? (
+                                  <>
+                                    <br />
+                                    solar split unknown
+                                  </>
+                                ) : (
+                                  <>
+                                    <br />
+                                    to home {formatKwh(split.homeKwh)}{" "}
+                                    {hovered.point
+                                      .selfConsumptionAvoidedCostEur ===
+                                    null
+                                      ? "(avoided cost unknown)"
+                                      : `(${formatEur(hovered.point.selfConsumptionAvoidedCostEur)} avoided)`}
+                                    <br />
+                                    to grid {formatKwh(split.gridKwh)}
+                                    <br />
+                                    to battery{" "}
+                                    {formatKwh(split.batteryKwh)}
+                                  </>
+                                ))}
+                              <br />
+                              {hovered.point.avoidedCostEur === null
+                                ? "avoided cost unknown"
+                                : `${formatEur(hovered.point.avoidedCostEur)} avoided${
+                                    mode === "cost"
+                                      ? " (all production)"
+                                      : ""
+                                  }`}
+                            </>
+                          )
                         })()}
-                        <br />
-                        {hovered.point.avoidedCostEur === null
-                          ? "avoided cost unknown"
-                          : `${formatEur(hovered.point.avoidedCostEur)} avoided`}
                       </div>
                     )}
                   </div>
@@ -494,9 +540,12 @@ function SolarProductionChart({
             </div>
             {mode === "cost" && (
               <p className="mt-3 text-xs text-muted-foreground">
-                Avoided cost is the grid price of your solar production.
-                Export earnings follow once the feed-in tariff is
-                configurable.
+                Avoided cost (self-consumed) prices only the solar
+                your home used at the grid price; the muted figure
+                values all production. Split figures are estimates -
+                the P1 meter is net per hour and the battery can
+                export during peak hours. Export earnings follow
+                once the feed-in tariff is configurable.
               </p>
             )}
           </>

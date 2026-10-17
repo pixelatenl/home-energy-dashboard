@@ -540,12 +540,22 @@ export function fetchHeatModel(
 // period: hourly buckets for day and week, daily buckets for month
 // and year. Avoided cost is bottom-up per interval at that hour's
 // grid price; intervals without any known price cost null (never 0)
-// and are excluded from totals.avoidedCostEur. dataStart marks the
+// and are excluded from totals.avoidedCostEur. Each interval also
+// carries the solar disposition split - the estimate of how its
+// production was divided across the home, the grid export and the
+// battery charging (null when the hourly aggregate lagged the
+// interval away, daily resolution) - and the self-consumption
+// avoided cost, the bottom-up cost of the solarToHome share at the
+// same price with the same null-never-0 rule. dataStart marks the
 // first day any data exists, for honest empty states.
 export interface SolarProductionPoint {
   ts: string
   kwh: number
   avoidedCostEur: number | null
+  solarToHomeKwh: number | null
+  solarToGridKwh: number | null
+  solarToBatteryKwh: number | null
+  selfConsumptionAvoidedCostEur: number | null
 }
 
 export interface SolarProductionData {
@@ -559,9 +569,19 @@ export interface SolarProductionData {
     kwh: number
     avoidedCostEur: number
     hasUnknownPrice: boolean
+    selfConsumedKwh: number
+    // Null when nothing was produced - no share exists, never 0.
+    selfConsumedShare: number | null
+    selfConsumptionAvoidedCostEur: number
   }
   peak: { ts: string; kwh: number } | null
-  meta: { note: string }
+  meta: {
+    note: string
+    // The energy_hourly coverage sanity check: stale means the
+    // aggregate's newest bucket predates the current hour. Null
+    // when the window predates the data start.
+    hourlyCoverage: { lastBucket: string | null; stale: boolean } | null
+  }
 }
 
 export function fetchSolarProduction(

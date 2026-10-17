@@ -6,15 +6,30 @@ import {
   forecastPanelVisible,
   intervalPriceOf,
   solarSlots,
+  solarSplitOf,
 } from "../src/lib/solarChart.ts";
 
 // A series point at its bucket start: hourly points at UTC whole
 // hours (energy_hourly), daily points at local midnights
-// (energy_daily, Europe/Amsterdam).
-const point = (iso: string, kwh: number, cost: number | null = null): SolarProductionPoint => ({
+// (energy_daily, Europe/Amsterdam). The split defaults to a fully
+// home-consumed hour; pass nulls to model an unknown split.
+const point = (
+  iso: string,
+  kwh: number,
+  cost: number | null = null,
+  split: { home: number; grid: number; battery: number } | null = {
+    home: kwh,
+    grid: 0,
+    battery: 0,
+  }
+): SolarProductionPoint => ({
   ts: iso,
   kwh,
   avoidedCostEur: cost,
+  solarToHomeKwh: split === null ? null : split.home,
+  solarToGridKwh: split === null ? null : split.grid,
+  solarToBatteryKwh: split === null ? null : split.battery,
+  selfConsumptionAvoidedCostEur: null,
 });
 
 // Amsterdam is UTC+2 on these October dates, so a daily bucket for
@@ -89,6 +104,22 @@ describe("intervalPriceOf: the derived interval price", () => {
   it("is null when the price or the kWh is unknown", () => {
     assert.equal(intervalPriceOf(point("2026-10-17T07:00:00Z", 0.36, null)), null);
     assert.equal(intervalPriceOf(point("2026-10-17T07:00:00Z", 0, 0.12)), null);
+  });
+});
+
+describe("solarSplitOf: the cost-mode tooltip's split", () => {
+  it("reads the disposition figures off the point", () => {
+    const split = solarSplitOf(
+      point("2026-10-17T09:00:00Z", 1.65, 0.5, { home: 0.85, grid: 0.8, battery: 0 })
+    );
+    assert.deepEqual(split, { homeKwh: 0.85, gridKwh: 0.8, batteryKwh: 0 });
+  });
+
+  it("is null when the split is unknown (a lagged daily interval)", () => {
+    assert.equal(
+      solarSplitOf(point("2026-10-16T22:00:00Z", 6.78, 1.9, null)),
+      null
+    );
   });
 });
 

@@ -92,6 +92,33 @@ export function intervalPriceOf(point: SolarProductionPoint): number | null {
   return point.avoidedCostEur / point.kwh
 }
 
+// The interval's solar disposition split for the cost-mode tooltip:
+// how the interval's production was divided across the home, the
+// grid export and the battery charging. Null when the split is
+// unknown (the hourly aggregate lagged the interval away), so the
+// tooltip reads unknown, never 0.
+export interface SolarSplit {
+  homeKwh: number
+  gridKwh: number
+  batteryKwh: number
+}
+
+export function solarSplitOf(point: SolarProductionPoint): SolarSplit | null {
+  const { solarToHomeKwh, solarToGridKwh, solarToBatteryKwh } = point
+  if (
+    solarToHomeKwh === null ||
+    solarToGridKwh === null ||
+    solarToBatteryKwh === null
+  ) {
+    return null
+  }
+  return {
+    homeKwh: solarToHomeKwh,
+    gridKwh: solarToGridKwh,
+    batteryKwh: solarToBatteryKwh,
+  }
+}
+
 // The weather forecast panel's visibility rule: only the current day,
 // week or month carries a forecast; previous periods and every year
 // period (the current year included) show the production chart alone.
