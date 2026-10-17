@@ -622,7 +622,7 @@ app.get(
     const resolution =
       period === "day" || period === "week" ? "hourly" : "daily";
     const production = await getSolarProduction(fromMs, toMs, resolution);
-    const { series, totals, peak, hourlyCoverage, feedInTariff } = production;
+    const { series, totals, peak, hourlyCoverage, returnPricing } = production;
     res.json({
       period,
       date: anchor,
@@ -637,10 +637,13 @@ app.get(
       peak,
       meta: {
         note: "the PV counter updates roughly every 15 minutes, so hourly attribution can look stepped",
-        // The configured flat feed-in tariff in EUR/kWh (null when
-        // unset, zero or invalid): export earnings are paid at this
-        // rate, and the frontend explains them with it.
-        feedInTariff,
+        // The return-pricing configuration (server/return-price.mjs):
+        // mode "dynamic" prices export at the hour's market price
+        // plus the feed-in fee, with the Zonnebonus in positive
+        // daytime hours (the constants ride along); mode
+        // "flat-override" is the explicit EMS_FEED_IN_TARIFF_EUR
+        // flat rate. The frontend footnotes its numbers with this.
+        returnPricing,
         // The energy_hourly coverage sanity check: stale means the
         // aggregate's newest bucket predates the current hour. The
         // data is served either way, never failed; null when the

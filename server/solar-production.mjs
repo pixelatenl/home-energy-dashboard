@@ -42,24 +42,31 @@
 // Export earnings: the raw grid export counter (the split's
 // gridExport series, the P1 meter's total export - battery export
 // included, unlike the split's PV-capped solarToGrid estimate) times
-// the flat feed-in tariff from EMS_FEED_IN_TARIFF_EUR, EUR/kWh -
-// never the dynamic grid price. Unset, empty, zero or invalid reads
-// as not configured: every earnings figure is then null, never a
-// silent 0, and totals.exportKwh keeps reporting the measured kWh.
-// The tariff rides in meta.feedInTariff so the frontend can explain
-// its numbers; totals.totalCostNetEur combines the self-consumption
-// savings with the export earnings and stays null while either
-// component is null.
+// the hour's return price from server/return-price.mjs: the dynamic
+// construction derived from that same hour's consumption price
+// (market price plus feed-in fee, plus the Zonnebonus in positive
+// daytime hours; ex VAT and ex energy tax, negatives valid), or the
+// explicit flat EMS_FEED_IN_TARIFF_EUR override when it is set. An
+// export hour without a known return price earns null, never a
+// silent 0; totals.exportKwh keeps reporting the measured kWh and
+// totals.totalCostNetEur combines the self-consumption savings with
+// the export earnings, null while either component is null. The
+// configuration rides in meta.returnPricing so the frontend can
+// explain its numbers. The battery's evening export rides the same
+// counter and is priced with the same construction - the Zonnebonus
+// is documented as excluding home-battery feed-in, so bonus-hour
+// earnings can be slightly overstated.
 
 import { pool } from "./db.mjs";
 import { dbHourlyPrices } from "./queries.mjs";
+import { deriveReturnPrice, returnPriceConfig } from "./return-price.mjs";
 import {
   coalesceHourlyRows,
   dailySolarDispositions,
   hourlySolarDispositions,
   ZERO_SPLIT,
 } from "./solar-split.mjs";
-import { localDateKey, localDayStartUtcMs } from "./time.mjs";
+import { localDateKey, localDayStartUtcMs, localHourIndex } from "./time.mjs";
 
 // The PV production counter's entity name; the numeric ID is always
 // resolved from the entity table, never hardcoded. The first day any
@@ -82,16 +89,6 @@ const SPLIT_ENTITIES = {
 
 const round2 = (value) => Math.round(value * 100) / 100;
 const round3 = (value) => Math.round(value * 1000) / 1000;
-
-// The flat feed-in tariff in EUR/kWh from EMS_FEED_IN_TARIFF_EUR,
-// the rate grid export is paid at. Unset, empty, zero or invalid
-// values read as not configured (null), the same env convention as
-// the heat hysteresis; a negative tariff is invalid too.
-export function feedInTariffEur() {
-  const raw = process.env.EMS_FEED_IN_TARIFF_EUR;
-  const parsed = raw === undefined || raw === "" ? null : Number(raw);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
-}
 
 // The PV energy counter's numeric entity ID, by ha_entity_id. Null
 // when the counter has not been registered.
@@ -166,28 +163,46 @@ export function applicablePrice(priceRows, tsMs) {
   return price;
 }
 
+// The hour's export earnings: export kWh times the hour's return
+// price. Nothing exported earns a true 0 even without a price;
+// exported kWh without a known return price earns null, never a
+// silent 0; negative return prices earn negative amounts, never
+// clamped. Pure.
+function exportEarningsOf(exportKwh, returnPrice) {
+  if (exportKwh === null) {
+    return null;
+  }
+  if (exportKwh === 0) {
+    return 0;
+  }
+  return returnPrice === null ? null : exportKwh * returnPrice;
+}
+
 // Hourly intervals priced bottom-up: each bucket's kWh at its own
 // hour's price, each carrying its disposition split and the
 // self-consumed share's avoided cost at the same price. The raw
 // grid export counter's kWh rides along as exportKwh - the metered
 // total export (battery discharge included), distinct from the
-// split's PV-capped solarToGrid estimate; a null exportByTs means
-// the export counter is not registered, so exportKwh is null,
-// while an hour missing from the map coalesces to 0. The interval
-// base is the union of the PV hours and the export counter's own
-// hours: evening battery export rides the same grid counter, and
-// those PV-less hours must carry their export kWh and earnings
-// rather than silently dropping out of the series and its totals -
-// they read as 0 kWh produced, and an interval that produced
-// nothing never flags an unknown price (the daily convention).
-// Pure; splitByTs maps an hour's tsMs to its split, hours without
-// one (the split series predate the PV series) read as the zero
-// split.
+// split's PV-capped solarToGrid estimate - priced per hour at the
+// return price (returnConfig, from server/return-price.mjs)
+// derived from the same hour's consumption price; a null exportByTs
+// means the export counter is not registered, so exportKwh is
+// null, while an hour missing from the map coalesces to 0. The
+// interval base is the union of the PV hours and the export
+// counter's own hours: evening battery export rides the same grid
+// counter, and those PV-less hours must carry their export kWh and
+// earnings rather than silently dropping out of the series and its
+// totals - they read as 0 kWh produced, and an interval that
+// produced nothing never flags an unknown price (the daily
+// convention). Pure; splitByTs maps an hour's tsMs to its split,
+// hours without one (the split series predate the PV series) read
+// as the zero split.
 export function hourlyProductionIntervals(
   hourRows,
   priceRows,
   splitByTs = new Map(),
-  exportByTs = null
+  exportByTs = null,
+  returnConfig = returnPriceConfig()
 ) {
   const rows = [...hourRows];
   const pvTs = new Set(hourRows.map((row) => row.bucket.getTime()));
@@ -202,8 +217,14 @@ export function hourlyProductionIntervals(
   return rows.map((row) => {
     const tsMs = row.bucket.getTime();
     const kwh = Number(row.kwh ?? 0);
-    const price = kwh <= 0 ? 0 : applicablePrice(priceRows, tsMs);
+    const knownPrice = applicablePrice(priceRows, tsMs);
+    const price = kwh <= 0 ? 0 : knownPrice;
     const split = splitByTs.get(tsMs) ?? ZERO_SPLIT;
+    const exportKwh = exportByTs === null ? null : (exportByTs.get(tsMs) ?? 0);
+    const returnPrice =
+      exportKwh === null || exportKwh === 0
+        ? null
+        : deriveReturnPrice(knownPrice, localHourIndex(new Date(tsMs)), returnConfig);
     return {
       tsMs,
       kwh,
@@ -213,7 +234,8 @@ export function hourlyProductionIntervals(
       solarToBatteryKwh: split.solarToBatteryKwh,
       selfConsumedCostEur:
         price === null ? null : split.solarToHomeKwh * price,
-      exportKwh: exportByTs === null ? null : (exportByTs.get(tsMs) ?? 0),
+      exportKwh,
+      exportEarningsEur: exportEarningsOf(exportKwh, returnPrice),
     };
   });
 }
@@ -232,16 +254,22 @@ export function hourlyProductionIntervals(
 // bottom-up over the day's self-consuming hours, null when such an
 // hour lacks a price or when a producing day's hourly aggregate
 // lagged away entirely. exportKwh is the local day's raw grid
-// export counter sum over its own hourly buckets (exportByDay,
-// keyed by the same local day key; a day absent from the map
-// exported 0); a null exportByDay means the export counter is not
-// registered, so exportKwh is null. Pure.
+// export counter sum over its own hourly buckets (exportHoursByDay,
+// keyed by the same local day key, each hour carrying its tsMs and
+// kWh; a day absent from the map exported 0) and the export
+// earnings are priced bottom-up over those hours at each hour's
+// return price (returnConfig) - never the day total times one
+// price, negative prices included. An export hour without a known
+// return price makes the day's earnings null, never a silent 0; a
+// null exportHoursByDay means the export counter is not
+// registered, so both figures are null. Pure.
 export function dailyProductionIntervals(
   dailyRows,
   hourRows,
   priceRows,
   splitByDay = new Map(),
-  exportByDay = null
+  exportHoursByDay = null,
+  returnConfig = returnPriceConfig()
 ) {
   const hoursByLocalDay = new Map();
   for (const row of hourRows) {
@@ -285,6 +313,27 @@ export function dailyProductionIntervals(
         }
       }
     }
+    let exportKwh = null;
+    let exportEarnings = null;
+    let exportUnknown = false;
+    if (exportHoursByDay !== null) {
+      exportKwh = 0;
+      exportEarnings = 0;
+      for (const hour of exportHoursByDay.get(dayKey) ?? []) {
+        exportKwh += hour.kwh;
+        const returnPrice = deriveReturnPrice(
+          applicablePrice(priceRows, hour.tsMs),
+          localHourIndex(new Date(hour.tsMs)),
+          returnConfig
+        );
+        const earnings = exportEarningsOf(hour.kwh, returnPrice);
+        if (earnings === null) {
+          exportUnknown = true;
+        } else {
+          exportEarnings += earnings;
+        }
+      }
+    }
     return {
       tsMs,
       kwh,
@@ -294,7 +343,9 @@ export function dailyProductionIntervals(
       solarToBatteryKwh:
         daySplit === null ? null : daySplit.solarToBatteryKwh,
       selfConsumedCostEur: selfUnknown ? null : selfCost,
-      exportKwh: exportByDay === null ? null : (exportByDay.get(dayKey) ?? 0),
+      exportKwh,
+      exportEarningsEur:
+        exportHoursByDay === null ? null : exportUnknown ? null : exportEarnings,
     };
   });
 }
@@ -304,12 +355,14 @@ export function dailyProductionIntervals(
 // interval whose hourly aggregate lagged away carries null splits),
 // the totals (null intervals excluded from either cost, never from
 // the kWh; the self-consumed share is null when nothing was
-// produced), and the peak interval. The export earnings price the
-// raw exportKwh at the flat feedInTariff (null = not configured:
-// earnings null, never a silent 0); totalCostNetEur combines the
-// self-consumption savings with the export earnings and stays null
-// while either component is null. Pure.
-export function assembleProduction(intervals, feedInTariff = null) {
+// produced), and the peak interval. The export earnings were priced
+// per hour by the interval builders (the dynamic return price or
+// the flat override) and are rounded and summed here; an exported
+// kWh without a known return price makes totals.exportEarningsEur
+// null, never a silent 0, and totalCostNetEur - the self-consumption
+// savings plus the export earnings - stays null while either
+// component is null. Pure.
+export function assembleProduction(intervals) {
   const series = intervals.map((interval) => {
     const exportKwh =
       interval.exportKwh == null ? null : round3(interval.exportKwh);
@@ -336,9 +389,9 @@ export function assembleProduction(intervals, feedInTariff = null) {
           : round2(interval.selfConsumedCostEur),
       exportKwh,
       exportEarningsEur:
-        feedInTariff === null || exportKwh === null
+        interval.exportEarningsEur == null
           ? null
-          : round2(exportKwh * feedInTariff),
+          : round2(interval.exportEarningsEur),
     };
   });
   let totalKwh = 0;
@@ -349,6 +402,7 @@ export function assembleProduction(intervals, feedInTariff = null) {
   let totalExportEarnings = 0;
   let hasUnknownPrice = false;
   let hasUnknownExport = false;
+  let hasUnknownEarnings = false;
   let peak = null;
   for (const point of series) {
     totalKwh += point.kwh;
@@ -370,15 +424,18 @@ export function assembleProduction(intervals, feedInTariff = null) {
     }
     if (point.exportEarningsEur !== null) {
       totalExportEarnings += point.exportEarningsEur;
+    } else if (point.exportKwh !== 0) {
+      // Null (counter unregistered) or positive export without a
+      // known return price.
+      hasUnknownEarnings = true;
     }
     if (peak === null || point.kwh > peak.kwh) {
       peak = { ts: point.ts, kwh: point.kwh };
     }
   }
-  const exportEarningsTotal =
-    feedInTariff === null || hasUnknownExport
-      ? null
-      : round2(totalExportEarnings);
+  const exportEarningsTotal = hasUnknownEarnings
+    ? null
+    : round2(totalExportEarnings);
   return {
     series,
     totals: {
@@ -419,28 +476,28 @@ async function hourlyCoverageLastBucket(entityIds) {
 // Windows that end before the data start carry an empty series
 // rather than an error, so the frontend can render its honest empty
 // state. The raw export counter's kWh rides along per interval with
-// its earnings at the flat feed-in tariff (feedInTariff in the
-// response, null when unconfigured). The hourly interval base is
-// the union of the PV hours and the export counter's hours, so
-// evening battery export (which rides the same grid counter) keeps
-// its own hourly interval with 0 kWh produced. The hourlyCoverage
-// sanity check reports the aggregate's freshness (stale when its
-// newest bucket predates the current hour); the data is served
-// either way, never failed.
+// its earnings at the hour's return price (returnPricing in the
+// response: the dynamic construction's constants, or the flat
+// override). The hourly interval base is the union of the PV hours
+// and the export counter's hours, so evening battery export (which
+// rides the same grid counter) keeps its own hourly interval with
+// 0 kWh produced. The hourlyCoverage sanity check reports the
+// aggregate's freshness (stale when its newest bucket predates the
+// current hour); the data is served either way, never failed.
 export async function getSolarProduction(fromMs, toMs, resolution) {
-  const tariff = feedInTariffEur();
+  const returnPricing = returnPriceConfig();
   if (localDateKey(new Date(toMs - 1)) < SOLAR_DATA_START) {
     return {
-      ...assembleProduction([], tariff),
-      feedInTariff: tariff,
+      ...assembleProduction([]),
+      returnPricing,
       hourlyCoverage: null,
     };
   }
   const entityId = await pvEntityId();
   if (entityId === null) {
     return {
-      ...assembleProduction([], tariff),
-      feedInTariff: tariff,
+      ...assembleProduction([]),
+      returnPricing,
       hourlyCoverage: null,
     };
   }
@@ -477,33 +534,46 @@ export async function getSolarProduction(fromMs, toMs, resolution) {
   // The raw export counter's hourly kWh, by hour and by local day;
   // null maps mean the counter is not registered, so the export
   // figures read null rather than a silent 0. The same rows already
-  // feed the disposition split.
+  // feed the disposition split; the daily map carries each hour's
+  // tsMs and kWh so the daily earnings price bottom-up.
   const exportAvailable = splitIds.gridExport !== null;
   const exportByTs = exportAvailable
-    ? new Map(exportRows.map((row) => [row.bucket.getTime(), Number(row.kwh ?? 0)]))
+    ? new Map(
+        exportRows.map((row) => [row.bucket.getTime(), Number(row.kwh ?? 0)])
+      )
     : null;
-  const exportByDay = exportAvailable ? new Map() : null;
-  if (exportByDay !== null) {
+  const exportHoursByDay = exportAvailable ? new Map() : null;
+  if (exportHoursByDay !== null) {
     for (const row of exportRows) {
-      const dayKey = localDateKey(new Date(row.bucket.getTime()));
-      exportByDay.set(dayKey, (exportByDay.get(dayKey) ?? 0) + Number(row.kwh ?? 0));
+      const tsMs = row.bucket.getTime();
+      const dayKey = localDateKey(new Date(tsMs));
+      const hours = exportHoursByDay.get(dayKey) ?? [];
+      hours.push({ tsMs, kwh: Number(row.kwh ?? 0) });
+      exportHoursByDay.set(dayKey, hours);
     }
   }
   const intervals =
     resolution === "hourly"
-      ? hourlyProductionIntervals(hourRows, priceRows, splitByTs, exportByTs)
+      ? hourlyProductionIntervals(
+          hourRows,
+          priceRows,
+          splitByTs,
+          exportByTs,
+          returnPricing
+        )
       : dailyProductionIntervals(
           await pvDaily(entityId, fromMs, toMs),
           hourRows,
           priceRows,
           dailySolarDispositions(dispositions),
-          exportByDay
+          exportHoursByDay,
+          returnPricing
         );
   const lastBucketMs = await hourlyCoverageLastBucket(allIds);
   const currentHourMs = Math.floor(Date.now() / 3_600_000) * 3_600_000;
   return {
-    ...assembleProduction(intervals, tariff),
-    feedInTariff: tariff,
+    ...assembleProduction(intervals),
+    returnPricing,
     hourlyCoverage: {
       lastBucket:
         lastBucketMs === null ? null : new Date(lastBucketMs).toISOString(),

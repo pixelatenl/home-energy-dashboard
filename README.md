@@ -85,7 +85,8 @@ cp .env.example .env
 | `DB_PASSWORD`| Database password                        |
 | `API_PORT`   | Optional; API server port (default `5273`, separate from Vite's `5173`) |
 | `BATTERY_CAPACITY_KWH` | Optional; usable battery capacity for the charge/discharge time estimates (unset hides them) |
-| `EMS_FEED_IN_TARIFF_EUR` | Optional; flat feed-in tariff in EUR/kWh for the Solar page's export earnings (unset/0 hides them) |
+| `EMS_FEED_IN_TARIFF_EUR` | Optional; flat override in EUR/kWh for the Solar page's export earnings (unset/0 uses the dynamic return price) |
+| `EMS_RETURN_*` | Optional; the dynamic return price's constants - see "Export earnings model" below |
 
 `.env` is git-ignored and must never be committed: this repository is public,
 and credentials or LAN IP addresses must not leak into it.
@@ -118,6 +119,49 @@ API endpoints return 502 until the server is started.
 - `GET /api/debug/time` - server clock, timezone and local bucket diagnostics with raw rows, plus `ha_fetch` (HA price fetch success, forecast age) and `mistral` (daily limit, calls today, remaining calls)
 
 The frontend consumes these through the typed client in `src/lib/api.ts`.
+
+### Export earnings model
+
+The Solar page's cost mode prices exported kWh per hour at
+Zonneplan's dynamic return price, derived from the same hour's
+all-in consumption price (the price table's series):
+
+```
+market price        = consumption price / (1 + VAT) - energy tax - handling fee
+return price        = market price + feed-in handling fee
+return price       *= (1 + solar bonus)   only when the market price is
+                                          positive and the hour is daytime
+```
+
+- The return price excludes energy tax and VAT by construction, so
+  the earnings figures are ex VAT and ex energy tax. Negative market
+  prices are valid and the return price is never clamped.
+- The Zonnebonus is the invoice-confirmed 10%. Zonneplan publishes
+  it as daytime-only and excluding home-battery feed-in; the exact
+  daytime window is not published, so `EMS_RETURN_BONUS_START_HOUR`
+  / `EMS_RETURN_BONUS_END_HOUR` (local hours, default 7-18) are an
+  assumption that must be calibrated against the first annual
+  settlement (jaarafrekening). The battery's evening export rides
+  the same grid counter, so bonus-hour earnings can be slightly
+  overstated.
+- The energy tax refund under saldering is a fixed monthly advance
+  reconciled annually; it is not a per-kWh export component and
+  never appears in these figures.
+
+Constants (2026 defaults, all env-overridable): VAT 21%, energy tax
+EUR 0.11085/kWh excl. VAT (Belastingplan 2026; Zonneplan's own page
+quotes 0.1108), consumption handling fee EUR 0.0165/kWh excl. VAT
+(Zonneplan's published EUR 0.02/kWh incl. VAT), feed-in handling fee
+EUR 0.02/kWh, solar bonus 10%. The energy tax changes every
+1 January and Zonneplan revises its fees: review
+`EMS_RETURN_ENERGY_TAX_EUR` and the handling fees each January, and
+cross-check the model against the annual settlement invoice. The
+known energy tax trajectory for easy January updates: 0.12286
+(2025), 0.11085 (2026), 0.10648 (planned 2027 per the Belastingplan
+2027 proposal - confirm when it is enacted).
+Setting `EMS_FEED_IN_TARIFF_EUR` to a positive value replaces the
+whole construction with that flat rate; the dashboard runs in
+dynamic mode and leaves it unset.
 
 ### Time and timezones
 
