@@ -1,4 +1,5 @@
 import { REST_COLOR, applianceColor } from "@/lib/applianceColors"
+import type { Mode } from "@/lib/mode"
 import type { Appliance } from "@/lib/api"
 
 // A power sample counts as live for 15 minutes; above 10 W the appliance
@@ -37,8 +38,9 @@ interface CardShare {
   share: number | null
 }
 
-// One appliance tile: colored border, name, kWh, cost, share of home
-// usage and the live state line.
+// One appliance tile: colored border, name, the mode's primary metric
+// large, the secondary metric and share of home usage beneath, plus
+// the live state line.
 function ApplianceTile({
   appliance,
   kwh,
@@ -46,9 +48,13 @@ function ApplianceTile({
   power_w,
   power_ts,
   share,
-}: CardShare & Appliance) {
+  mode,
+}: CardShare & Appliance & { mode: Mode }) {
   const color = applianceColor(appliance)
   const state = liveState(power_w, power_ts)
+  const energyFirst = mode === "energy"
+  const primary = energyFirst ? formatKwh(kwh) : formatEur(cost_eur)
+  const secondary = energyFirst ? formatEur(cost_eur) : formatKwh(kwh)
   return (
     <div
       className="rounded-lg border-2 bg-card p-4 shadow-card"
@@ -67,11 +73,9 @@ function ApplianceTile({
           {formatShare(share)}
         </span>
       </div>
-      <p className="mt-2 text-2xl font-semibold tabular-nums">
-        {formatKwh(kwh)}
-      </p>
+      <p className="mt-2 text-2xl font-semibold tabular-nums">{primary}</p>
       <p className="mt-1 text-xs text-muted-foreground tabular-nums">
-        {formatEur(cost_eur)}
+        {secondary}
       </p>
       <p
         className={`mt-2 text-xs tabular-nums ${
@@ -187,11 +191,13 @@ function ApplianceUsageWidget({
   appliances,
   plugKwh,
   restOfHomeKwh,
+  mode = "energy",
   compact = false,
 }: {
   appliances: Appliance[]
   plugKwh: number | null
   restOfHomeKwh: number | null
+  mode?: Mode
   compact?: boolean
 }) {
   const homeKwh =
@@ -219,6 +225,7 @@ function ApplianceUsageWidget({
             key={appliance.appliance}
             {...appliance}
             share={shareOf(appliance.kwh)}
+            mode={mode}
           />
         ))}
         {restOfHomeKwh !== null && (

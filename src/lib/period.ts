@@ -242,13 +242,14 @@ export function encodePeriod(period: Period): {
 }
 
 // Decodes URL params back into a period. Invalid or missing values
-// normalise: an unknown period kind falls back to "day", an invalid or
-// missing date falls back to the current day. Valid parts are kept.
+// normalise: an unknown period kind falls back to "week" (the pages'
+// default view), an invalid or missing date falls back to the current
+// day. Valid parts are kept.
 export function decodeParams(params: URLSearchParams, now: Date = new Date()): Period {
   const rawKind = params.get("period")
   const kind = PERIOD_KINDS.includes(rawKind as PeriodKind)
     ? (rawKind as PeriodKind)
-    : "day"
+    : "week"
   const rawDate = params.get("date")
   const date = rawDate !== null && isValidDay(rawDate) ? rawDate : todayString(now)
   return { kind, date }

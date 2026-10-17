@@ -23,8 +23,12 @@ const PLACEHOLDER = "\u2014"
 const GRID_TOOLTIP =
   "Grid electricity today: imported minus exported; negative means net export. The strip shows how much of the grid's power comes from sun and wind right now, estimated by Zonneplan; the line is the next hours. The color states are our own interpretation, not Zonneplan's."
 
+// The home usage card's tooltip: the headline figure's battery
+// accounting plus the self-consumption strip's. Solar that charged
+// the battery counts as self-consumption today, but as home usage
+// only on the day the battery discharges it.
 const USAGE_TOOLTIP =
-  "Household consumption: from grid + direct solar use - export - energy stored in the battery. Self-consumption: the share of today's solar production that was used on site."
+  "Home usage today: everything the household consumed - grid import plus solar used directly plus battery discharge, minus export. Energy that charged the battery today is not counted here; it counts on the day the battery discharges it. Self-consumption: the share of today's solar production that stayed on site - used directly or stored in the battery."
 
 // Corner info tooltip: shows on hover, keyboard focus and tap.
 function InfoTooltip({ text }: { text: string }) {
@@ -147,6 +151,15 @@ function StatsHeader() {
   const usageToday = summary?.today.total_usage_kwh ?? null
   const selfConsumption = summary?.today.self_consumption_pct ?? null
 
+  // Net energy the battery absorbed today: charged minus discharged.
+  // Home usage excludes this share by definition, so the card states
+  // it beneath the figure whenever it is large enough to notice.
+  const batteryNetStored =
+    summary === null
+      ? null
+      : (summary.today.battery_charged_kwh ?? 0) -
+        (summary.today.battery_discharged_kwh ?? 0)
+
   if (status === "loading") {
     return (
       <>
@@ -226,6 +239,12 @@ function StatsHeader() {
           >
             {formatKwh(usageToday)}
           </CardTitle>
+          {batteryNetStored !== null && batteryNetStored >= 0.05 && (
+            <p className="text-xs text-muted-foreground tabular-nums">
+              Excludes {batteryNetStored.toFixed(1)} kWh stored in the
+              battery
+            </p>
+          )}
           <p className="pb-2 text-xs text-muted-foreground tabular-nums">
             This week{" "}
             {formatKwh(summary?.week.total_usage_kwh ?? null)} &middot; This

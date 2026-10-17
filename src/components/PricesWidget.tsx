@@ -5,14 +5,9 @@ import {
   type MouseEvent,
 } from "react"
 import AIContextBox from "@/components/AIContextBox"
+import PanelHeader from "@/components/PanelHeader"
 import { Button } from "@/components/ui/button"
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
 import { Euro } from "lucide-react"
 import {
   fetchPriceContext,
@@ -398,15 +393,11 @@ function PricesWidget() {
 
   return (
     <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-muted-foreground">
-          <Euro className="size-6" aria-hidden="true" />
-          Electricity prices
-        </CardTitle>
-        <CardDescription>
-          Hourly tariffs including VAT, with the cheapest window highlighted
-        </CardDescription>
-      </CardHeader>
+      <PanelHeader
+        icon={Euro}
+        title="Electricity prices"
+        description="Hourly tariffs including VAT, with the cheapest window highlighted"
+      />
       <CardContent className="space-y-4">
         {status === "error" && (
           <div className="flex min-h-72 items-center justify-between rounded-xl border border-destructive/30 px-4">

@@ -276,7 +276,10 @@ function SolarForecastWidget() {
             overdelivering its own forecast. Once the exceedance passes
             10 percent, the prices chart's "Now" idiom appears: a
             dashed vertical line at the forecast level, labeled
-            "Forecasted" above the bar. */}
+            "Forecasted" above the bar. The line sits outside the bar's
+            clipped container and reaches a little past its top and
+            bottom, so it reads as a marker crossing the bar, not a
+            scratch inside it. */}
         <div className="relative pt-5">
           {showForecastMark && (
             <span
@@ -293,17 +296,21 @@ function SolarForecastWidget() {
             />
             {overPct > 0 && (
               <div
-                className="absolute inset-y-0 bg-emerald-500 dark:bg-emerald-400"
+                className="absolute inset-y-0 bg-emerald-600 dark:bg-emerald-500"
                 style={{ left: `${forecastPct}%`, width: `${overPct}%` }}
               />
             )}
-            {showForecastMark && (
-              <div
-                className="absolute inset-y-0 w-0 -translate-x-1/2 border-l border-dashed border-foreground/50"
-                style={{ left: `${forecastPct}%` }}
-              />
-            )}
           </div>
+          {/* The dashed forecast marker outside the bar's clipped
+              container: from just below the "Forecasted" label to a
+              few pixels past the bar's bottom (the bar occupies 20 to
+              28 px inside this pt-5 wrapper, the line 16 to 32). */}
+          {showForecastMark && (
+            <div
+              className="absolute top-4 h-4 w-0 -translate-x-1/2 border-l border-dashed border-foreground/50"
+              style={{ left: `${forecastPct}%` }}
+            />
+          )}
           <div className="mt-2 flex items-center justify-between gap-2">
             <span className="text-xs text-muted-foreground tabular-nums">
               {formatKwh(producedKwh)} so far ({progressPct}% of expected)

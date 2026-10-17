@@ -21,6 +21,7 @@ import {
   localIsoWithOffset,
   localDayStartUtcMs,
   mondayDateKey,
+  nextDateKey,
   resolvedTimezone,
 } from "./time.mjs";
 
@@ -217,10 +218,13 @@ async function counterEntitiesWithData(ids) {
 // Range metrics from the verified energy_delta counters: sum(delta_kwh)
 // per entity within the range, bucketed per hour so cost can join the
 // price table. Hours without a price row count toward kWh but not toward
-// cost. Total usage subtracts the energy stored in the battery; the
-// battery net term is clamped at zero only when both battery entities are
-// missing, otherwise the true net is used (it may be negative on
-// discharge-heavy days).
+// cost. Total home consumption (docs/spec.md section 1) is the explicit
+// five-counter form: grid import + PV yield + battery discharge -
+// grid export - battery charge. The charge term is a sink (energy
+// leaving the home circuit into the battery is not consumption);
+// battery discharge to the grid nets out against grid export. The two
+// battery terms are zeroed only when both battery entities are
+// missing; with either present the true values are used.
 export async function getRangeMetrics(startMs, endMs) {
   const map = await resolveEntityMap();
   const metrics = {
@@ -299,17 +303,28 @@ export async function getRangeMetrics(startMs, endMs) {
     }
     const bothBatteryMissing =
       map.batteryCharging === null && map.batteryDischarging === null;
-    const batteryNet = bothBatteryMissing ? 0 : chargedKwh - dischargedKwh;
+    // The two battery terms of the consumption formula, each zeroed
+    // only when both battery entities are missing (a lone counter
+    // keeps its true value).
+    const batteryCharge = bothBatteryMissing ? 0 : chargedKwh;
+    const batteryDischarge = bothBatteryMissing ? 0 : dischargedKwh;
     if (map.batteryCharging !== null) {
       metrics.battery_charged_kwh = round2(chargedKwh);
     }
     if (map.batteryDischarging !== null) {
       metrics.battery_discharged_kwh = round2(dischargedKwh);
     }
-    // Household consumption including self-consumed solar, minus energy
-    // stored in the battery; noise cannot push it below zero.
+    // Total home consumption: grid import + PV yield + battery
+    // discharge - grid export - battery charge. Energy that charged
+    // the battery is not consumption on the charging day; it counts
+    // on the day the battery discharges it. Discharge to the grid
+    // nets out against the export term. Noise cannot push it below
+    // zero.
     metrics.total_usage_kwh = round2(
-      Math.max(0, importKwh + pvKwh - exportKwh - batteryNet)
+      Math.max(
+        0,
+        importKwh + pvKwh + batteryDischarge - exportKwh - batteryCharge
+      )
     );
   } else {
     // No PV entity: total usage falls back to grid import.
@@ -962,6 +977,16 @@ function heatingIntervals(series, hysteresis) {
   return intervals;
 }
 
+// The zone-versus-setpoint hysteresis in degrees Celsius from
+// EMS_HEAT_HYSTERESIS (default 0; unset, empty or invalid values
+// behave as 0). Shared by the heat zones endpoint and the heating
+// activity proxy behind the usage breakdown's heat pump estimate.
+function heatHysteresisDegrees() {
+  const raw = process.env.EMS_HEAT_HYSTERESIS;
+  const parsed = raw === undefined || raw === "" ? 0 : Number(raw);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
 // GET /api/heat/zones data: per-zone temperature/setpoint series and
 // heating intervals, plus the outdoor temperature series. resolution
 // "raw" returns the stored 5-minute samples, "hourly" the continuous
@@ -985,10 +1010,7 @@ export async function getHeatZones(fromMs, toMs, resolution) {
     };
   }
 
-  const hysteresisRaw = process.env.EMS_HEAT_HYSTERESIS;
-  const hysteresisParsed =
-    hysteresisRaw === undefined || hysteresisRaw === "" ? 0 : Number(hysteresisRaw);
-  const hysteresis = Number.isFinite(hysteresisParsed) ? hysteresisParsed : 0;
+  const hysteresis = heatHysteresisDegrees();
 
   const outdoorId = await outdoorTemperatureEntity();
   const allIds = [
@@ -1364,6 +1386,514 @@ export async function getHeatModel(fromMs, toMs, resolution) {
       boiler_efficiency: assumptions.boilerEfficiency,
       cop_at_7c: assumptions.copAt7C,
       cop_at_minus_7c: assumptions.copAtMinus7C,
+    },
+  };
+}
+
+// ---- Usage category breakdown ----
+
+// The category registry: measured counter entities mapped to usage
+// categories. Extensible for the office plug: adding a category, or
+// another entity to a category's list, is the whole change. R1
+// resolution: the washing machine maps to the plug counter
+// sensor.garage_washing_machine_cumulative_energy; the Samsung
+// counters sensor.garage_washer_energy and sensor.garage_washer_power
+// measure the same machine and are excluded from the registry, since
+// counting them would double count the machine.
+export const USAGE_CATEGORIES = [
+  {
+    key: "dishwasher",
+    label: "Dishwasher",
+    entities: ["sensor.kitchen_dishwasher_cumulative_energy"],
+  },
+  {
+    key: "dryer",
+    label: "Dryer",
+    entities: ["sensor.garage_dryer_cumulative_energy"],
+  },
+  {
+    key: "washing_machine",
+    label: "Washing machine",
+    entities: ["sensor.garage_washing_machine_cumulative_energy"],
+  },
+];
+
+// The heat pump carries the "Est." class: it is estimated, never
+// measured. The remainder bucket is neither; it is what is left.
+const HEAT_PUMP_CATEGORY = { key: "heat_pump", label: "Heat pump" };
+
+// The home model: the steady background devices without their own
+// measured counter, estimated per local day (docs/spec.md section 6).
+// Every entry's basis note states where its estimate comes from; the
+// UI labels every modeled number as a model average. Extensible like
+// the category registry.
+const HOME_MODEL = [
+  {
+    key: "lighting",
+    name: "Lighting",
+    kwhPerDay: 1.5,
+    basis: "36 Hue lights including standby draw; evening use plus idle",
+  },
+  {
+    key: "refrigerators",
+    name: "Refrigerators",
+    kwhPerDay: 2.5,
+    basis: "two compressor refrigerators at roughly 50 W average each",
+  },
+  {
+    key: "kitchen_boiler",
+    name: "Kitchen boiler",
+    kwhPerDay: 1.0,
+    basis: "small keep-hot water boiler at roughly 40 W average",
+  },
+  {
+    key: "microwave",
+    name: "Microwave",
+    kwhPerDay: 0.2,
+    basis: "standby draw plus a few minutes of daily use",
+  },
+  {
+    key: "coffee_machine",
+    name: "Coffee machine",
+    kwhPerDay: 0.3,
+    basis: "keep-hot element plus the daily brews",
+  },
+  {
+    key: "network_standby",
+    name: "Network and standby",
+    kwhPerDay: 0.6,
+    basis: "router, switches and hub idle draw",
+  },
+];
+
+// Local calendar days in [fromMs, toMs): the multiplier for the
+// per-day model estimates. Steps date keys, so DST transitions count
+// a day as one day.
+export function windowDays(fromMs, toMs) {
+  let day = localDateKey(new Date(fromMs));
+  const lastDay = localDateKey(new Date(toMs - 1));
+  let count = 0;
+  while (day <= lastDay) {
+    count += 1;
+    day = nextDateKey(day, 1);
+  }
+  return count;
+}
+
+// Local days in [fromMs, toMs) that carry measured data: the model
+// scales by the window's data-covered days, not its calendar days,
+// so an in-progress month never models a whole month of standby draw
+// against a few days of usage. Counted from the always-on grid import
+// counter's first and last row in the window, capped at the window's
+// own days.
+export async function windowDataDays(fromMs, toMs, importId) {
+  if (importId === null) {
+    return 0;
+  }
+  const { rows } = await pool.query(
+    `SELECT min(d.ts) AS first_ts, max(d.ts) AS last_ts
+       FROM energy_delta d
+      WHERE d.entity_id = $1::smallint
+        AND d.ts >= $2::timestamptz
+        AND d.ts < $3::timestamptz`,
+    [importId, new Date(fromMs), new Date(toMs)]
+  );
+  const first = rows[0]?.first_ts ?? null;
+  const last = rows[0]?.last_ts ?? null;
+  if (first === null || last === null) {
+    return 0;
+  }
+  let day = localDateKey(new Date(first));
+  const lastDay = localDateKey(new Date(Math.min(last.getTime(), toMs - 1)));
+  let count = 0;
+  while (day <= lastDay) {
+    count += 1;
+    day = nextDateKey(day, 1);
+  }
+  return Math.min(count, windowDays(fromMs, toMs));
+}
+
+// The model's per-period entries: each per-day estimate times the
+// window's days, plus the modeled sum. The per-day values are single
+// decimals, so the products stay exact at two decimals and the
+// displayed figures reconcile exactly with the remainder.
+export function homeModelEntries(days) {
+  const entries = HOME_MODEL.map((entry) => ({
+    key: entry.key,
+    name: entry.name,
+    kwh_per_day: entry.kwhPerDay,
+    basis: entry.basis,
+    kwh: round2(entry.kwhPerDay * days),
+  }));
+  const modeledKwh = entries.reduce((sum, entry) => sum + entry.kwh, 0);
+  return { entries, modeledKwh };
+}
+
+// Days in the calendar month of a "YYYY-MM-DD" key, for prorating the
+// monthly non-heating gas baseline to a per-day share.
+function daysInMonthOf(dateKey) {
+  const [year, month] = dateKey.split("-").map(Number);
+  return new Date(Date.UTC(year, month, 0)).getUTCDate();
+}
+
+// The configurable non-heating gas baseline in m3 per month (hot
+// water, cooking), subtracted from measured gas before attributing
+// heating. EMS_GAS_NON_HEATING_BASELINE_M3_PER_MONTH, default 20;
+// unset, empty or invalid values fall back to the default.
+export function gasNonHeatingBaselineM3PerMonth() {
+  const raw = process.env.EMS_GAS_NON_HEATING_BASELINE_M3_PER_MONTH;
+  if (raw === undefined || raw === "") {
+    return 20;
+  }
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : 20;
+}
+
+// The setpoint staleness guard for the heating activity proxy, in
+// milliseconds: a forward-filled setpoint stops counting this long
+// after its last real sample, so a dead setpoint sensor cannot imply
+// endless heating. EMS_HEAT_SETPOINT_STALENESS_HOURS, default 24;
+// unset, empty or invalid values fall back to the default.
+export function setpointStalenessMs() {
+  const raw = process.env.EMS_HEAT_SETPOINT_STALENESS_HOURS;
+  if (raw === undefined || raw === "") {
+    return 24 * 3_600_000;
+  }
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed >= 0
+    ? parsed * 3_600_000
+    : 24 * 3_600_000;
+}
+
+// Heating bucket decisions for one zone from hourly temperature and
+// setpoint rows (both sorted by bucket, avg_value never null): the
+// sparse setpoint stream is forward-filled onto the temperature
+// buckets, the staleness guard expires a forward-filled setpoint that
+// outlives stalenessMs since its last real sample, and a bucket is
+// heating when the temperature sits below the setpoint minus the
+// hysteresis. Returns the local date keys of the heating buckets.
+export function heatingBucketDays(
+  tempRows,
+  setpointRows,
+  hysteresis,
+  stalenessMs
+) {
+  const days = [];
+  let setpointMs = null;
+  let setpointValue = null;
+  let setpointIndex = 0;
+  for (const temp of tempRows) {
+    const tempMs = temp.bucket.getTime();
+    while (
+      setpointIndex < setpointRows.length &&
+      setpointRows[setpointIndex].bucket.getTime() <= tempMs
+    ) {
+      setpointMs = setpointRows[setpointIndex].bucket.getTime();
+      setpointValue = Number(setpointRows[setpointIndex].avg_value);
+      setpointIndex += 1;
+    }
+    if (
+      setpointValue !== null &&
+      setpointMs !== null &&
+      tempMs - setpointMs <= stalenessMs &&
+      Number(temp.avg_value) < setpointValue - hysteresis
+    ) {
+      days.push(localDateKey(new Date(tempMs)));
+    }
+  }
+  return days;
+}
+
+// Heating activity per local day across all zones, the activity proxy
+// for the heat pump estimate (R1 confirmed no heat demand entity
+// exists). A day is heating-active when any zone shows the
+// temperature-below-setpoint proxy in any hourly bucket. Periods
+// before HEAT_DATA_START have no zone data and yield no days.
+export async function heatingActiveDays(fromMs, toMs) {
+  const days = new Set();
+  if (localDateKey(new Date(toMs - 1)) < HEAT_DATA_START) {
+    return days;
+  }
+  const zones = await heatZoneEntities();
+  if (zones.length === 0) {
+    return days;
+  }
+  const ids = [];
+  for (const zone of zones) {
+    ids.push(zone.temperatureId);
+    if (zone.setpointId !== null) {
+      ids.push(zone.setpointId);
+    }
+  }
+  const rows = await heatSamplesHourly(ids, fromMs, toMs);
+  const byEntity = new Map();
+  for (const row of rows) {
+    const list = byEntity.get(row.entity_id) ?? [];
+    list.push(row);
+    byEntity.set(row.entity_id, list);
+  }
+  const hysteresis = heatHysteresisDegrees();
+  const stalenessMs = setpointStalenessMs();
+  for (const zone of zones) {
+    const tempRows = (byEntity.get(zone.temperatureId) ?? []).filter(
+      (row) => row.avg_value !== null
+    );
+    const setpointRows =
+      zone.setpointId !== null
+        ? (byEntity.get(zone.setpointId) ?? []).filter(
+            (row) => row.avg_value !== null
+          )
+        : [];
+    for (const day of heatingBucketDays(
+      tempRows,
+      setpointRows,
+      hysteresis,
+      stalenessMs
+    )) {
+      days.add(day);
+    }
+  }
+  return days;
+}
+
+// Heating gas in m3 from daily gas rows: only heating-active days
+// contribute, and each contributes its volume above that day's share
+// of the non-heating baseline (the monthly figure prorated over the
+// days of the day's calendar month). A daily figure, the finest
+// attribution the gas data supports: the gas counter updates hourly,
+// so hourly attribution is not supported. Never negative.
+export function heatingGasM3(dailyRows, activeDays, baselineM3PerMonth) {
+  const perDay = new Map();
+  for (const row of dailyRows) {
+    const day = localDateKey(new Date(row.bucket.getTime()));
+    perDay.set(day, (perDay.get(day) ?? 0) + Number(row.kwh));
+  }
+  let total = 0;
+  for (const [day, volume] of perDay) {
+    if (!activeDays.has(day)) {
+      continue;
+    }
+    const share = baselineM3PerMonth / daysInMonthOf(day);
+    total += Math.max(0, volume - share);
+  }
+  return total;
+}
+
+// Heat pump electricity from heating gas, the Heat tab hybrid model's
+// conversion: the gas volume times the calorific value and the boiler
+// efficiency gives the delivered heat, and the flat COP converts it
+// to electricity. The flat COP reuses the existing heat model
+// config's 7 C anchor (EMS_COP_AT_7C, default 3.0) as a single value
+// instead of its outdoor-temperature curve.
+export function heatPumpKwhFromHeatingGas(gasM3, assumptions) {
+  const flatCop = assumptions.copAt7C;
+  if (gasM3 <= 0 || flatCop <= 0) {
+    return 0;
+  }
+  return (
+    (gasM3 * assumptions.gasCalorificKwhPerM3 * assumptions.boilerEfficiency) /
+    flatCop
+  );
+}
+
+// The heat pump estimate for a window: the heating gas (measured gas
+// minus the prorated non-heating baseline, on heating-active days
+// only) converted to electricity. Summer windows have no
+// heating-active days and estimate zero. Details ride along for the
+// response's assumptions echo.
+export async function heatPumpEstimate(fromMs, toMs) {
+  const baseline = gasNonHeatingBaselineM3PerMonth();
+  const assumptions = heatModelAssumptions();
+  const activeDays = await heatingActiveDays(fromMs, toMs);
+  let gasM3 = 0;
+  if (
+    activeDays.size > 0 &&
+    localDateKey(new Date(toMs - 1)) >= GAS_DATA_START
+  ) {
+    const entityIds = await gasCounterEntityIds();
+    const rows =
+      entityIds.length > 0 ? await gasDaily(entityIds, fromMs, toMs) : [];
+    gasM3 = heatingGasM3(rows, activeDays, baseline);
+  }
+  return {
+    kwh: heatPumpKwhFromHeatingGas(gasM3, assumptions),
+    heatingGasM3: gasM3,
+    heatingDays: activeDays.size,
+    flatCop: assumptions.copAt7C,
+    gasNonHeatingBaselineM3PerMonth: baseline,
+  };
+}
+
+// The remainder bucket: the window's total usage minus the measured
+// categories minus the heat pump estimate, floored at zero (section 3
+// of docs/spec.md: no value is ever negative).
+export function remainderKwh(totalKwh, measuredKwh, estimatedKwh) {
+  return Math.max(0, totalKwh - measuredKwh - estimatedKwh);
+}
+
+// Measured kWh and cost per registry entity in a window: the energy
+// counter deltas summed with the dynamic hourly price joined per hour
+// (hours without a price row count toward kWh but not cost). Grouped
+// by ha_entity_id so the registry mapping needs no id resolution.
+export async function measuredEntityTotals(entityNames, fromMs, toMs) {
+  const { rows } = await pool.query(
+    `SELECT e.ha_entity_id AS ha_entity_id,
+            sum(d.delta_kwh) AS kwh,
+            sum(d.delta_kwh * p.price_eur) AS cost_eur
+       FROM energy_delta d
+       JOIN entity e ON e.id = d.entity_id
+       LEFT JOIN price p ON p.ts = date_trunc('hour', d.ts)
+      WHERE e.ha_entity_id = ANY($1::text[])
+        AND d.ts >= $2::timestamptz
+        AND d.ts < $3::timestamptz
+      GROUP BY e.ha_entity_id`,
+    [entityNames, new Date(fromMs), new Date(toMs)]
+  );
+  return new Map(
+    rows.map((row) => [
+      row.ha_entity_id,
+      {
+        kwh: Number(row.kwh),
+        costEur: row.cost_eur === null ? null : Number(row.cost_eur),
+      },
+    ])
+  );
+}
+
+// GET /api/usage/breakdown data for one window: every category with
+// kWh and cost, the remainder bucket, the window total and the
+// measured/estimated split. Measured categories sum their registry
+// counters, costed per hour at the dynamic price; the heat pump
+// estimate and the remainder, which have no hourly shape, are costed
+// flat at the window's average hourly price. The remainder is total
+// usage minus measured minus estimated (docs/spec.md section 3.4),
+// floored at zero.
+export async function getUsageBreakdown(fromMs, toMs) {
+  const entityNames = USAGE_CATEGORIES.flatMap(
+    (category) => category.entities
+  );
+  const [metrics, measured, priceRows, heatPump, map] = await Promise.all([
+    getRangeMetrics(fromMs, toMs),
+    entityNames.length > 0
+      ? measuredEntityTotals(entityNames, fromMs, toMs)
+      : Promise.resolve(new Map()),
+    dbHourlyPrices(fromMs, toMs),
+    heatPumpEstimate(fromMs, toMs),
+    resolveEntityMap(),
+  ]);
+  const avgPriceEur =
+    priceRows.length > 0
+      ? priceRows.reduce((sum, row) => sum + Number(row.price_eur), 0) /
+        priceRows.length
+      : null;
+  // Unattributed energy (the estimate and the remainder) is costed
+  // flat at the window's average hourly price: no hourly shape exists
+  // for it. Zero energy costs zero even without price rows.
+  const flatCost = (kwh) =>
+    kwh <= 0 ? 0 : avgPriceEur === null ? null : round2(kwh * avgPriceEur);
+
+  const categories = [];
+  let measuredKwh = 0;
+  let measuredCost = 0;
+  for (const category of USAGE_CATEGORIES) {
+    let kwh = 0;
+    let cost = null;
+    for (const name of category.entities) {
+      const row = measured.get(name);
+      if (row === undefined) {
+        continue;
+      }
+      kwh += row.kwh;
+      if (row.costEur !== null) {
+        cost = (cost ?? 0) + row.costEur;
+      }
+    }
+    measuredKwh += kwh;
+    if (cost !== null) {
+      measuredCost += cost;
+    }
+    categories.push({
+      key: category.key,
+      label: category.label,
+      class: "measured",
+      entities: category.entities,
+      kwh: round2(kwh),
+      // Zero energy costs zero even when no price row priced it;
+      // non-zero energy without any price row stays null.
+      cost_eur:
+        cost === null ? (kwh === 0 ? 0 : null) : round2(cost),
+    });
+  }
+
+  const estimatedKwh = heatPump.kwh;
+  categories.push({
+    key: HEAT_PUMP_CATEGORY.key,
+    label: HEAT_PUMP_CATEGORY.label,
+    class: "Est.",
+    entities: [],
+    kwh: round2(estimatedKwh),
+    cost_eur: flatCost(estimatedKwh),
+  });
+
+  const totalKwh = metrics.total_usage_kwh;
+  const unroundedRemainder = remainderKwh(totalKwh, measuredKwh, estimatedKwh);
+  categories.push({
+    key: "remainder",
+    label: "Remainder",
+    class: "remainder",
+    entities: [],
+    kwh: round2(unroundedRemainder),
+    cost_eur: flatCost(unroundedRemainder),
+  });
+
+  const estimatedCost = flatCost(estimatedKwh);
+  const remainderCost = flatCost(unroundedRemainder);
+  const totalCost =
+    avgPriceEur === null
+      ? null
+      : round2(measuredCost + estimatedCost + remainderCost);
+
+  // The home model over the window and the unexplained share of the
+  // remainder it does not cover (docs/spec.md section 6): each
+  // per-day estimate times the window's data-covered days, floored
+  // at zero so no value is negative. Computed from the rounded
+  // remainder so the displayed figures reconcile exactly.
+  const remainderRounded = round2(unroundedRemainder);
+  const modelDays = await windowDataDays(fromMs, toMs, map.import);
+  const model = homeModelEntries(modelDays);
+  const unexplainedKwh = Math.max(0, round2(remainderRounded - model.modeledKwh));
+
+  return {
+    total: { kwh: round2(totalKwh), cost_eur: totalCost },
+    categories,
+    split: {
+      measured_kwh: round2(measuredKwh),
+      estimated_kwh: round2(estimatedKwh),
+      remainder_kwh: remainderRounded,
+      measured_cost_eur: round2(measuredCost),
+      estimated_cost_eur: estimatedCost,
+      remainder_cost_eur: remainderCost,
+    },
+    // The window's average hourly electricity price, the flat basis
+    // for costing energy without an hourly shape; null when the
+    // window has no price rows at all.
+    avg_price_eur:
+      avgPriceEur === null
+        ? null
+        : Math.round(avgPriceEur * 10_000) / 10_000,
+    home_model: {
+      days: modelDays,
+      entries: model.entries,
+      modeled_kwh: round2(model.modeledKwh),
+      unexplained_kwh: unexplainedKwh,
+    },
+    assumptions: {
+      flat_cop: heatPump.flatCop,
+      heating_gas_m3: round2(heatPump.heatingGasM3),
+      heating_days: heatPump.heatingDays,
+      gas_non_heating_baseline_m3_per_month:
+        heatPump.gasNonHeatingBaselineM3PerMonth,
+      setpoint_staleness_hours: setpointStalenessMs() / 3_600_000,
     },
   };
 }

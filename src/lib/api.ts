@@ -382,6 +382,80 @@ export function fetchAppliances(
   )
 }
 
+// GET /api/usage/breakdown: the category breakdown of household usage
+// for a calendar period (docs/spec.md section 3). Every category
+// carries kWh and cost for the period and the previous period; the
+// heat pump is the one estimated category ("Est." class).
+export interface UsageBreakdownCategory {
+  key: string
+  label: string
+  class: "measured" | "Est." | "remainder"
+  entities: string[]
+  kwh: number
+  cost_eur: number | null
+  previous_kwh: number
+  previous_cost_eur: number | null
+}
+
+export interface UsageBreakdown {
+  period: PeriodKind
+  date: string
+  window: { start: string; end: string }
+  previous: { period: PeriodKind; window: { start: string; end: string } }
+  total: {
+    kwh: number
+    cost_eur: number | null
+    previous_kwh: number
+    previous_cost_eur: number | null
+  }
+  categories: UsageBreakdownCategory[]
+  split: {
+    measured_kwh: number
+    estimated_kwh: number
+    remainder_kwh: number
+    measured_cost_eur: number | null
+    estimated_cost_eur: number | null
+    remainder_cost_eur: number | null
+    previous_measured_kwh: number
+    previous_estimated_kwh: number
+    previous_remainder_kwh: number
+  }
+  // The window's average hourly electricity price (the flat basis for
+  // costing model estimates); null when the window has no price rows.
+  avg_price_eur: number | null
+  // The home model (docs/spec.md section 6): the steady background
+  // devices without their own counter, per-day estimates scaled to
+  // the window, plus the unexplained share of the remainder.
+  home_model: {
+    days: number
+    modeled_kwh: number
+    unexplained_kwh: number
+    entries: {
+      key: string
+      name: string
+      kwh_per_day: number
+      basis: string
+      kwh: number
+    }[]
+  }
+  assumptions: {
+    flat_cop: number
+    heating_gas_m3: number
+    heating_days: number
+    gas_non_heating_baseline_m3_per_month: number
+    setpoint_staleness_hours: number
+  }
+}
+
+export function fetchUsageBreakdown(
+  period: PeriodKind,
+  date: string
+): Promise<UsageBreakdown> {
+  return getJson<UsageBreakdown>(
+    withParams("/api/usage/breakdown", { period, date })
+  )
+}
+
 // GET /api/heat/zones: the zone timeline data for the heat page. The
 // window is half-open local ISO; heating intervals are inferred
 // server-side from the setpoint gap.

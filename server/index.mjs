@@ -40,6 +40,7 @@ import {
   getHeatModel,
   getHeatZones,
   getSummary,
+  getUsageBreakdown,
   HEAT_DATA_START,
   hourlySeries,
   hourlyTotals,
@@ -480,6 +481,94 @@ app.get(
         plug_kwh: Math.round(plugKwh * 100) / 100,
         plug_cost: Math.round(plugCost * 100) / 100,
       },
+    });
+  })
+);
+
+// GET /api/usage/breakdown: the category breakdown of household
+// usage for a period (period=day|week|month|year, date=YYYY-MM-DD
+// anchoring the period, default today): the registry's measured
+// categories, the heat pump estimate ("Est." class), the remainder
+// bucket, the previous period's totals per category and the
+// measured/estimated split. Windows are half-open local calendar
+// periods; the previous period is the same-length period immediately
+// before the anchored one. The calculation lives in docs/spec.md
+// section 3.
+app.get(
+  "/api/usage/breakdown",
+  asyncHandler(async (req, res) => {
+    const period = req.query.period;
+    if (
+      typeof period !== "string" ||
+      !["day", "week", "month", "year"].includes(period)
+    ) {
+      return res.status(400).json({
+        error: "period must be one of day, week, month, year",
+      });
+    }
+    const anchor =
+      typeof req.query.date === "string"
+        ? req.query.date
+        : localDateKey(new Date());
+    const keys = periodDateKeys(period, anchor);
+    if (keys === null) {
+      return res.status(400).json({
+        error: "invalid date (date=YYYY-MM-DD)",
+      });
+    }
+    const fromMs = localDayStartUtcMs(keys.startKey);
+    const toMs = localDayStartUtcMs(nextDateKey(keys.endKey, 1));
+    // The previous period: the same period containing the day before
+    // the current one's first day.
+    const prevKeys = periodDateKeys(period, nextDateKey(keys.startKey, -1));
+    const prevFromMs = localDayStartUtcMs(prevKeys.startKey);
+    const prevToMs = localDayStartUtcMs(nextDateKey(prevKeys.endKey, 1));
+    const [current, previous] = await Promise.all([
+      getUsageBreakdown(fromMs, toMs),
+      getUsageBreakdown(prevFromMs, prevToMs),
+    ]);
+    const previousByKey = new Map(
+      previous.categories.map((category) => [category.key, category])
+    );
+    res.json({
+      period,
+      date: anchor,
+      window: {
+        start: localIsoWithOffset(new Date(fromMs)),
+        end: localIsoWithOffset(new Date(toMs)),
+      },
+      previous: {
+        period,
+        window: {
+          start: localIsoWithOffset(new Date(prevFromMs)),
+          end: localIsoWithOffset(new Date(prevToMs)),
+        },
+      },
+      total: {
+        kwh: current.total.kwh,
+        cost_eur: current.total.cost_eur,
+        previous_kwh: previous.total.kwh,
+        previous_cost_eur: previous.total.cost_eur,
+      },
+      categories: current.categories.map((category) => {
+        const prev = previousByKey.get(category.key);
+        return {
+          ...category,
+          previous_kwh: prev === undefined ? 0 : prev.kwh,
+          previous_cost_eur: prev === undefined ? null : prev.cost_eur,
+        };
+      }),
+      split: {
+        ...current.split,
+        previous_measured_kwh: previous.split.measured_kwh,
+        previous_estimated_kwh: previous.split.estimated_kwh,
+        previous_remainder_kwh: previous.split.remainder_kwh,
+      },
+      // The window's average hourly price and the home model over the
+      // window, for the Usage tab's right-column cards.
+      avg_price_eur: current.avg_price_eur,
+      home_model: current.home_model,
+      assumptions: current.assumptions,
     });
   })
 );

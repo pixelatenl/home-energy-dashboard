@@ -3,6 +3,9 @@ import ApplianceUsageWidget from "@/components/ApplianceUsageWidget"
 import ModeToggle from "@/components/ModeToggle"
 import PageLayout from "@/components/PageLayout"
 import PeriodNavigator from "@/components/PeriodNavigator"
+import RestOfHomeCard from "@/components/RestOfHomeCard"
+import UsageSummaryCard from "@/components/UsageSummaryCard"
+import UsageTreemap from "@/components/UsageTreemap"
 import {
   Table,
   TableBody,
@@ -13,11 +16,13 @@ import {
 } from "@/components/ui/table"
 import type { ApplianceHour, ApplianceSummary } from "@/lib/api"
 import { applianceColor } from "@/lib/applianceColors"
+import { useMode, type Mode } from "@/lib/mode"
 import { periodHasData, periodLabel } from "@/lib/period"
 import { localHourOf } from "@/lib/time"
 import { useAppliances } from "@/lib/useAppliances"
 import { usePeriod } from "@/lib/usePeriod"
 import { useSummary } from "@/lib/useSummary"
+import { useUsageBreakdown } from "@/lib/useUsageBreakdown"
 
 interface HourSlot {
   totalKwh: number
@@ -110,21 +115,28 @@ function HourlyChart({
   )
 }
 
-// Totals table: per appliance the kWh, cost and share of home usage, plus
-// a "Total appliances" summary row.
+// Totals table: per appliance the kWh, cost and share of home usage,
+// plus a "Total appliances" summary row. The Energy/Cost mode decides
+// which metric leads; the other follows.
 function TotalsTable({
   data,
   homeKwh,
+  mode,
 }: {
   data: ApplianceSummary
   homeKwh: number | null
+  mode: Mode
 }) {
+  const energyFirst = mode === "energy"
   const shareOf = (kwh: number | null): string =>
     homeKwh !== null && kwh !== null && homeKwh > 0
       ? `${Math.round((kwh / homeKwh) * 100)}%`
       : "\u2014"
   const fmt = (value: number | null, digits: number): string =>
     value === null ? "\u2014" : value.toFixed(digits)
+  const energyCell = (kwh: number | null): string => `${fmt(kwh, 2)} kWh`
+  const costCell = (cost: number | null): string =>
+    cost === null ? "\u2014" : `\u20ac${fmt(cost, 2)}`
 
   return (
     <div className="rounded-xl border bg-card p-4 shadow-card">
@@ -133,8 +145,12 @@ function TotalsTable({
         <TableHeader>
           <TableRow>
             <TableHead>Appliance</TableHead>
-            <TableHead className="text-right">Energy</TableHead>
-            <TableHead className="text-right">Cost</TableHead>
+            <TableHead className="text-right">
+              {energyFirst ? "Energy" : "Cost"}
+            </TableHead>
+            <TableHead className="text-right">
+              {energyFirst ? "Cost" : "Energy"}
+            </TableHead>
             <TableHead className="text-right">Share of home</TableHead>
           </TableRow>
         </TableHeader>
@@ -150,12 +166,14 @@ function TotalsTable({
                 {appliance.appliance}
               </TableCell>
               <TableCell className="text-right tabular-nums">
-                {fmt(appliance.kwh, 2)} kWh
+                {energyFirst
+                  ? energyCell(appliance.kwh)
+                  : costCell(appliance.cost_eur)}
               </TableCell>
               <TableCell className="text-right tabular-nums">
-                {appliance.cost_eur === null
-                  ? "\u2014"
-                  : `\u20ac${fmt(appliance.cost_eur, 2)}`}
+                {energyFirst
+                  ? costCell(appliance.cost_eur)
+                  : energyCell(appliance.kwh)}
               </TableCell>
               <TableCell className="text-right tabular-nums">
                 {shareOf(appliance.kwh)}
@@ -165,10 +183,14 @@ function TotalsTable({
           <TableRow>
             <TableCell className="font-medium">Total appliances</TableCell>
             <TableCell className="text-right tabular-nums">
-              {fmt(data.totals.plug_kwh, 2)} kWh
+              {energyFirst
+                ? energyCell(data.totals.plug_kwh)
+                : costCell(data.totals.plug_cost)}
             </TableCell>
             <TableCell className="text-right tabular-nums">
-              {`\u20ac${fmt(data.totals.plug_cost, 2)}`}
+              {energyFirst
+                ? costCell(data.totals.plug_cost)
+                : energyCell(data.totals.plug_kwh)}
             </TableCell>
             <TableCell className="text-right tabular-nums">
               {shareOf(data.totals.plug_kwh)}
@@ -184,16 +206,19 @@ function TotalsTable({
 // before it show the empty state instead of empty charts.
 const PLUG_DATA_START = "2026-10-11"
 
-// The appliance usage view: the shared period navigator in the tab
-// row, the full usage widget on top, the day's hourly stacked chart
-// and the totals table beneath. The fetch is anchored to the
-// navigator's concrete period window; the hourly chart exists only
-// for day periods. Home usage comes from the summary the dashboard
-// already fetches (import + PV - export - net battery) and only
-// matches the current period, so the share column reads as
-// unavailable on past periods and on the year granularity.
+// The usage view: the category treemap as the left panel with the
+// future insights panel as the right placeholder, then the smart plug
+// appliance widget, the day's hourly stacked chart and the totals
+// table beneath. Fetches are anchored to the navigator's concrete
+// period window; the hourly chart exists only for day periods. The
+// Energy/Cost mode swaps the primary and secondary metric everywhere
+// on the tab. Home usage comes from the summary the dashboard already
+// fetches (import + PV - export - net battery) and only matches the
+// current period, so the share column reads as unavailable on past
+// periods and on the year granularity.
 function UsagePage() {
   const { period, isCurrent } = usePeriod()
+  const { mode } = useMode()
   const anchor = useMemo(
     () => ({ period: period.kind, date: period.date }),
     [period.kind, period.date]
@@ -202,6 +227,7 @@ function UsagePage() {
     period.kind === "day" ? "today" : period.kind,
     anchor
   )
+  const breakdown = useUsageBreakdown(anchor)
   const { summary } = useSummary()
   const hasData = periodHasData(period, PLUG_DATA_START)
 
@@ -224,7 +250,7 @@ function UsagePage() {
   return (
     <PageLayout
       title="Usage"
-      subtitle="What your smart-plug appliances use"
+      subtitle="Where the household's energy goes"
       toolbar={
         <div className="flex flex-wrap items-center gap-2">
           <PeriodNavigator />
@@ -232,73 +258,102 @@ function UsagePage() {
         </div>
       }
     >
-        {!hasData ? (
-          <p className="rounded-xl border bg-card p-4 shadow-card text-sm text-muted-foreground">
-            No smart plug data for this period.
-          </p>
-        ) : (
-          <>
-            {status === "loading" && (
-              <div
-                className="min-h-64 animate-pulse rounded-lg bg-muted"
-                aria-hidden="true"
-              />
-            )}
-            {status === "error" && (
-              <p className="rounded-xl border bg-card p-4 shadow-card text-sm text-muted-foreground">
-                Could not load appliance data. Try again in a moment.
-              </p>
-            )}
-            {status === "ok" && data !== null && (
-              <>
-                {data.appliances.length === 0 &&
-                data.totals.plug_kwh === 0 &&
-                data.hourly.length === 0 ? (
-                  <p className="rounded-xl border bg-card p-4 shadow-card text-sm text-muted-foreground">
-                    No appliance data yet. The first energy deltas appear
-                    after the first completed appliance cycle
-                    {" \u2014 "}smart plugs report their energy once a run
-                    finishes.
-                  </p>
-                ) : (
-                  <>
-                    <ApplianceUsageWidget
-                      appliances={data.appliances}
-                      plugKwh={plugKwh}
-                      restOfHomeKwh={restOfHomeKwh}
-                    />
-                    {period.kind === "day" && data.hourly.length > 0 && (
-                      <HourlyChart
-                        hourly={data.hourly}
-                        title={
-                          isCurrent
-                            ? "Today per hour"
-                            : `${periodLabel(period)} per hour`
-                        }
-                      />
-                    )}
-                    {isCurrent && (
-                      <p className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <span className="rounded-full bg-muted px-2 py-0.5 font-medium">
-                          so far
-                        </span>
-                        This period is still in progress
-                      </p>
-                    )}
-                    <TotalsTable
-                      data={data}
-                      homeKwh={
-                        restOfHomeKwh !== null && plugKwh !== null
-                          ? restOfHomeKwh + plugKwh
-                          : null
+      {/* The tab's two-column grid: the left column stacks the period
+          summary above the Usage breakdown panel, the right column
+          holds the Rest of your home card alone. On narrow screens
+          the single-column order is summary, treemap, Rest of your
+          home. */}
+      <div className="grid gap-4 lg:grid-cols-2">
+        <div className="grid content-start gap-4">
+          <UsageSummaryCard
+            data={breakdown.data}
+            status={breakdown.status}
+            mode={mode}
+            period={period}
+          />
+          <UsageTreemap
+            data={breakdown.data}
+            status={breakdown.status}
+            mode={mode}
+            period={period}
+            hasData={periodHasData(period)}
+          />
+        </div>
+        <RestOfHomeCard
+          data={breakdown.data}
+          status={breakdown.status}
+          mode={mode}
+        />
+      </div>
+      {!hasData ? (
+        <p className="rounded-xl border bg-card p-4 shadow-card text-sm text-muted-foreground">
+          No smart plug data for this period.
+        </p>
+      ) : (
+        <>
+          {status === "loading" && (
+            <div
+              className="min-h-64 animate-pulse rounded-lg bg-muted"
+              aria-hidden="true"
+            />
+          )}
+          {status === "error" && (
+            <p className="rounded-xl border bg-card p-4 shadow-card text-sm text-muted-foreground">
+              Could not load appliance data. Try again in a moment.
+            </p>
+          )}
+          {status === "ok" && data !== null && (
+            <>
+              {data.appliances.length === 0 &&
+              data.totals.plug_kwh === 0 &&
+              data.hourly.length === 0 ? (
+                <p className="rounded-xl border bg-card p-4 shadow-card text-sm text-muted-foreground">
+                  No appliance data yet. The first energy deltas appear
+                  after the first completed appliance cycle
+                  {" \u2014 "}smart plugs report their energy once a run
+                  finishes.
+                </p>
+              ) : (
+                <>
+                  <ApplianceUsageWidget
+                    appliances={data.appliances}
+                    plugKwh={plugKwh}
+                    restOfHomeKwh={restOfHomeKwh}
+                    mode={mode}
+                  />
+                  {period.kind === "day" && data.hourly.length > 0 && (
+                    <HourlyChart
+                      hourly={data.hourly}
+                      title={
+                        isCurrent
+                          ? "Today per hour"
+                          : `${periodLabel(period)} per hour`
                       }
                     />
-                  </>
-                )}
-              </>
-            )}
-          </>
-        )}
+                  )}
+                  {isCurrent && (
+                    <p className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <span className="rounded-full bg-muted px-2 py-0.5 font-medium">
+                        so far
+                      </span>
+                      This period is still in progress
+                    </p>
+                  )}
+                  <TotalsTable
+                    data={data}
+                    mode={mode}
+                    homeKwh={
+                      restOfHomeKwh !== null && plugKwh !== null
+                        ? restOfHomeKwh + plugKwh
+                        : null
+                    }
+                  />
+                </>
+              )}
+            </>
+          )}
+        </>
+      )}
     </PageLayout>
   )
 }

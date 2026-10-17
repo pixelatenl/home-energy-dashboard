@@ -377,12 +377,19 @@ describe("buildGuidance: the Phase E today modes", () => {
     assert.equal(g.remaining_average_eur, 0.41);
   });
 
-  it("marks the day's cheap hours passed only once they are", () => {
+  it("marks the day's cheap hours passed only once they are", (t) => {
+    // The passed check compares local hour indices only, so the wall
+    // clock is pinned to a fixed afternoon: a now-anchored window
+    // would land on yesterday's hours just after midnight and the
+    // assertion would flip.
+    t.mock.timers.enable({
+      now: new Date("2027-06-15T14:30:00+02:00").getTime(),
+    });
     const passed = buildGuidance(
       partsFixture({
         dayWindow: {
-          start: new Date(Date.now() - 4 * 3_600_000).toISOString(),
-          end: new Date(Date.now() - 1 * 3_600_000).toISOString(),
+          start: "2027-06-15T09:00:00+02:00",
+          end: "2027-06-15T12:00:00+02:00",
           average_price: 0.24,
         },
       })
@@ -391,8 +398,8 @@ describe("buildGuidance: the Phase E today modes", () => {
     const ahead = buildGuidance(
       partsFixture({
         dayWindow: {
-          start: new Date(Date.now() + 1 * 3_600_000).toISOString(),
-          end: new Date(Date.now() + 4 * 3_600_000).toISOString(),
+          start: "2027-06-15T16:00:00+02:00",
+          end: "2027-06-15T19:00:00+02:00",
           average_price: 0.24,
         },
       })
