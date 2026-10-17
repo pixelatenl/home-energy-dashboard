@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import type { SolarProductionPoint } from "../src/lib/api.ts";
 import type { Period } from "../src/lib/period.ts";
 import {
+  feedInTariffCentsLabel,
   forecastPanelVisible,
   intervalPriceOf,
   solarSlots,
@@ -12,7 +13,9 @@ import {
 // A series point at its bucket start: hourly points at UTC whole
 // hours (energy_hourly), daily points at local midnights
 // (energy_daily, Europe/Amsterdam). The split defaults to a fully
-// home-consumed hour; pass nulls to model an unknown split.
+// home-consumed hour; pass nulls to model an unknown split. The
+// export counter defaults to nothing exported with the earnings
+// unconfigured (the payload's null-never-0 convention).
 const point = (
   iso: string,
   kwh: number,
@@ -21,6 +24,10 @@ const point = (
     home: kwh,
     grid: 0,
     battery: 0,
+  },
+  exportFigures: { exportKwh: number | null; exportEarningsEur: number | null } = {
+    exportKwh: 0,
+    exportEarningsEur: null,
   }
 ): SolarProductionPoint => ({
   ts: iso,
@@ -30,6 +37,8 @@ const point = (
   solarToGridKwh: split === null ? null : split.grid,
   solarToBatteryKwh: split === null ? null : split.battery,
   selfConsumptionAvoidedCostEur: null,
+  exportKwh: exportFigures.exportKwh,
+  exportEarningsEur: exportFigures.exportEarningsEur,
 });
 
 // Amsterdam is UTC+2 on these October dates, so a daily bucket for
@@ -120,6 +129,14 @@ describe("solarSplitOf: the cost-mode tooltip's split", () => {
       solarSplitOf(point("2026-10-16T22:00:00Z", 6.78, 1.9, null)),
       null
     );
+  });
+});
+
+describe("feedInTariffCentsLabel: the footnote's tariff wording", () => {
+  it("states the tariff in cents per kWh", () => {
+    assert.equal(feedInTariffCentsLabel(0.12), "12 ct/kWh");
+    assert.equal(feedInTariffCentsLabel(0.125), "12.5 ct/kWh");
+    assert.equal(feedInTariffCentsLabel(0.0729), "7.29 ct/kWh");
   });
 });
 

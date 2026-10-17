@@ -128,3 +128,12 @@ export function forecastPanelVisible(
 ): boolean {
   return isCurrent && period.kind !== "year"
 }
+
+// The feed-in tariff as the footnote's label in cents per kWh:
+// 0.12 reads "12 ct/kWh", 0.125 "12.5 ct/kWh". The tariff is
+// EUR/kWh in the payload; the cents wording matches how Dutch
+// tariffs are quoted.
+export function feedInTariffCentsLabel(tariffEur: number): string {
+  const cents = Number((tariffEur * 100).toFixed(2))
+  return `${cents} ct/kWh`
+}

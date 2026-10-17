@@ -556,6 +556,13 @@ export interface SolarProductionPoint {
   solarToGridKwh: number | null
   solarToBatteryKwh: number | null
   selfConsumptionAvoidedCostEur: number | null
+  // The raw grid export counter's kWh in the interval (battery
+  // discharge included), distinct from the PV-capped split share.
+  exportKwh: number | null
+  // Export kWh priced at the flat feed-in tariff; null when no
+  // tariff is configured or the export counter is not registered,
+  // never a silent 0.
+  exportEarningsEur: number | null
 }
 
 export interface SolarProductionData {
@@ -573,10 +580,19 @@ export interface SolarProductionData {
     // Null when nothing was produced - no share exists, never 0.
     selfConsumedShare: number | null
     selfConsumptionAvoidedCostEur: number
+    exportKwh: number | null
+    // Null while the tariff is unconfigured, never a silent 0.
+    exportEarningsEur: number | null
+    // The combined benefit: self-consumption savings plus export
+    // earnings. Null while either component is null.
+    totalCostNetEur: number | null
   }
   peak: { ts: string; kwh: number } | null
   meta: {
     note: string
+    // The configured flat feed-in tariff in EUR/kWh; null when
+    // unset, zero or invalid.
+    feedInTariff: number | null
     // The energy_hourly coverage sanity check: stale means the
     // aggregate's newest bucket predates the current hour. Null
     // when the window predates the data start.

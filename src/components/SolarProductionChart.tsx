@@ -12,6 +12,7 @@ import {
   type Period,
 } from "@/lib/period"
 import {
+  feedInTariffCentsLabel,
   intervalPriceOf,
   solarSlotLabel,
   solarSlots,
@@ -75,11 +76,13 @@ interface SolarProductionChartProps {
 // switches the primary axis to the avoided cost (bottom-up per
 // interval) - intervals without a known price get a hatched marker,
 // are excluded from the total and never render 0. Tooltips always
-// carry kWh, the interval price and the avoided cost together. On
-// the current day in energy mode the hourly forecast rides as a
-// dashed overlay curve on the same axis; in cost mode the overlay is
-// omitted (the forecast is a kWh figure, and pricing it would invent
-// an hourly price the payload does not carry).
+// carry kWh, the interval price and the avoided cost together; in
+// cost mode they also carry the disposition split and the raw
+// export counter's kWh with its earnings at the flat feed-in
+// tariff. On the current day in energy mode the hourly forecast
+// rides as a dashed overlay curve on the same axis; in cost mode
+// the overlay is omitted (the forecast is a kWh figure, and pricing
+// it would invent an hourly price the payload does not carry).
 function SolarProductionChart({
   data,
   status,
@@ -211,13 +214,18 @@ function SolarProductionChart({
   }
 
   // The compact header's period total: kWh in energy mode; in cost
-  // mode the primary money figure is the self-consumption avoided
-  // cost - only the solar the home used - with the all-production
-  // avoided cost carried as the secondary muted figure.
+  // mode the primary money figure is the combined benefit - the
+  // self-consumption savings plus the export earnings - when both
+  // exist, falling back to the self-consumption avoided cost alone
+  // while the feed-in tariff is unconfigured. The individual
+  // figures ride as muted secondary stats.
+  const costNet = data?.totals.totalCostNetEur ?? null
   const totalLabel =
     mode === "energy"
       ? `${formatKwh(data?.totals.kwh ?? 0)} total`
-      : `${formatEur(data?.totals.selfConsumptionAvoidedCostEur ?? 0)} avoided cost (self-consumed)`
+      : costNet !== null
+        ? `${formatEur(costNet)} solar benefit (savings + export)`
+        : `${formatEur(data?.totals.selfConsumptionAvoidedCostEur ?? 0)} avoided cost (self-consumed)`
 
   return (
     <Card>
@@ -249,10 +257,28 @@ function SolarProductionChart({
                 {totalLabel}
               </span>
               {mode === "cost" && (
-                <span className="tabular-nums">
-                  {formatEur(data.totals.avoidedCostEur)} if all
-                  production were self-consumed
-                </span>
+                <>
+                  {costNet !== null && (
+                    <span className="tabular-nums">
+                      {formatEur(data.totals.selfConsumptionAvoidedCostEur)}{" "}
+                      avoided cost (self-consumed)
+                    </span>
+                  )}
+                  {data.totals.exportEarningsEur === null ? (
+                    <span className="tabular-nums opacity-60">
+                      export earnings not configured
+                    </span>
+                  ) : (
+                    <span className="tabular-nums">
+                      {formatEur(data.totals.exportEarningsEur)} export
+                      earnings
+                    </span>
+                  )}
+                  <span className="tabular-nums">
+                    {formatEur(data.totals.avoidedCostEur)} if all
+                    production were self-consumed
+                  </span>
+                </>
               )}
               {data.peak !== null && (
                 <span className="tabular-nums">
@@ -467,9 +493,12 @@ function SolarProductionChart({
                         price and the avoided cost together; unknown
                         reads unknown, never 0. Cost mode adds the
                         solar disposition split - to home (with its
-                        avoided cost), to grid, to battery - and
-                        labels the all-production figure distinctly,
-                        since both definitions coexist. */}
+                        avoided cost), to grid, to battery - and the
+                        raw export counter's kWh with its earnings at
+                        the flat feed-in tariff, labeled distinctly
+                        because the counter's export includes the
+                        battery's while the split's grid share is
+                        PV-capped. */}
                     {hovered.point !== null && (
                       <div className="text-xs text-muted-foreground tabular-nums">
                         {(() => {
@@ -500,6 +529,20 @@ function SolarProductionChart({
                                     <br />
                                     to battery{" "}
                                     {formatKwh(split.batteryKwh)}
+                                    <br />
+                                    {hovered.point.exportKwh ===
+                                    null
+                                      ? "export unknown"
+                                      : `export ${formatKwh(
+                                          hovered.point.exportKwh
+                                        )}${
+                                          hovered.point.exportEarningsEur ===
+                                          null
+                                            ? " (earnings not configured)"
+                                            : ` (${formatEur(
+                                                hovered.point.exportEarningsEur
+                                              )} earned)`
+                                        }`}
                                   </>
                                 ))}
                               <br />
@@ -540,12 +583,15 @@ function SolarProductionChart({
             </div>
             {mode === "cost" && (
               <p className="mt-3 text-xs text-muted-foreground">
-                Avoided cost (self-consumed) prices only the solar
-                your home used at the grid price; the muted figure
-                values all production. Split figures are estimates -
-                the P1 meter is net per hour and the battery can
-                export during peak hours. Export earnings follow
-                once the feed-in tariff is configurable.
+                Solar benefit (savings + export) prices only the solar
+                your home used at the grid price plus what the raw
+                export counter earned; the muted figure values all
+                production. Split figures are estimates - the P1
+                meter is net per hour and the battery can export
+                during peak hours.{" "}
+                {data.meta.feedInTariff === null
+                  ? "Export earnings follow once a feed-in tariff is configured (EMS_FEED_IN_TARIFF_EUR)."
+                  : `Export is paid at a flat feed-in tariff of ${feedInTariffCentsLabel(data.meta.feedInTariff)}.`}
               </p>
             )}
           </>
