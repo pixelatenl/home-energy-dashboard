@@ -1,12 +1,39 @@
+import { useMemo } from "react"
 import ModeToggle from "@/components/ModeToggle"
 import PageLayout from "@/components/PageLayout"
 import PeriodNavigator from "@/components/PeriodNavigator"
+import SolarProductionChart from "@/components/SolarProductionChart"
 import WeatherForecast from "@/components/WeatherForecast"
-import { Card, CardContent } from "@/components/ui/card"
+import { useMode } from "@/lib/mode"
+import { forecastPanelVisible } from "@/lib/solarChart"
+import { usePeriod } from "@/lib/usePeriod"
+import {
+  useSolarProduction,
+  useTodayPvForecast,
+} from "@/lib/useSolarProduction"
 
-// The solar spoke: the 5-day solar forecast lives here; PV yield and
-// power history charts arrive in the analytics pass.
+// The solar spoke: the production chart is the page's first content
+// block, fed by the period-anchored /api/solar/production series; the
+// Energy/Cost mode switches its primary axis between kWh and the
+// avoided cost without a refetch. The weather forecast panel renders
+// strictly for the current day, week or month only - previous periods
+// and every year period show the production chart alone, and no
+// weather or AI-context request fires while it is hidden. On the
+// current day the chart also carries the hourly forecast as a dashed
+// overlay (energy mode); its fetch is gated to the current day too.
 function SolarPage() {
+  const { period, isCurrent } = usePeriod()
+  const { mode } = useMode()
+  const anchor = useMemo(
+    () => ({ period: period.kind, date: period.date }),
+    [period.kind, period.date]
+  )
+  const production = useSolarProduction(anchor)
+  const showForecast = forecastPanelVisible(period, isCurrent)
+  const todayForecast = useTodayPvForecast(
+    period.kind === "day" && isCurrent
+  )
+
   return (
     <PageLayout
       title="Solar"
@@ -19,13 +46,15 @@ function SolarPage() {
       }
     >
       <div className="space-y-6">
-        <WeatherForecast />
-        <Card>
-          <CardContent className="space-y-2 text-sm text-muted-foreground">
-            <p>PV yield and power data accumulate since 10 October 2026.</p>
-            <p>Charts, period totals and cost views arrive in the analytics pass.</p>
-          </CardContent>
-        </Card>
+        <SolarProductionChart
+          data={production.data}
+          status={production.status}
+          mode={mode}
+          period={period}
+          isCurrent={isCurrent}
+          forecast={mode === "energy" ? todayForecast : null}
+        />
+        {showForecast && <WeatherForecast />}
       </div>
     </PageLayout>
   )

@@ -535,6 +535,44 @@ export function fetchHeatModel(
   return getJson<HeatModelData>(withParams("/api/heat/model", { period, date }))
 }
 
+// GET /api/solar/production: PV production per interval with the
+// avoided grid cost, for the anchored period. Resolution follows the
+// period: hourly buckets for day and week, daily buckets for month
+// and year. Avoided cost is bottom-up per interval at that hour's
+// grid price; intervals without any known price cost null (never 0)
+// and are excluded from totals.avoidedCostEur. dataStart marks the
+// first day any data exists, for honest empty states.
+export interface SolarProductionPoint {
+  ts: string
+  kwh: number
+  avoidedCostEur: number | null
+}
+
+export interface SolarProductionData {
+  period: PeriodKind
+  date: string
+  window: { start: string; end: string }
+  dataStart: string
+  resolution: "hourly" | "daily"
+  series: SolarProductionPoint[]
+  totals: {
+    kwh: number
+    avoidedCostEur: number
+    hasUnknownPrice: boolean
+  }
+  peak: { ts: string; kwh: number } | null
+  meta: { note: string }
+}
+
+export function fetchSolarProduction(
+  period: PeriodKind,
+  date: string
+): Promise<SolarProductionData> {
+  return getJson<SolarProductionData>(
+    withParams("/api/solar/production", { period, date })
+  )
+}
+
 export interface DailyInsight {
   generated_at: string | null
   as_of: string | null
