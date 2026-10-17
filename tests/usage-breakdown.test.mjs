@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  gasMonthIntervals,
   gasNonHeatingBaselineM3PerMonth,
   heatingBucketDays,
   heatingGasM3,
@@ -234,5 +235,47 @@ describe("config defaults", () => {
 
   it("defaults the setpoint staleness guard to 24 hours", () => {
     assert.equal(setpointStalenessMs(), 24 * 3_600_000);
+  });
+});
+
+describe("gasMonthIntervals: the local calendar month rollup", () => {
+  const prices = [{ day: "2026-10-01", price_eur_per_m3: 1.0 }];
+
+  it("groups by the local month, never the UTC month of the bucket", () => {
+    // Local 1 November starts at 23:00Z on 31 October (CET): its UTC
+    // month is October, its local month November. The local 31 October
+    // bucket starts at 23:00Z on 30 October.
+    const months = gasMonthIntervals(
+      [gasDay("2026-10-31", 1.0), gasDay("2026-11-01", 2.0)],
+      prices
+    );
+    assert.equal(months.length, 2);
+    assert.equal(months[0].tsMs, localDayStartUtcMs("2026-10-01"));
+    assert.equal(months[0].volume, 1.0);
+    assert.equal(months[1].tsMs, localDayStartUtcMs("2026-11-01"));
+    assert.equal(months[1].volume, 2.0);
+    // Both days are priced at October's forward-filled price.
+    assert.equal(months[0].cost, 1.0);
+    assert.equal(months[1].cost, 2.0);
+    assert.equal(months[0].unknownPrice, false);
+    assert.equal(months[1].unknownPrice, false);
+  });
+
+  it("emits month starts at local midnight, ascending", () => {
+    const months = gasMonthIntervals(
+      [gasDay("2026-12-31", 0.5), gasDay("2026-10-12", 0.25)],
+      prices
+    );
+    assert.deepEqual(
+      months.map((month) => month.tsMs),
+      [localDayStartUtcMs("2026-10-01"), localDayStartUtcMs("2026-12-01")]
+    );
+  });
+
+  it("flags a producing day without any known price", () => {
+    const months = gasMonthIntervals([gasDay("2026-11-02", 1.5)], []);
+    assert.equal(months.length, 1);
+    assert.equal(months[0].unknownPrice, true);
+    assert.equal(months[0].cost, 0);
   });
 });

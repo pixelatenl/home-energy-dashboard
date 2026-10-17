@@ -209,7 +209,6 @@ function SolarProductionChart({
     )
   }
 
-  const showCaveat = period.kind === "day" || period.kind === "month"
   const totalLabel =
     mode === "energy"
       ? `${formatKwh(data?.totals.kwh ?? 0)} total`
@@ -493,12 +492,6 @@ function SolarProductionChart({
                 )
               })}
             </div>
-            {showCaveat && (
-              <p className="mt-3 text-xs text-muted-foreground">
-                Daily totals are UTC-aligned until the local-day migration
-                lands.
-              </p>
-            )}
             {mode === "cost" && (
               <p className="mt-3 text-xs text-muted-foreground">
                 Avoided cost is the grid price of your solar production.

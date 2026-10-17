@@ -1,16 +1,22 @@
 import { Card, CardContent } from "@/components/ui/card"
 import type { GasUsageData } from "@/lib/api"
 import { useMode } from "@/lib/mode"
+import { amsterdamDayStartMs, localDateOf } from "@/lib/time"
 
 // Bucket length of one series interval: hours and days are fixed, a
-// month ends at the next month start.
+// month ends at the next month's local midnight (month intervals start
+// at local midnight, the same convention as the daily buckets).
 function bucketEndMs(
   ts: string,
   granularity: "hour" | "day" | "month"
 ): number {
   if (granularity === "month") {
-    const start = new Date(ts)
-    return Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 1)
+    const [year, month] = localDateOf(ts).split("-").map(Number)
+    const nextFirst =
+      month === 12
+        ? `${year + 1}-01-01`
+        : `${year}-${String(month + 1).padStart(2, "0")}-01`
+    return amsterdamDayStartMs(nextFirst)
   }
   return Date.parse(ts) + (granularity === "hour" ? 3_600_000 : 86_400_000)
 }

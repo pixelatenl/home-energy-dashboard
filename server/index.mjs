@@ -633,7 +633,7 @@ app.get(
       resolution,
       ...production,
       meta: {
-        note: "daily buckets are UTC-aligned until the local-day migration lands, so day and month totals may deviate slightly from local calendar days; the PV counter updates roughly every 15 minutes, so hourly attribution can look stepped",
+        note: "the PV counter updates roughly every 15 minutes, so hourly attribution can look stepped",
       },
     });
   })

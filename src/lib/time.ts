@@ -15,11 +15,10 @@ function partValue(parts: Intl.DateTimeFormatPart[], type: string): string {
   return parts.find((part) => part.type === type)?.value ?? ""
 }
 
-// Local "today" as YYYY-MM-DD.
+// Local "today" as YYYY-MM-DD, through the same local-day helper as
+// every other daily date (never a UTC-serialized timestamp).
 export function todayInAmsterdam(): string {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Europe/Amsterdam",
-  }).format(new Date())
+  return localDateOf(new Date().toISOString())
 }
 
 // Calendar-safe date key N days after another "YYYY-MM-DD" key; correct
@@ -41,6 +40,34 @@ export function localDateOf(iso: string): string {
     day: "2-digit",
   })
   return `${partValue(parts, "year")}-${partValue(parts, "month")}-${partValue(parts, "day")}`
+}
+
+// UTC milliseconds of local midnight for a "YYYY-MM-DD" date key - the
+// frontend twin of the server's localDayStartUtcMs, with identical
+// semantics (the same 00:30 UTC offset probe), so daily buckets and
+// window boundaries compare against the same instants on both sides.
+// Amsterdam's DST transitions (always at 01:00/02:00 UTC) never fall
+// between local midnight and that probe, so the offset matches the one
+// in effect at local midnight on every day of the year.
+export function amsterdamDayStartMs(dateKey: string): number {
+  const [year, month, day] = dateKey.split("-").map(Number)
+  const early = Date.UTC(year, month - 1, day, 0, 30)
+  const parts = partsIn(new Date(early), {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  })
+  const wallClockMs = Date.UTC(
+    Number(partValue(parts, "year")),
+    Number(partValue(parts, "month")) - 1,
+    Number(partValue(parts, "day")),
+    Number(partValue(parts, "hour")),
+    Number(partValue(parts, "minute"))
+  )
+  return Date.UTC(year, month - 1, day) - (wallClockMs - early)
 }
 
 // Local hour of an ISO timestamp (0-23).

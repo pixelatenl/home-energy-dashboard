@@ -8,15 +8,17 @@ import {
   solarSlots,
 } from "../src/lib/solarChart.ts";
 
-// A series point at its UTC bucket start.
+// A series point at its bucket start: hourly points at UTC whole
+// hours (energy_hourly), daily points at local midnights
+// (energy_daily, Europe/Amsterdam).
 const point = (iso: string, kwh: number, cost: number | null = null): SolarProductionPoint => ({
   ts: iso,
   kwh,
   avoidedCostEur: cost,
 });
 
-// Amsterdam is UTC+2 on these dates, so 22:00Z is local midnight and
-// a UTC-day bucket starting 00:00Z carries the same local date.
+// Amsterdam is UTC+2 on these October dates, so a daily bucket for
+// local day N starts at 22:00Z on N-1.
 describe("solarSlots: the full-period axis", () => {
   it("places hourly points on the day's 24-slot axis by local hour", () => {
     const period: Period = { kind: "day", date: "2026-10-17" };
@@ -49,7 +51,7 @@ describe("solarSlots: the full-period axis", () => {
   it("places the month's daily buckets one slot per calendar day", () => {
     const period: Period = { kind: "month", date: "2026-10-17" };
     const slots = solarSlots(
-      [point("2026-10-11T00:00:00Z", 12.12, 2.45), point("2026-10-17T00:00:00Z", 3.12, 0.81)],
+      [point("2026-10-10T22:00:00Z", 12.12, 2.45), point("2026-10-16T22:00:00Z", 3.12, 0.81)],
       period
     );
     assert.equal(slots.length, 31);
@@ -59,7 +61,7 @@ describe("solarSlots: the full-period axis", () => {
 
   it("spans a full year of daily slots", () => {
     const period: Period = { kind: "year", date: "2026-06-01" };
-    const slots = solarSlots([point("2026-10-11T00:00:00Z", 12.12)], period);
+    const slots = solarSlots([point("2026-10-10T22:00:00Z", 12.12)], period);
     assert.equal(slots.length, 365);
     assert.equal(slots[283].kwh, 12.12);
   });

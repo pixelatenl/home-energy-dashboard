@@ -57,7 +57,10 @@ describe("hourlyProductionIntervals: bottom-up per interval", () => {
 });
 
 describe("dailyProductionIntervals: kWh from the daily aggregate, cost bottom-up", () => {
-  const dayRows = [bucket("2026-10-10T00:00:00Z", 1.5)];
+  // energy_daily buckets are local days: local midnight on 2026-10-11
+  // (CEST) is 22:00Z on 2026-10-10, and the local day's hours run from
+  // that instant up to (not including) 22:00Z the next day.
+  const dayRows = [bucket("2026-10-10T22:00:00Z", 1.5)];
   const hourRows = [
     bucket("2026-10-10T22:00:00Z", 0.5),
     bucket("2026-10-10T23:00:00Z", 1.0),
@@ -70,13 +73,30 @@ describe("dailyProductionIntervals: kWh from the daily aggregate, cost bottom-up
   });
 
   it("costs null when a producing hour has no known price", () => {
-    // One priced hour, one before the price history starts.
+    // Local day 2026-10-10 starts at 22:00Z on 2026-10-09; both of its
+    // producing hours precede the first price row.
     const hours = [
-      bucket("2026-10-10T21:00:00Z", 0.4),
-      bucket("2026-10-10T23:00:00Z", 1.0),
+      bucket("2026-10-09T22:00:00Z", 0.4),
+      bucket("2026-10-09T23:00:00Z", 1.0),
+    ];
+    const [day] = dailyProductionIntervals(
+      [bucket("2026-10-09T22:00:00Z", 1.4)],
+      hours,
+      PRICES
+    );
+    assert.equal(day.costEur, null);
+  });
+
+  it("keeps an hour that crosses local midnight with the day it falls in", () => {
+    // 22:00Z on 2026-10-11 is local midnight of 2026-10-12: that hour
+    // must not contribute to local day 2026-10-11's cost.
+    const hours = [
+      ...hourRows,
+      bucket("2026-10-11T22:00:00Z", 9.9),
     ];
     const [day] = dailyProductionIntervals(dayRows, hours, PRICES);
-    assert.equal(day.costEur, null);
+    assert.equal(day.kwh, 1.5);
+    assert.equal(Math.round(day.costEur * 100) / 100, 0.35);
   });
 
   it("costs a producing day with no hourly buckets null", () => {
@@ -86,7 +106,7 @@ describe("dailyProductionIntervals: kWh from the daily aggregate, cost bottom-up
 
   it("costs a zero-production day zero", () => {
     const [day] = dailyProductionIntervals(
-      [bucket("2026-10-10T00:00:00Z", 0)],
+      [bucket("2026-10-10T22:00:00Z", 0)],
       [],
       PRICES
     );

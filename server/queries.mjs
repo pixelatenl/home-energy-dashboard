@@ -34,7 +34,15 @@ export async function listEntities() {
   return rows;
 }
 
+// energy_daily buckets are local calendar days (Europe/Amsterdam):
+// each bucket starts at local midnight. The window is the last `days`
+// local days before today, so the boundary is the local-midnight
+// instant - never a UTC day truncation or a naive date literal, both
+// of which would compare as UTC midnight and miss the buckets.
 export async function dailyTotals(days) {
+  const startMs = localDayStartUtcMs(
+    nextDateKey(localDateKey(new Date()), -days)
+  );
   const { rows } = await pool.query(
     `SELECT e.id,
             e.ha_entity_id,
@@ -43,9 +51,9 @@ export async function dailyTotals(days) {
             d.kwh
        FROM energy_daily d
        JOIN entity e ON e.id = d.entity_id
-      WHERE d.bucket >= date_trunc('day', now()) - make_interval(days => $1)
+      WHERE d.bucket >= $1::timestamptz
       ORDER BY d.bucket, e.id`,
-    [days]
+    [new Date(startMs)]
   );
   return rows;
 }
@@ -1145,10 +1153,14 @@ export async function gasDaily(entityIds, fromMs, toMs) {
 // Month intervals for the year granularity, priced bottom-up: each
 // day's gas volume is costed at that day's last-known price (the last
 // gas_price row on or before the day, forward-filled), and the month
-// cost is the sum over its days. The caller derives the month's
-// price_eur_per_m3 as cost / volume (null when the volume is zero) and
-// flags unknown price when a day with non-zero volume has no known
-// price at all. Days without data contribute nothing.
+// cost is the sum over its days. Months are local calendar months
+// (Europe/Amsterdam): a bucket belongs to the month of its local day
+// key, and each month interval starts at the local midnight of its
+// first day - the same convention as the daily buckets and the period
+// windows. The caller derives the month's price_eur_per_m3 as cost /
+// volume (null when the volume is zero) and flags unknown price when
+// a day with non-zero volume has no known price at all. Days without
+// data contribute nothing.
 export function gasMonthIntervals(dailyRows, priceRows) {
   const byMonth = new Map();
   let index = 0;
@@ -1164,11 +1176,7 @@ export function gasMonthIntervals(dailyRows, priceRows) {
       price = Number(priceRows[index].price_eur_per_m3);
       index += 1;
     }
-    const monthStart = Date.UTC(
-      new Date(bucketMs).getUTCFullYear(),
-      new Date(bucketMs).getUTCMonth(),
-      1
-    );
+    const monthStart = localDayStartUtcMs(`${day.slice(0, 7)}-01`);
     const entry =
       byMonth.get(monthStart) ?? { volume: 0, cost: 0, unknownPrice: false };
     entry.volume += volume;
@@ -1193,9 +1201,9 @@ export function gasMonthIntervals(dailyRows, priceRows) {
 
 // GET /api/heat/gas data: gas consumption per interval with the
 // applicable price and cost. granularity "hour" reads energy_hourly,
-// "day" energy_daily, "month" rolls energy_daily up per UTC calendar
-// month; all three read the shared delta column whose name says kWh
-// but holds m3 for the gas counter.
+// "day" energy_daily, "month" rolls energy_daily up per local
+// calendar month; all three read the shared delta column whose name
+// says kWh but holds m3 for the gas counter.
 //
 // Pricing: hour and day intervals take the last known gas_price on or
 // before the interval's local day (one price query per series,

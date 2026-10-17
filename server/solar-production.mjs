@@ -23,11 +23,8 @@
 //   counts in totals.kwh. Prices exist only from SOLAR_DATA_START
 //   onward.
 //
-// Known caveats: energy_daily buckets are UTC-aligned until the DB2
-// local-day migration lands (expected before 26 Oct), so day and
-// month totals may deviate slightly from local calendar days; the
-// PV counter updates roughly every 15 minutes, so hourly
-// attribution can look stepped while daily totals are correct.
+// Known caveats: the PV counter updates roughly every 15 minutes, so
+// hourly attribution can look stepped while daily totals are correct.
 
 import { pool } from "./db.mjs";
 import { dbHourlyPrices } from "./queries.mjs";
@@ -69,8 +66,9 @@ async function pvHourly(entityId, fromMs, toMs) {
 }
 
 // Daily PV kWh buckets in [from, to) from the energy_daily
-// continuous aggregate. Buckets are UTC-aligned days (see the
-// caveat above).
+// continuous aggregate. Buckets are local calendar days
+// (Europe/Amsterdam): each starts at local midnight, so the
+// half-open instant window below matches them exactly.
 async function pvDaily(entityId, fromMs, toMs) {
   const { rows } = await pool.query(
     `SELECT h.bucket, h.kwh
@@ -119,20 +117,23 @@ export function hourlyProductionIntervals(hourRows, priceRows) {
 // hour's price - never the day total times one price. A day whose
 // producing hours include one without any known price costs null,
 // as does a producing day whose hourly buckets are missing entirely
-// (aggregate lag). Pure.
+// (aggregate lag). The day's hours are the ones whose local day key
+// (Europe/Amsterdam, via the shared localDateKey helper) matches the
+// daily bucket's, so an hour bucket that crosses local midnight
+// belongs to the local day it falls in. Pure.
 export function dailyProductionIntervals(dailyRows, hourRows, priceRows) {
-  const hoursByUtcDay = new Map();
+  const hoursByLocalDay = new Map();
   for (const row of hourRows) {
     const tsMs = row.bucket.getTime();
-    const dayKey = new Date(tsMs).toISOString().slice(0, 10);
-    const hours = hoursByUtcDay.get(dayKey) ?? [];
+    const dayKey = localDateKey(new Date(tsMs));
+    const hours = hoursByLocalDay.get(dayKey) ?? [];
     hours.push({ tsMs, kwh: Number(row.kwh ?? 0) });
-    hoursByUtcDay.set(dayKey, hours);
+    hoursByLocalDay.set(dayKey, hours);
   }
   return dailyRows.map((row) => {
     const tsMs = row.bucket.getTime();
     const kwh = Number(row.kwh ?? 0);
-    const hours = hoursByUtcDay.get(new Date(tsMs).toISOString().slice(0, 10)) ?? [];
+    const hours = hoursByLocalDay.get(localDateKey(new Date(tsMs))) ?? [];
     let cost = 0;
     let unknown = kwh > 0 && hours.length === 0;
     for (const hour of hours) {
