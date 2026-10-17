@@ -9,13 +9,15 @@ import type { TimeOfDayPhase } from "@/lib/timeOfDay"
 // animation is transform/opacity only. The phase logic lives in
 // src/lib/timeOfDay.ts.
 
-// One sky per phase: a deep daytime blue (light horizon, darker
-// zenith - reads against the dark glass theme while staying
-// unmistakably day, with the sun carrying the daylight), deep blue to
-// near-black at night.
+// One sky per phase: muted slate blues that sit with the dashboard's
+// warm dark-glass body (the bright reference azure clashed with it).
+// Day keeps a lighter steel-blue horizon fading into a dark slate
+// zenith - still unmistakably day, with the sun carrying the
+// daylight; night desaturates toward the page's near-black, deep
+// blue at the horizon only.
 const PHASE_GRADIENTS: Record<TimeOfDayPhase, string> = {
-  day: "linear-gradient(to top, #9dc2de 0%, #5d8db5 45%, #2c5c88 100%)",
-  night: "linear-gradient(to top, #17377f 0%, #0c1c46 45%, #050b1c 100%)",
+  day: "linear-gradient(to top, #6d86a8 0%, #42567a 45%, #232f4b 100%)",
+  night: "linear-gradient(to top, #1a2a4a 0%, #0d1730 45%, #04070f 100%)",
 }
 
 // The sun: a solid disc with blurred edges only (the blur filter on a
