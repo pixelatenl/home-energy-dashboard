@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import type { SolarProductionPoint } from "../src/lib/api.ts";
+import type { ReturnPricing, SolarProductionPoint } from "../src/lib/api.ts";
 import type { Period } from "../src/lib/period.ts";
 import {
+  exportPricingLabel,
   feedInTariffCentsLabel,
   forecastPanelVisible,
   intervalPriceOf,
@@ -137,6 +138,41 @@ describe("feedInTariffCentsLabel: the footnote's tariff wording", () => {
     assert.equal(feedInTariffCentsLabel(0.12), "12 ct/kWh");
     assert.equal(feedInTariffCentsLabel(0.125), "12.5 ct/kWh");
     assert.equal(feedInTariffCentsLabel(0.0729), "7.29 ct/kWh");
+  });
+});
+
+describe("exportPricingLabel: the footnote's pricing sentence", () => {
+  const DYNAMIC: ReturnPricing = {
+    mode: "dynamic",
+    flatTariffEur: null,
+    vatRate: 0.21,
+    energyTaxEur: 0.11085,
+    handlingFeeConsumptionEur: 0.0165,
+    handlingFeeFeedInEur: 0.02,
+    solarBonus: 0.1,
+    bonusStartHour: 7,
+    bonusEndHour: 18,
+  };
+
+  it("states the dynamic construction with the Zonnebonus", () => {
+    assert.equal(
+      exportPricingLabel(DYNAMIC),
+      "Export is paid at the dynamic return price: the market price excluding taxes plus the feed-in fee, plus a 10% Zonnebonus during daytime hours."
+    );
+  });
+
+  it("drops the bonus clause when no bonus is configured", () => {
+    assert.equal(
+      exportPricingLabel({ ...DYNAMIC, solarBonus: 0 }),
+      "Export is paid at the dynamic return price: the market price excluding taxes plus the feed-in fee."
+    );
+  });
+
+  it("states the flat override when it is configured", () => {
+    assert.equal(
+      exportPricingLabel({ ...DYNAMIC, mode: "flat-override", flatTariffEur: 0.125 }),
+      "Export is paid at a flat feed-in tariff of 12.5 ct/kWh."
+    );
   });
 });
 

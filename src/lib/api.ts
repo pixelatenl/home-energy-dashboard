@@ -559,10 +559,31 @@ export interface SolarProductionPoint {
   // The raw grid export counter's kWh in the interval (battery
   // discharge included), distinct from the PV-capped split share.
   exportKwh: number | null
-  // Export kWh priced at the flat feed-in tariff; null when no
-  // tariff is configured or the export counter is not registered,
-  // never a silent 0.
+  // Export kWh priced at the hour's return price (the dynamic
+  // construction, or the flat override); null when no price is
+  // known or the export counter is not registered, never a silent
+  // 0. Negative prices earn negative amounts.
   exportEarningsEur: number | null
+}
+
+// The export earnings' pricing configuration, exposed as the solar
+// production payload's meta.returnPricing: mode "dynamic" prices
+// each hour at the derived return price (the constants ride
+// along), mode "flat-override" at the explicit flat rate.
+export interface ReturnPricing {
+  mode: "dynamic" | "flat-override"
+  // The EMS_FEED_IN_TARIFF_EUR override in EUR/kWh; null in
+  // dynamic mode.
+  flatTariffEur: number | null
+  vatRate: number
+  energyTaxEur: number
+  handlingFeeConsumptionEur: number
+  handlingFeeFeedInEur: number
+  // The Zonnebonus fraction, applied in positive daytime hours
+  // [bonusStartHour, bonusEndHour) local.
+  solarBonus: number
+  bonusStartHour: number
+  bonusEndHour: number
 }
 
 export interface SolarProductionData {
@@ -581,7 +602,8 @@ export interface SolarProductionData {
     selfConsumedShare: number | null
     selfConsumptionAvoidedCostEur: number
     exportKwh: number | null
-    // Null while the tariff is unconfigured, never a silent 0.
+    // Null when an exported hour lacks a known return price, never
+    // a silent 0; negative when negative prices outweigh the fees.
     exportEarningsEur: number | null
     // The combined benefit: self-consumption savings plus export
     // earnings. Null while either component is null.
@@ -590,9 +612,7 @@ export interface SolarProductionData {
   peak: { ts: string; kwh: number } | null
   meta: {
     note: string
-    // The configured flat feed-in tariff in EUR/kWh; null when
-    // unset, zero or invalid.
-    feedInTariff: number | null
+    returnPricing: ReturnPricing
     // The energy_hourly coverage sanity check: stale means the
     // aggregate's newest bucket predates the current hour. Null
     // when the window predates the data start.

@@ -1,4 +1,4 @@
-import type { SolarProductionPoint } from "@/lib/api"
+import type { ReturnPricing, SolarProductionPoint } from "@/lib/api"
 import { periodEnd, periodStart, type Period } from "./period.ts"
 import { localDateOf, localHourOf } from "./time.ts"
 
@@ -136,4 +136,21 @@ export function forecastPanelVisible(
 export function feedInTariffCentsLabel(tariffEur: number): string {
   const cents = Number((tariffEur * 100).toFixed(2))
   return `${cents} ct/kWh`
+}
+
+// The footnote's export-pricing sentence, reflecting the payload's
+// meta.returnPricing: the dynamic construction's wording, or the
+// flat-override wording when the explicit tariff is set.
+export function exportPricingLabel(pricing: ReturnPricing): string {
+  if (pricing.mode === "flat-override" && pricing.flatTariffEur !== null) {
+    return `Export is paid at a flat feed-in tariff of ${feedInTariffCentsLabel(pricing.flatTariffEur)}.`
+  }
+  const bonus = Math.round(pricing.solarBonus * 100)
+  return (
+    "Export is paid at the dynamic return price: the market price excluding taxes plus the feed-in fee" +
+    (bonus > 0
+      ? `, plus a ${bonus}% Zonnebonus during daytime hours`
+      : "") +
+    "."
+  )
 }

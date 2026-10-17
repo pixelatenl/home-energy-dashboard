@@ -12,7 +12,7 @@ import {
   type Period,
 } from "@/lib/period"
 import {
-  feedInTariffCentsLabel,
+  exportPricingLabel,
   intervalPriceOf,
   solarSlotLabel,
   solarSlots,
@@ -56,8 +56,11 @@ function formatKwh(value: number): string {
   return `${value.toFixed(value < 10 ? 2 : 1)} kWh`
 }
 
+// Money with the usage pages' sign convention: negative amounts
+// read "−€0.09" (the Unicode minus), never clamped to zero -
+// negative return prices genuinely cost money.
 function formatEur(value: number): string {
-  return `€${value.toFixed(2)}`
+  return `${value < 0 ? "−" : ""}€${Math.abs(value).toFixed(2)}`
 }
 
 interface SolarProductionChartProps {
@@ -78,8 +81,8 @@ interface SolarProductionChartProps {
 // are excluded from the total and never render 0. Tooltips always
 // carry kWh, the interval price and the avoided cost together; in
 // cost mode they also carry the disposition split and the raw
-// export counter's kWh with its earnings at the flat feed-in
-// tariff. On the current day in energy mode the hourly forecast
+// export counter's kWh with its earnings at the hour's return
+// price. On the current day in energy mode the hourly forecast
 // rides as a dashed overlay curve on the same axis; in cost mode
 // the overlay is omitted (the forecast is a kWh figure, and pricing
 // it would invent an hourly price the payload does not carry).
@@ -217,8 +220,9 @@ function SolarProductionChart({
   // mode the primary money figure is the combined benefit - the
   // self-consumption savings plus the export earnings - when both
   // exist, falling back to the self-consumption avoided cost alone
-  // while the feed-in tariff is unconfigured. The individual
-  // figures ride as muted secondary stats.
+  // while an export hour lacks a known return price. The individual
+  // figures ride as muted secondary stats; the export earnings can
+  // read negative when negative prices outweigh the fees.
   const costNet = data?.totals.totalCostNetEur ?? null
   const totalLabel =
     mode === "energy"
@@ -266,7 +270,7 @@ function SolarProductionChart({
                   )}
                   {data.totals.exportEarningsEur === null ? (
                     <span className="tabular-nums opacity-60">
-                      export earnings not configured
+                      export earnings unknown
                     </span>
                   ) : (
                     <span className="tabular-nums">
@@ -495,7 +499,7 @@ function SolarProductionChart({
                         solar disposition split - to home (with its
                         avoided cost), to grid, to battery - and the
                         raw export counter's kWh with its earnings at
-                        the flat feed-in tariff, labeled distinctly
+                        the hour's return price, labeled distinctly
                         because the counter's export includes the
                         battery's while the split's grid share is
                         PV-capped. */}
@@ -538,7 +542,7 @@ function SolarProductionChart({
                                         )}${
                                           hovered.point.exportEarningsEur ===
                                           null
-                                            ? " (earnings not configured)"
+                                            ? " (earnings unknown)"
                                             : ` (${formatEur(
                                                 hovered.point.exportEarningsEur
                                               )} earned)`
@@ -589,9 +593,7 @@ function SolarProductionChart({
                 production. Split figures are estimates - the P1
                 meter is net per hour and the battery can export
                 during peak hours.{" "}
-                {data.meta.feedInTariff === null
-                  ? "Export earnings follow once a feed-in tariff is configured (EMS_FEED_IN_TARIFF_EUR)."
-                  : `Export is paid at a flat feed-in tariff of ${feedInTariffCentsLabel(data.meta.feedInTariff)}.`}
+                {exportPricingLabel(data.meta.returnPricing)}
               </p>
             )}
           </>
