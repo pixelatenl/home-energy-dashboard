@@ -96,6 +96,27 @@ function UsageSummaryCard({
             <div className="grid gap-3 sm:grid-cols-3">
               <div>
                 <p className="text-xs text-muted-foreground">
+                  Saved and earned
+                </p>
+                {/* Saved is money by definition; the light green
+                    accent makes the headline number pop. */}
+                <p className="text-3xl font-semibold tabular-nums text-green-300">
+                  {netEurLabel(net.savedEur)}
+                </p>
+                <p className="text-xs text-muted-foreground tabular-nums">
+                  from {formatKwh(net.selfSuppliedKwh)} self-supplied
+                  plus feed-in
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground tabular-nums">
+                  avg{" "}
+                  {data.avg_price_eur === null
+                    ? "\u2014"
+                    : `€${data.avg_price_eur.toFixed(2)}`}
+                  /kWh
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">
                   Household usage
                 </p>
                 <p className="text-3xl font-semibold tabular-nums">
@@ -135,27 +156,6 @@ function UsageSummaryCard({
                 <p className="mt-1 text-xs text-muted-foreground tabular-nums">
                   import {formatKwh(data.grid_import_kwh)} &middot; export{" "}
                   {formatKwh(data.grid_export_kwh)}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">
-                  Saved and earned
-                </p>
-                {/* Saved is money by definition; the light green
-                    accent makes the headline number pop. */}
-                <p className="text-3xl font-semibold tabular-nums text-green-300">
-                  {netEurLabel(net.savedEur)}
-                </p>
-                <p className="text-xs text-muted-foreground tabular-nums">
-                  from {formatKwh(net.selfSuppliedKwh)} self-supplied
-                  plus feed-in
-                </p>
-                <p className="mt-1 text-xs text-muted-foreground tabular-nums">
-                  avg{" "}
-                  {data.avg_price_eur === null
-                    ? "\u2014"
-                    : `€${data.avg_price_eur.toFixed(2)}`}
-                  /kWh
                 </p>
               </div>
             </div>
