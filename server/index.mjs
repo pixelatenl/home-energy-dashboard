@@ -622,6 +622,7 @@ app.get(
     const resolution =
       period === "day" || period === "week" ? "hourly" : "daily";
     const production = await getSolarProduction(fromMs, toMs, resolution);
+    const { series, totals, peak, hourlyCoverage } = production;
     res.json({
       period,
       date: anchor,
@@ -631,9 +632,16 @@ app.get(
       },
       dataStart: SOLAR_DATA_START,
       resolution,
-      ...production,
+      series,
+      totals,
+      peak,
       meta: {
         note: "the PV counter updates roughly every 15 minutes, so hourly attribution can look stepped",
+        // The energy_hourly coverage sanity check: stale means the
+        // aggregate's newest bucket predates the current hour. The
+        // data is served either way, never failed; null when the
+        // window predates the data start.
+        hourlyCoverage,
       },
     });
   })
