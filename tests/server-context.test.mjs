@@ -362,10 +362,14 @@ describe("buildGuidance: the Phase E today modes", () => {
   const nowHour = localHourIndex(new Date());
 
   it("flags the peak ahead only while its hour is still to come", () => {
+    // Two hours ahead wraps past midnight in the late evening, and
+    // the wrapped hour has already passed - the flag honestly reads
+    // false then, the same rule the assertion encodes.
+    const aheadHour = (nowHour + 2) % 24;
     const ahead = buildGuidance(
-      partsFixture({ peakHour: hourLabel((nowHour + 2) % 24) })
+      partsFixture({ peakHour: hourLabel(aheadHour) })
     );
-    assert.equal(ahead.peak_ahead, true);
+    assert.equal(ahead.peak_ahead, aheadHour > nowHour);
     const current = buildGuidance(
       partsFixture({ peakHour: hourLabel(nowHour) })
     );

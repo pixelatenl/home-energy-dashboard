@@ -33,6 +33,7 @@ import {
   getSolarProduction,
   SOLAR_DATA_START,
 } from "./solar-production.mjs";
+import { BATTERY_DATA_START, getBatteryFlow } from "./battery-flow.mjs";
 import {
   applianceHourly,
   applianceLatestPower,
@@ -837,6 +838,55 @@ app.get(
       as_of: result.asOf,
       stale: result.stale,
       error: result.error,
+    });
+  })
+);
+
+// GET /api/battery/flow: the battery charge/discharge flow for a
+// period, anchored to a concrete period with optional params
+// (period=day|week|month|year, date=YYYY-MM-DD; no params means
+// today, the previous behavior). Resolution follows the period:
+// hourly buckets for a day, daily aggregates for a week or month,
+// monthly aggregates for a year; the money dimensions - charge cost
+// and discharge value - are always priced bottom-up at the dynamic
+// hourly price, and the SOC series rides along on hour windows for
+// the current-state gauge's chart. Windows that end before the data
+// start carry an empty series rather than an error.
+app.get(
+  "/api/battery/flow",
+  asyncHandler(async (req, res) => {
+    const period =
+      typeof req.query.period === "string" ? req.query.period : "day";
+    if (!["day", "week", "month", "year"].includes(period)) {
+      return res.status(400).json({
+        error: "period must be one of day, week, month, year",
+      });
+    }
+    const anchor =
+      typeof req.query.date === "string"
+        ? req.query.date
+        : localDateKey(new Date());
+    const keys = periodDateKeys(period, anchor);
+    if (keys === null) {
+      return res.status(400).json({
+        error: "invalid date (date=YYYY-MM-DD)",
+      });
+    }
+    const fromMs = localDayStartUtcMs(keys.startKey);
+    const toMs = localDayStartUtcMs(nextDateKey(keys.endKey, 1));
+    const resolution =
+      period === "day" ? "hour" : period === "year" ? "month" : "day";
+    const flow = await getBatteryFlow(fromMs, toMs, resolution);
+    res.json({
+      period,
+      date: anchor,
+      window: {
+        start: localIsoWithOffset(new Date(fromMs)),
+        end: localIsoWithOffset(new Date(toMs)),
+      },
+      dataStart: BATTERY_DATA_START,
+      resolution,
+      ...flow,
     });
   })
 );

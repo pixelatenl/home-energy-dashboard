@@ -116,6 +116,7 @@ API endpoints return 502 until the server is started.
 - `GET /api/insight/daily` - AI-generated daily summary with recommended actions (the same insight `/api/summary` embeds, served on its own)
 - `GET /api/prices?days=N` - merged hourly price curve (today plus N-1 more days, default 2) with per-day stats and the cheapest 3-hour window
 - `GET /api/prices/cheapest?hours=N` - the cheapest N consecutive hours from now, by average price
+- `GET /api/battery/flow?period=day|week|month|year&date=YYYY-MM-DD` - the period-anchored battery charge/discharge flow: hourly buckets with the SOC series on a day, daily aggregates on week and month, monthly on year; money figures (charge cost, discharge value, arbitrage) priced bottom-up at the dynamic hourly price. No params means today
 - `GET /api/debug/time` - server clock, timezone and local bucket diagnostics with raw rows, plus `ha_fetch` (HA price fetch success, forecast age) and `mistral` (daily limit, calls today, remaining calls)
 
 The frontend consumes these through the typed client in `src/lib/api.ts`.
