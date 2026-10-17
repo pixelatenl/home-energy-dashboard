@@ -126,7 +126,7 @@ function SummaryInsight({
   insight: SummaryInsightData | null
   loading: boolean
 }) {
-  // The first-paint placeholder: the same blue-gradient AI panel in
+  // The first-paint placeholder: the same warm brown AI panel in
   // skeleton form - header plus two glass rows - so the kiosk shows
   // the panel's shape immediately. This covers the one moment the
   // panel can lag behind the widgets: the first /api/summary call
@@ -136,7 +136,7 @@ function SummaryInsight({
   if (loading) {
     return (
       <div
-        className="h-full min-h-36 animate-pulse rounded-lg border bg-gradient-to-br from-blue-800/50 to-sky-600/50 p-4 text-white shadow-card dark:from-blue-950/50 dark:to-sky-800/50"
+        className="h-full min-h-36 animate-pulse rounded-lg border bg-gradient-to-bl from-[#0d0805] via-[#241610] to-[#4a2c14] p-4 text-white shadow-card"
         aria-busy="true"
       >
         <p className="flex items-center gap-2 font-heading text-lg font-medium text-muted-foreground">
@@ -171,12 +171,13 @@ function SummaryInsight({
   const content = buildAdvisoryContent(insight)
 
   return (
-    // The blue-gradient AI panel is the whole widget; the gradient is
-    // the visual identity of AI content - the same from-blue-800 to
-    // sky-600 pair (blue-950 to sky-800 at night) every AI box uses.
+    // The warm brown AI panel is the whole widget; the gradient is
+    // the visual identity of AI content - the same dark-to-warm-brown
+    // ramp as the page body (dark at the top right, the body's
+    // lighter brown at the lower left) every AI box uses.
     // It stretches to the full grid row so it matches the height of
     // the stats column next to it.
-    <div className="h-full rounded-lg border bg-gradient-to-br from-blue-800/50 to-sky-600/50 p-4 text-white shadow-card dark:from-blue-950/50 dark:to-sky-800/50">
+    <div className="h-full rounded-lg border bg-gradient-to-bl from-[#0d0805] via-[#241610] to-[#4a2c14] p-4 text-white shadow-card">
       <p className="flex items-center gap-2 font-heading text-lg font-medium text-muted-foreground">
         <Sparkles className="size-6" aria-hidden="true" />
         AI advisory
