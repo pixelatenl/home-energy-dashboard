@@ -79,13 +79,14 @@ function TodayPage() {
       subtitle="Monitor your household energy use"
       actions={
         <span className="flex items-center gap-2">
-          <span className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-[#0d0805] via-[#241610] to-[#4a2c14] px-3 py-1 text-sm font-medium tabular-nums text-white shadow-card">
+          {/* The insight provenance in the live grid badge's quiet outline
+              chip idiom, so the header's right cluster reads as one
+              family. */}
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-white/15 px-2.5 py-1 text-xs font-medium text-muted-foreground tabular-nums">
             {insightFrom ? (
               <>Insight from {insightFrom}</>
             ) : (
-              <span className="font-normal text-white/80">
-                No insight yet
-              </span>
+              <span className="font-normal">No insight yet</span>
             )}
           </span>
           <button
@@ -102,7 +103,7 @@ function TodayPage() {
               triggerAiRefresh()
               triggerDataRefresh()
             }}
-            className="rounded-full bg-gradient-to-r from-[#0d0805] via-[#241610] to-[#4a2c14] p-1.5 text-white transition-opacity hover:opacity-90 focus-visible:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+            className="rounded-full p-1 text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-40"
           >
             <RefreshCw className="size-3.5" aria-hidden="true" />
           </button>
