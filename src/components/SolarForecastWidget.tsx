@@ -62,7 +62,9 @@ type OnTrack = "ahead" | "on-track" | "behind" | null
 
 const ON_TRACK_STYLES: Record<Exclude<OnTrack, null>, string> = {
   ahead: "border-emerald-600/30 text-emerald-600 dark:text-emerald-400",
-  "on-track": "border-sky-600/30 text-sky-600 dark:text-sky-400",
+  // On track is the neutral, unremarkable state: the glass
+  // furniture's translucent white rather than a colored callout.
+  "on-track": "border-white/25 bg-white/15 text-white",
   behind: "border-amber-600/30 text-amber-600 dark:text-amber-400",
 }
 
@@ -261,7 +263,12 @@ function SolarForecastWidget() {
           <NowProducing watts={summary?.flow.pv_w ?? null} />
         </CardDescription>
         <CardAction>
-          <Badge variant="outline" className="tabular-nums">
+          {/* The same glass treatment as the On-track pill: a neutral
+              translucent white chip rather than a colored callout. */}
+          <Badge
+            variant="outline"
+            className="border-white/25 bg-white/15 text-white tabular-nums"
+          >
             Solar score {daily.solar_score}/100
           </Badge>
         </CardAction>
