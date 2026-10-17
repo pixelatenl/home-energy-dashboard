@@ -1622,6 +1622,31 @@ export function baseloadKwhPerDay(dayHours, config) {
   return out;
 }
 
+// The current, incomplete day's share of its own base load: the
+// day's full-day figure times its data-covered hours over 24
+// (docs/spec.md section 6.1), so a day view in the morning never
+// models a full day of standby draw against a few hours of usage.
+// Every other day - past days, or the current day once all 24
+// hours carry data - keeps its full-day figure unchanged. Pure, so
+// the rule is testable: the per-day figures with their covered
+// hour counts in, the prorated figures out.
+export function proratedBaseLoad(perDay, coveredHoursByDay, nowMs) {
+  const today = localDateKey(new Date(nowMs));
+  const figure = perDay.get(today);
+  const hours = coveredHoursByDay.get(today);
+  if (figure === undefined || hours === undefined || hours >= 24) {
+    return perDay;
+  }
+  const out = new Map(perDay);
+  const kwh = round2(figure * (hours / 24));
+  if (kwh > 0) {
+    out.set(today, kwh);
+  } else {
+    out.delete(today);
+  }
+  return out;
+}
+
 // The window's per-day baseload from its own measured counters:
 // the five-counter consumption formula per hour (the same terms as
 // the period total, docs/spec.md section 1, floored at zero per
@@ -1696,12 +1721,16 @@ export async function baseLoadForWindow(fromMs, toMs) {
     );
   }
   const covered = new Set(await windowDataDayKeys(fromMs, toMs, map.import));
-  const perDay = baseloadKwhPerDay(dayHours, config);
-  for (const day of [...perDay.keys()]) {
+  const full = baseloadKwhPerDay(dayHours, config);
+  for (const day of [...full.keys()]) {
     if (!covered.has(day)) {
-      perDay.delete(day);
+      full.delete(day);
     }
   }
+  const coveredHours = new Map(
+    [...dayHours].map(([day, hours]) => [day, hours.length])
+  );
+  const perDay = proratedBaseLoad(full, coveredHours, Date.now());
   return { perDay, basis: config.basis };
 }
 

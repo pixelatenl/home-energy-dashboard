@@ -330,6 +330,16 @@ it. Per covered day it is computed from the day's own data:
    high. The per-day figure is the hourly statistic times 24 hours,
    capped at the day's own total consumption and rounded to two
    decimals, so period sums stay exact.
+5. In-progress day prorating: the current day - the local day
+   containing now, still accumulating data - is attributed only its
+   covered share: its full-day figure times the day's data-covered
+   hours (the local hours that carry measured rows) over 24. A
+   morning day view therefore never models a full day of standby
+   draw against a few hours of usage, and the week and month views
+   no longer understate the unexplained remainder until midnight.
+   Every other day - past days, or the current day once all 24
+   hours carry data - keeps its full-day figure unchanged; a share
+   that rounds to zero carries no base load at all.
 
 The method is tunable in config (environment variables; unset, empty
 or invalid values fall back to the default):

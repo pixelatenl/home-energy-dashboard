@@ -4,6 +4,7 @@ import {
   baseLoadConfig,
   baseloadKwhPerDay,
   homeModelEntries,
+  proratedBaseLoad,
   slotUnitForDays,
   windowDays,
 } from "../server/queries.mjs";
@@ -192,6 +193,64 @@ describe("baseloadKwhPerDay: the data-derived per-day statistic", () => {
     );
     assert.equal(out.get("2026-10-14"), 9.6);
     assert.equal(out.get("2026-10-15"), 14.4);
+  });
+});
+
+describe("proratedBaseLoad: the in-progress day's share", () => {
+  // The current day is 2026-10-17 and "now" is local noon of it.
+  const dayStart = localDayStartUtcMs("2026-10-17");
+  const noon = dayStart + 12 * 3_600_000;
+
+  it("attributes the current day only its data-covered share", () => {
+    const perDay = new Map([
+      ["2026-10-16", 6.0],
+      ["2026-10-17", 6.0],
+    ]);
+    const coveredHours = new Map([
+      ["2026-10-16", 24],
+      ["2026-10-17", 6],
+    ]);
+    const out = proratedBaseLoad(perDay, coveredHours, noon);
+    assert.equal(out.get("2026-10-16"), 6.0);
+    assert.equal(out.get("2026-10-17"), 1.5);
+  });
+
+  it("keeps every complete day's figure unchanged", () => {
+    const perDay = new Map([
+      ["2026-10-15", 5.4],
+      ["2026-10-16", 6.0],
+      ["2026-10-17", 6.0],
+    ]);
+    const coveredHours = new Map([
+      ["2026-10-15", 24],
+      ["2026-10-16", 24],
+      ["2026-10-17", 24],
+    ]);
+    const out = proratedBaseLoad(perDay, coveredHours, noon);
+    assert.equal(out.get("2026-10-15"), 5.4);
+    assert.equal(out.get("2026-10-16"), 6.0);
+    assert.equal(out.get("2026-10-17"), 6.0);
+  });
+
+  it("keeps the current day's share exact at two decimals", () => {
+    const perDay = new Map([["2026-10-17", 6.67]]);
+    const coveredHours = new Map([["2026-10-17", 14]]);
+    const out = proratedBaseLoad(perDay, coveredHours, noon);
+    assert.equal(out.get("2026-10-17"), 3.89);
+  });
+
+  it("drops the current day when its share rounds to zero", () => {
+    const perDay = new Map([["2026-10-17", 0.05]]);
+    const coveredHours = new Map([["2026-10-17", 1]]);
+    const out = proratedBaseLoad(perDay, coveredHours, noon);
+    assert.ok(!out.has("2026-10-17"));
+  });
+
+  it("leaves the figures alone when the current day has no base load", () => {
+    const perDay = new Map([["2026-10-16", 6.0]]);
+    const coveredHours = new Map([["2026-10-16", 24]]);
+    const out = proratedBaseLoad(perDay, coveredHours, noon);
+    assert.deepEqual([...out.entries()], [["2026-10-16", 6.0]]);
   });
 });
 
