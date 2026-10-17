@@ -30,6 +30,10 @@ import {
 } from "./weather.mjs";
 import { dailyForecast } from "./solar.mjs";
 import {
+  getSolarProduction,
+  SOLAR_DATA_START,
+} from "./solar-production.mjs";
+import {
   applianceHourly,
   applianceLatestPower,
   applianceTotals,
@@ -578,6 +582,59 @@ app.get(
       // (docs/spec.md section 8).
       slots: current.slots,
       assumptions: current.assumptions,
+    });
+  })
+);
+
+// GET /api/solar/production: PV production per interval with the
+// avoided grid cost, anchored to a concrete period (the same
+// date-anchored convention as the usage endpoints; date defaults to
+// today). Resolution follows the period: hourly buckets for day and
+// week, daily buckets for month and year. Production comes only
+// from the PV energy counter's continuous aggregates; the avoided
+// cost is bottom-up per interval at that hour's grid price. The
+// meta note carries the known data caveats the frontend can
+// footnote.
+app.get(
+  "/api/solar/production",
+  asyncHandler(async (req, res) => {
+    const period = req.query.period;
+    if (
+      typeof period !== "string" ||
+      !["day", "week", "month", "year"].includes(period)
+    ) {
+      return res.status(400).json({
+        error: "period must be one of day, week, month, year",
+      });
+    }
+    const anchor =
+      typeof req.query.date === "string"
+        ? req.query.date
+        : localDateKey(new Date());
+    const keys = periodDateKeys(period, anchor);
+    if (keys === null) {
+      return res.status(400).json({
+        error: "invalid date (date=YYYY-MM-DD)",
+      });
+    }
+    const fromMs = localDayStartUtcMs(keys.startKey);
+    const toMs = localDayStartUtcMs(nextDateKey(keys.endKey, 1));
+    const resolution =
+      period === "day" || period === "week" ? "hourly" : "daily";
+    const production = await getSolarProduction(fromMs, toMs, resolution);
+    res.json({
+      period,
+      date: anchor,
+      window: {
+        start: localIsoWithOffset(new Date(fromMs)),
+        end: localIsoWithOffset(new Date(toMs)),
+      },
+      dataStart: SOLAR_DATA_START,
+      resolution,
+      ...production,
+      meta: {
+        note: "daily buckets are UTC-aligned until the local-day migration lands, so day and month totals may deviate slightly from local calendar days; the PV counter updates roughly every 15 minutes, so hourly attribution can look stepped",
+      },
     });
   })
 );
