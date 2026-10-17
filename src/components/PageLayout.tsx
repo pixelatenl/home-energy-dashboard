@@ -34,7 +34,7 @@ function PageLayout({
       <header>
         <div className="flex flex-wrap items-center justify-between gap-4 px-3 py-4 sm:px-6">
           <div className="flex items-center gap-3">
-            {logo ?? <BrandLogo className="h-10 w-[72px]" />}
+            {logo ?? <BrandLogo className="h-10 w-10" />}
             <div>
               <h1 className="text-xl font-semibold">{title}</h1>
               {subtitle != null &&
