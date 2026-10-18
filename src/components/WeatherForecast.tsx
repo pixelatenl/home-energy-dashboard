@@ -586,6 +586,15 @@ function withCurrentConditions(
   );
 }
 
+// The hourly data on screen. The date the hours belong to travels
+// with them, so the strip's title and chart always describe the same
+// day - even while a switch to another day is still in flight.
+type HourlyData = {
+  date: string;
+  hours: WeatherHour[];
+  current: WeatherCurrent | null;
+};
+
 function WeatherForecast() {
   const weatherContext = useAiContext(fetchWeatherContext);
   const [daily, setDaily] = useState<WeatherDay[] | null>(null);
@@ -596,29 +605,56 @@ function WeatherForecast() {
     "loading",
   );
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
-  const [hourly, setHourly] = useState<WeatherHour[] | null>(null);
-  const [currentWeather, setCurrentWeather] = useState<WeatherCurrent | null>(
-    null,
-  );
+  const [hourlyData, setHourlyData] = useState<HourlyData | null>(null);
   const [hourlyStatus, setHourlyStatus] = useState<
     "idle" | "loading" | "error"
-  >("idle");
-  // Increments on every hourly load session, so each one gets a
-  // fresh skeleton reveal with its own floor and cross-fade: the
-  // initial strip load, every day switch and every retry.
+  >("loading");
+  // Increments only for loads that earn a skeleton reveal - the
+  // strip's first load and every error retry. A day switch is not one:
+  // the chart swaps in place once the hours land, with no loading
+  // state in between.
   const [hourlySession, setHourlySession] = useState(0);
+  // The hours already fetched per date, so switching back to a viewed
+  // day is instant - and the server answers the hourly endpoint from
+  // its own forecast cache, so a first view of a day is near-instant
+  // too. Cleared on a refresh, which asks for fresh data everywhere.
+  const hourlyCache = useRef(
+    new Map<string, { hours: WeatherHour[]; current: WeatherCurrent | null }>(),
+  );
+  // Guards against stale responses when days are clicked in quick
+  // succession: only the latest request may apply its result.
+  const hourlyRequest = useRef(0);
 
+  // Loads the hourly strip for a date: from the cache when viewed
+  // before, from the API otherwise. A day switch keeps the current
+  // chart on screen until the new hours land, then swaps them in -
+  // no skeleton, no blank. A failure swaps in the error treatment
+  // with its retry. State is only updated after the await (or from
+  // the cache, synchronously), so this is safe to call from effects.
   const loadHourly = useCallback(async (date: string) => {
-    setHourly(null);
-    setCurrentWeather(null);
-    setHourlySession((value) => value + 1);
-    setHourlyStatus("loading");
+    const cached = hourlyCache.current.get(date);
+    if (cached) {
+      hourlyRequest.current += 1;
+      setHourlyData({ date, hours: cached.hours, current: cached.current });
+      setHourlyStatus("idle");
+      return;
+    }
+    const request = ++hourlyRequest.current;
     try {
       const result = await fetchWeatherHourly(date);
-      setHourly(result.hours);
-      setCurrentWeather(result.current);
+      if (request !== hourlyRequest.current) {
+        return;
+      }
+      hourlyCache.current.set(date, {
+        hours: result.hours,
+        current: result.current,
+      });
+      setHourlyData({ date, hours: result.hours, current: result.current });
       setHourlyStatus("idle");
     } catch {
+      if (request !== hourlyRequest.current) {
+        return;
+      }
       setHourlyStatus("error");
     }
   }, []);
@@ -636,6 +672,12 @@ function WeatherForecast() {
         dailyRef.current = days;
         setDaily(days);
         setDailyStatus("ok");
+        if (refresh) {
+          // A refresh asks for fresh data everywhere, so the hourly
+          // cache goes with it; the strip updates in place as the
+          // new hours land, never through a skeleton.
+          hourlyCache.current.clear();
+        }
         if (days.length > 0) {
           setSelectedDate(days[0].date);
           void loadHourly(days[0].date);
@@ -668,12 +710,12 @@ function WeatherForecast() {
   );
 
   // The strip only has value during daylight: clip the fetched hours to the
-  // sunrise-sunset window of the selected day.
+  // sunrise-sunset window of the day they belong to.
   const visibleHours =
-    hourly && selectedDate
+    hourlyData !== null
       ? clipToDaylight(
-          hourly,
-          daily?.find((day) => day.date === selectedDate) ?? null,
+          hourlyData.hours,
+          daily?.find((day) => day.date === hourlyData.date) ?? null,
         )
       : null;
 
@@ -686,13 +728,15 @@ function WeatherForecast() {
         <CardDescription>
           Solar score and estimated PV yield for the coming days
         </CardDescription>
-        {hourly && selectedDate && (
+        {hourlyData && (
           <CardAction>
             <Badge variant="outline" className="tabular-nums">
               PV{" "}
               {(
-                hourly.reduce((sum, hour) => sum + hour.estimated_pv_wh, 0) /
-                1000
+                hourlyData.hours.reduce(
+                  (sum, hour) => sum + hour.estimated_pv_wh,
+                  0,
+                ) / 1000
               ).toFixed(1)}{" "}
               kWh estimated
             </Badge>
@@ -750,13 +794,15 @@ function WeatherForecast() {
 
         {selectedDate && (
           <div className={`rounded-xl bg-muted/30 p-4 ${STRIP_HEIGHT}`}>
-            {/* One reveal per hourly load session (the initial load,
-                every day switch, every retry): the keyed instance
+            {/* One skeleton session per first load and error retry
+                (keyed by the session counter): the keyed instance
                 mounts with loading already true, so the floor and
-                the cross-fade arm for each session. The strip keeps
-                its fixed height throughout. */}
+                the cross-fade arm for those alone. A day switch keeps
+                the key and the reveal phase - the chart stays up and
+                the new hours swap in place. The strip keeps its
+                fixed height throughout. */}
             <SkeletonReveal
-              key={`${selectedDate}-${hourlySession}`}
+              key={hourlySession}
               className="h-full"
               loading={hourlyStatus === "loading"}
               skeleton={
@@ -774,20 +820,24 @@ function WeatherForecast() {
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => void loadHourly(selectedDate)}
+                    onClick={() => {
+                      setHourlySession((value) => value + 1);
+                      setHourlyStatus("loading");
+                      void loadHourly(selectedDate);
+                    }}
                   >
                     Retry
                   </Button>
                 </div>
               )}
-              {visibleHours && visibleHours.length > 0 && (
+              {visibleHours && visibleHours.length > 0 && hourlyData && (
                 <div className="flex h-full flex-col gap-2">
                   <div className="text-sm">
                     <span className="font-medium">
-                      {selectedDate === todayInAmsterdam()
+                      {hourlyData.date === todayInAmsterdam()
                         ? "Today"
                         : new Date(
-                            `${selectedDate}T12:00:00`,
+                            `${hourlyData.date}T12:00:00`,
                           ).toLocaleDateString("en-GB", {
                             weekday: "long",
                             day: "numeric",
@@ -798,8 +848,8 @@ function WeatherForecast() {
                   <HourlyChart
                     hours={withCurrentConditions(
                       visibleHours,
-                      currentWeather,
-                      selectedDate,
+                      hourlyData.current,
+                      hourlyData.date,
                     )}
                   />
                 </div>
