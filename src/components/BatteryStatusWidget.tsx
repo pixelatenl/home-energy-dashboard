@@ -71,7 +71,7 @@ function BatteryStatusWidget() {
           <InfoTooltip text={BATTERY_TOOLTIP} />
         </div>
         <CardHeader className="flex flex-1 flex-col items-stretch">
-          <CardTitle className="flex items-center gap-2 text-muted-foreground">
+          <CardTitle className="flex items-center gap-2 text-title-foreground">
             <BatteryCharging className="size-6" aria-hidden="true" />
             Battery status
           </CardTitle>
@@ -79,7 +79,7 @@ function BatteryStatusWidget() {
             Anker SOLIX Solarbank Max AC (7kWh)
           </p>
           {!available ? (
-            <p className="text-sm text-muted-foreground">No battery data</p>
+            <p className="text-sm text-subtle-foreground">No battery data</p>
           ) : (
             /* The same battery gauge the full panel uses: fill and
               percentage in one, colored by the battery state. */

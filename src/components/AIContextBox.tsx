@@ -4,27 +4,29 @@ import SkeletonReveal from "@/components/SkeletonReveal";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Sparkles } from "lucide-react";
 
-// AI insight box shared by the weather, prices and battery widgets: a
-// warm brown-gradient panel with the label and the text - the gradient
-// is the visual identity of AI content, shared with the hub's summary
-// panel and the header's insight pill. When no text is available (API
+// AI insight box shared by the weather, prices and battery widgets:
+// the advisory panel's own surface in miniature - the dark-to-warm
+// AI gradient under the app's glass pane (blur, saturation, top
+// seam), the nested inset rounding and the card elevation, no
+// border - so the quiet text sits on the same dark backing the
+// advisory panel gives its rows. When no text is available (API
 // failure or daily limit reached) the box renders nothing at all -
-// except when the daily AI limit is the reason, which is explained in
-// a translucent note on the gradient; the shimmering placeholder
-// reserves roughly the final height so loading causes no layout shift.
+// except when the daily AI limit is the reason, which is explained
+// in a quiet note; the placeholder reserves roughly the final height
+// so loading causes no layout shift.
 function AIContextBox({ text, error, loading }: AiContextValue) {
-  // The brown AI shell with the shared Skeleton lines inside - the
+  // The glass shell with the shared Skeleton lines inside - the
   // shell itself does not pulse - reserving the loaded box's height.
   // The reveal sits in the same tree position for every branch, so
   // the skeleton cross-fades into the text (or the honest empty
   // states) instead of swapping in one frame.
   const skeleton = (
     <div
-      className="h-24 rounded-xl border bg-gradient-to-bl from-[#0d0805] via-[#241610] to-[#4a2c14] p-4"
+      className="glass-card glass-inset h-24 rounded-inset bg-gradient-to-bl from-[#0d0805] via-[#241610] to-[#4a2c14] p-4 shadow-card"
       aria-busy="true"
     >
-      <Skeleton className="h-3.5 w-20 bg-white/30" />
-      <Skeleton className="mt-2 h-3.5 w-3/4 bg-white/30" />
+      <Skeleton className="h-3.5 w-20" />
+      <Skeleton className="mt-2 h-3.5 w-3/4" />
     </div>
   );
 
@@ -47,8 +49,8 @@ function AIContextBox({ text, error, loading }: AiContextValue) {
 
   return (
     <SkeletonReveal loading={false} skeleton={skeleton}>
-      <div className="min-h-24 rounded-xl border bg-gradient-to-bl from-[#0d0805] via-[#241610] to-[#4a2c14] p-4 text-white">
-        <span className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-white">
+      <div className="glass-card glass-inset min-h-24 rounded-inset bg-gradient-to-bl from-[#0d0805] via-[#241610] to-[#4a2c14] p-4 text-muted-foreground shadow-card">
+        <span className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
           <Sparkles className="size-3.5" aria-hidden="true" />
           AI insight
         </span>
@@ -59,7 +61,7 @@ function AIContextBox({ text, error, loading }: AiContextValue) {
           {humanizeEurInText(text)}
         </p>
         {limitReached && (
-          <p className="mt-2 text-xs text-white">
+          <p className="mt-2 text-xs text-subtle-foreground">
             Live updates paused (daily AI limit reached); the insight may lag
           </p>
         )}

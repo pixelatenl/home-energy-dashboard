@@ -53,7 +53,7 @@ const ON_TRACK_STYLES: Record<Exclude<OnTrack, null>, string> = {
   ahead: "border-emerald-600/30 text-emerald-600 dark:text-emerald-400",
   // On track is the neutral, unremarkable state: the glass
   // furniture's translucent white rather than a colored callout.
-  "on-track": "border-white/25 bg-white/15 text-white",
+  "on-track": "border-white/25 bg-white/15 text-chip-foreground",
   behind: "border-amber-600/30 text-amber-600 dark:text-amber-400",
 };
 
@@ -219,7 +219,7 @@ function SolarForecastWidget() {
             <InfoTooltip text={FORECAST_TOOLTIP} />
           </div>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-muted-foreground">
+            <CardTitle className="flex items-center gap-2 text-title-foreground">
               <Sun className="size-6" aria-hidden="true" />
               Solar forecast
             </CardTitle>
@@ -268,7 +268,7 @@ function SolarForecastWidget() {
           <InfoTooltip text={FORECAST_TOOLTIP} />
         </div>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-muted-foreground">
+          <CardTitle className="flex items-center gap-2 text-title-foreground">
             <Sun className="size-6" aria-hidden="true" />
             Solar forecast
           </CardTitle>
@@ -279,7 +279,7 @@ function SolarForecastWidget() {
               translucent white chip rather than a colored callout. */}
             <Badge
               variant="outline"
-              className="border-white/25 bg-white/15 text-white tabular-nums"
+              className="border-white/25 bg-white/15 text-chip-foreground tabular-nums"
             >
               Solar score {daily.solar_score}/100
             </Badge>
@@ -305,7 +305,7 @@ function SolarForecastWidget() {
           <div className="relative pt-4">
             {showForecastMark && (
               <span
-                className="absolute top-0 z-10 -translate-x-1/2 whitespace-nowrap text-[10px] text-muted-foreground"
+                className="absolute top-0 z-10 -translate-x-1/2 whitespace-nowrap text-[10px] text-subtle-foreground"
                 style={{ left: `${forecastPct}%` }}
               >
                 Forecasted

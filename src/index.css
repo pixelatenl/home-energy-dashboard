@@ -28,6 +28,13 @@
     --color-accent-foreground: var(--accent-foreground);
     --color-accent: var(--accent);
     --color-muted-foreground: var(--muted-foreground);
+    /* The title row's own tier: white kept at the transparency the
+       card titles have always used. */
+    --color-title-foreground: var(--title-foreground);
+    /* Fine print: chart furniture, legends, notes zones. */
+    --color-subtle-foreground: var(--subtle-foreground);
+    /* Chip text: one step lighter than the secondary register. */
+    --color-chip-foreground: var(--chip-foreground);
     --color-muted: var(--muted);
     /* The skeleton placeholders' own surface: a dark warm brown
        instead of the neutral muted gray, so loading states sit in
@@ -59,6 +66,11 @@
     --radius-2xl: calc(var(--radius) * 1.8);
     --radius-3xl: calc(var(--radius) * 2.2);
     --radius-4xl: calc(var(--radius) * 2.6);
+    /* Cards nested in cards round at two-thirds of the parent's
+       radius: the advisory day cards, the insight boxes, the inner
+       panels. Derived from --radius, so the step follows the
+       parent token wherever it goes. */
+    --radius-inset: calc(var(--radius) * 2 / 3);
 }
 
 :root {
@@ -69,12 +81,14 @@
        background. The glass look values pair with the gradient from
        https://css.glass. */
     --background: oklch(0.205 0 0);
-    /* Light text and chart lines on the dark glass surfaces. */
-    --foreground: oklch(0.985 0 0);
+    /* Primary text - card headlines and big figures - at stone-50:
+       the warm stone scale harmonizes with the amber/green earth
+       palette; cool grays (slate, zinc) would fight it. */
+    --foreground: #FAFAF9;
     --card: rgb(255 255 255 / 0.06);
     /* Hover glass: a gentle lift of the whisper fill. */
     --card-hover: rgb(255 255 255 / 0.12);
-    --card-foreground: oklch(0.985 0 0);
+    --card-foreground: #FAFAF9;
     /* Glass elevation, the reference recipe: two stacked outer
        drops (wide soft + tight shallow) and only 1px inner
        highlight lines top and bottom - no halo. The card's edges
@@ -103,9 +117,20 @@
        (#23140a) - a quiet dark recess that keeps a wisp of the
        warm undertone, with the pulse as the only signal. */
     --skeleton: #150c06;
-    /* Secondary text is white at a slight blend (75% opacity) so the
-       small lines sit a touch softer than the primary figures. */
-    --muted-foreground: rgb(255 255 255 / 0.75);
+    /* Small text - labels, sublines, chips, the page subtitle - at
+       stone-400, the same register as the chart legends: everything
+       but the leading elements reads quiet. */
+    --muted-foreground: #A8A29E;
+    /* Card titles keep their configured treatment: white at 75%
+       transparency, a touch softer than the primary figures. */
+    --title-foreground: rgb(255 255 255 / 0.75);
+    /* Fine print - chart furniture, legends, notes zones,
+       placeholders - at stone-400. */
+    --subtle-foreground: #A8A29E;
+    /* Chip text sits one step lighter than the secondary register:
+       chips are compact shapes that need a touch more presence than
+       plain small text. Stone-300. */
+    --chip-foreground: #D6D3D1;
     --accent: oklch(0.269 0 0);
     --accent-foreground: oklch(0.985 0 0);
     --destructive: oklch(0.704 0.191 22.216);
@@ -131,11 +156,11 @@
 
 .dark {
     --background: oklch(0.145 0 0);
-    --foreground: oklch(0.985 0 0);
+    --foreground: #FAFAF9;
     --card: oklch(0.205 0 0);
     /* Hover surface: one step lighter than the resting night fill. */
     --card-hover: oklch(0.235 0 0);
-    --card-foreground: oklch(0.985 0 0);
+    --card-foreground: #FAFAF9;
     /* Shadows barely read on dark backgrounds, so the night variants
        are deeper and wider: elevation must stay visible on the
        kiosk. */
@@ -150,7 +175,10 @@
     --muted: oklch(0.269 0 0);
     /* The night skeleton shares the same mid-ebony stop. */
     --skeleton: #150c06;
-    --muted-foreground: oklch(0.708 0 0);
+    --muted-foreground: #A8A29E;
+    --title-foreground: rgb(255 255 255 / 0.75);
+    --subtle-foreground: #A8A29E;
+    --chip-foreground: #D6D3D1;
     --accent: oklch(0.269 0 0);
     --accent-foreground: oklch(0.985 0 0);
     --destructive: oklch(0.704 0.191 22.216);
@@ -265,6 +293,13 @@
 
 .dark .glass-card::before,
 .dark .glass-card::after {
+  content: none;
+}
+
+/* The nested glass blocks (the advisory day cards) suppress the left
+   seam: at their small size it reads as a stray border rather than
+   an edge light. The top seam stays. */
+.glass-card.glass-inset::after {
   content: none;
 }
 

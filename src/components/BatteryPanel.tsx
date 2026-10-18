@@ -158,7 +158,7 @@ function FlowTooltip({
 // Dot chips matching the chart elements in the flow charts.
 function FlowLegend() {
   return (
-    <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+    <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-subtle-foreground">
       <span className="flex items-center gap-1.5">
         <span
           className="size-3 rounded-full"
@@ -251,11 +251,11 @@ function FlowChart({
   return (
     // Same strip background and height as the 5 day forecast's hourly
     // chart, so the two cards' charts and AI insights align.
-    <div className="rounded-xl bg-muted/30 p-4 h-64">
+    <div className="rounded-inset bg-muted/30 p-4 h-64">
       <div className="flex gap-2">
         {/* The y-axis labels, on the gridlines. */}
-        <div className="relative h-44 w-8 shrink-0 text-[10px] text-muted-foreground tabular-nums">
-          <span className="absolute -top-3.5 left-0 text-[10px] text-muted-foreground">
+        <div className="relative h-44 w-8 shrink-0 text-[10px] text-subtle-foreground tabular-nums">
+          <span className="absolute -top-3.5 left-0 text-[10px] text-subtle-foreground">
             kWh
           </span>
           {gridKwh.map((value) => (
@@ -372,7 +372,7 @@ function FlowChart({
       </div>
       <div className="flex gap-2">
         <div className="w-8 shrink-0" aria-hidden="true" />
-        <div className="relative mt-1 h-4 w-full text-xs text-muted-foreground tabular-nums">
+        <div className="relative mt-1 h-4 w-full text-xs text-subtle-foreground tabular-nums">
           <span className="absolute top-0 flex items-center gap-1">
             <Clock className="size-3" aria-hidden="true" />
             00
@@ -493,11 +493,11 @@ function PeriodFlowChart({
   );
 
   return (
-    <div className="rounded-xl bg-muted/30 p-4 h-64">
+    <div className="rounded-inset bg-muted/30 p-4 h-64">
       <div className="flex gap-2">
         {/* The y-axis labels, on the gridlines. */}
-        <div className="relative h-44 w-8 shrink-0 text-[10px] text-muted-foreground tabular-nums">
-          <span className="absolute -top-3.5 left-0 text-[10px] text-muted-foreground">
+        <div className="relative h-44 w-8 shrink-0 text-[10px] text-subtle-foreground tabular-nums">
+          <span className="absolute -top-3.5 left-0 text-[10px] text-subtle-foreground">
             kWh
           </span>
           {gridKwh.map((value) => (
@@ -601,7 +601,7 @@ function PeriodFlowChart({
           aligned with the plot past the y-axis gutter. */}
       <div className="flex gap-2">
         <div className="w-8 shrink-0" aria-hidden="true" />
-        <div className="relative mt-1 h-4 w-full text-xs text-muted-foreground tabular-nums">
+        <div className="relative mt-1 h-4 w-full text-xs text-subtle-foreground tabular-nums">
           {Array.from({ length: slotCount }, (_, index) => {
             let label = "";
             if (monthly) {
@@ -691,7 +691,7 @@ function BatteryPanel({
       <SkeletonReveal loading={loading} skeleton={skeleton}>
         {status === "error" || (flow === null && !loading) ? (
           <Card>
-            <CardContent className="text-sm text-muted-foreground">
+            <CardContent className="text-sm text-subtle-foreground">
               Could not load battery data. Try again in a moment.
             </CardContent>
           </Card>
@@ -734,7 +734,7 @@ function BatteryPanel({
     <SkeletonReveal loading={false} skeleton={skeleton}>
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-muted-foreground">
+          <CardTitle className="flex items-center gap-2 text-title-foreground">
             <BatteryCharging className="size-6" aria-hidden="true" />
             Battery
           </CardTitle>
@@ -839,7 +839,7 @@ function BatteryPanel({
                 <PeriodFlowChart flow={flow.series} period={period} />
               )
             ) : (
-              <div className="flex h-64 items-center justify-center rounded-xl bg-muted/30 text-sm text-muted-foreground">
+              <div className="flex h-64 items-center justify-center rounded-inset bg-muted/30 text-sm text-subtle-foreground">
                 No battery data for this period yet
               </div>
             )}

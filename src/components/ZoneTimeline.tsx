@@ -317,7 +317,7 @@ function TickRow({
   return (
     <div className="mt-1 flex items-center gap-3">
       <span className="w-24 shrink-0 sm:w-28 lg:w-32" aria-hidden="true" />
-      <div className="relative h-4 min-w-0 flex-1 text-xs text-muted-foreground tabular-nums">
+      <div className="relative h-4 min-w-0 flex-1 text-xs text-subtle-foreground tabular-nums">
         {tickMarks(fromMs, toMs, kind).map((tick) => (
           <span
             key={`${tick.pct}-${tick.label}`}
@@ -400,7 +400,7 @@ function ZoneTimeline({
           />
         </div>
         <TickRow fromMs={fromMs} toMs={toMs} kind={kind} />
-        <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+        <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-subtle-foreground">
           <span className="flex items-center gap-1.5">
             <span className="h-0.5 w-4 rounded bg-foreground" aria-hidden="true" />
             Temperature

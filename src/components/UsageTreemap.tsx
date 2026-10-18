@@ -126,7 +126,7 @@ function UsageTreemap({
         <Skeleton className="h-[24.75px] w-36" />
         <Skeleton className="h-5 w-72" />
       </div>
-      <Skeleton className="mt-2 h-80 w-full rounded-xl" />
+      <Skeleton className="mt-2 h-80 w-full rounded-inset" />
     </div>
   );
 
@@ -144,18 +144,18 @@ function UsageTreemap({
         />
         <div className="mt-2 flex flex-1 flex-col">
           {status === "error" && (
-            <p className="flex h-80 items-center justify-center rounded-xl border text-sm text-muted-foreground">
+            <p className="flex h-80 items-center justify-center rounded-inset border text-sm text-subtle-foreground">
               Could not load the usage breakdown. Try again in a moment.
             </p>
           )}
           {status !== "error" && (
             <div
               ref={connectContainer}
-              className="relative h-80 w-full overflow-hidden rounded-xl border bg-muted/30"
+              className="relative h-80 w-full overflow-hidden rounded-inset border bg-muted/30"
               onMouseLeave={() => setHoveredKey(null)}
             >
               {data !== null && tiles.length === 0 && (
-                <p className="absolute inset-0 flex items-center justify-center px-4 text-center text-sm text-muted-foreground">
+                <p className="absolute inset-0 flex items-center justify-center px-4 text-center text-sm text-subtle-foreground">
                   {totalPrimary === null || totalPrimary <= 0
                     ? hasData
                       ? "No usage recorded for this period yet."
@@ -198,7 +198,7 @@ function UsageTreemap({
                               {tile.label}
                             </span>
                             {tile.isEstimate && full && (
-                              <span className="shrink-0 rounded-full bg-black/30 px-1.5 py-0.5 text-[10px] font-medium leading-none text-white">
+                              <span className="shrink-0 rounded-full bg-black/30 px-1.5 py-0.5 text-[10px] font-medium leading-none text-chip-foreground">
                                 Est.
                               </span>
                             )}
@@ -243,7 +243,7 @@ function UsageTreemap({
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-sm font-medium">{hovered.label}</span>
                     {hovered.isEstimate && (
-                      <span className="rounded-full border px-1.5 py-0.5 text-[10px] font-medium leading-none text-muted-foreground">
+                      <span className="rounded-full border px-1.5 py-0.5 text-[10px] font-medium leading-none text-chip-foreground">
                         Est.
                       </span>
                     )}

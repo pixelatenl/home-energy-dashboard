@@ -31,7 +31,7 @@ function NavBar() {
           className={({ isActive }) =>
             `rounded-md px-4 py-1.5 text-sm font-medium transition focus-visible:outline-none ${
               isActive
-                ? "bg-white/20 text-foreground shadow-card backdrop-blur-sm"
+                ? "bg-white/20 text-chip-foreground shadow-card backdrop-blur-sm"
                 : "text-muted-foreground hover:text-foreground"
             }`
           }

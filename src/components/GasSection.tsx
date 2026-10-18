@@ -170,7 +170,7 @@ function GasSection({
       <SkeletonReveal loading={loading} skeleton={skeleton}>
         {status === "error" ? (
           <Card>
-            <CardContent className="text-sm text-muted-foreground">
+            <CardContent className="text-sm text-subtle-foreground">
               Could not load gas data. Try again in a moment.
             </CardContent>
           </Card>
@@ -265,7 +265,7 @@ function GasSection({
           </div>
           <div className="mt-4 flex gap-2">
             {/* The y-axis labels, on the gridlines. */}
-            <div className="relative h-36 w-8 shrink-0 text-[10px] text-muted-foreground tabular-nums">
+            <div className="relative h-36 w-8 shrink-0 text-[10px] text-subtle-foreground tabular-nums">
               {/* The axis unit: the mode's primary dimension. */}
               <span className="absolute -top-3.5 left-0">
                 {mode === "cost" ? "\u20AC" : "m3"}
@@ -365,7 +365,7 @@ function GasSection({
             no bar - centered on each bucket's place on the scale. */}
           <div className="flex gap-2">
             <div className="w-8 shrink-0" aria-hidden="true" />
-            <div className="relative h-4 w-full text-xs text-muted-foreground tabular-nums">
+            <div className="relative h-4 w-full text-xs text-subtle-foreground tabular-nums">
               {ticks.map((tick) => (
                 <span
                   key={`${tick.pct}-${tick.label}`}

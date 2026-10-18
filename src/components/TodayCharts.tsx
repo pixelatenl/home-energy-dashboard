@@ -94,7 +94,7 @@ function useNowFraction(): number {
 // dashed forecast curve's white, with matching swatch shapes.
 function TodaySolarLegend() {
   return (
-    <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+    <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-subtle-foreground">
       <span className="flex items-center gap-1.5">
         <span
           className="h-2 w-4 rounded-sm"
@@ -124,7 +124,7 @@ function TodaySolarLegend() {
 // The battery chart's legend: the bar pair's green and amber.
 function TodayBatteryLegend() {
   return (
-    <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+    <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-subtle-foreground">
       <span className="flex items-center gap-1.5">
         <span
           className="h-2 w-4 rounded-sm"
@@ -226,14 +226,14 @@ function TodaySolarChart({
           sub-line beneath. The chip keeps its right end clear of the
           corner's info tooltip. */}
         <CardHeader>
-          <CardTitle className="flex items-center gap-1.5 text-muted-foreground">
+          <CardTitle className="flex items-center gap-1.5 text-title-foreground">
             <Sun className="size-5 shrink-0" aria-hidden="true" />
             Solar today
           </CardTitle>
           <CardAction className="pr-5">
             <Badge
               variant="outline"
-              className="border-white/25 bg-white/15 text-white tabular-nums"
+              className="border-white/25 bg-white/15 text-chip-foreground tabular-nums"
             >
               Self usage:{" "}
               {selfConsumptionPct === null
@@ -364,7 +364,7 @@ function TodayBatteryChart({
           <InfoTooltip text={BATTERY_TODAY_TOOLTIP} />
         </div>
         <CardHeader className="flex flex-1 flex-col items-stretch">
-          <CardTitle className="flex items-center gap-1.5 text-muted-foreground">
+          <CardTitle className="flex items-center gap-1.5 text-title-foreground">
             <BatteryCharging className="size-5 shrink-0" aria-hidden="true" />
             Battery today
           </CardTitle>

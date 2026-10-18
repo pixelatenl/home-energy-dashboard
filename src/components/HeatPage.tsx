@@ -40,7 +40,7 @@ function HeatPage() {
     >
       {!hasData ? (
         <Card>
-          <CardContent className="text-sm text-muted-foreground">
+          <CardContent className="text-sm text-subtle-foreground">
             Heat data starts on 12 October 2026.
           </CardContent>
         </Card>
@@ -66,7 +66,7 @@ function HeatPage() {
           >
             {zones.status === "error" ? (
               <Card>
-                <CardContent className="text-sm text-muted-foreground">
+                <CardContent className="text-sm text-subtle-foreground">
                   Could not load zone data. Try again in a moment.
                 </CardContent>
               </Card>

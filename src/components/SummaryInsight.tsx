@@ -8,25 +8,28 @@ import {
   type AdvisoryItem,
 } from "@/lib/advisoryRows";
 
-// One shared glass definition for the whole advisory surface: 15
-// percent translucent white, white text and a soft backdrop blur. The
-// rows carry the subtle translucent white border; the chips render
-// borderless on top of them. Defined once, never per instance.
-const GLASS_SURFACE =
-  "border border-white/20 bg-white/15 text-white backdrop-blur-sm";
+// The advisory day cards render in the stat cards' own surface: the
+// app-wide glass pane (the .glass-card blur, saturation and edge
+// seams), the 0.06 token fill, the card elevation and the token
+// rounding - the same recipe as every Card in the app, defined
+// once, never per instance. The chips keep the pill register on
+// top of them.
+const CARD_SURFACE =
+  "glass-card glass-inset rounded-inset bg-card text-muted-foreground shadow-card";
 // The structured advisory rows: a column block whose day chip sits on
 // its own line above the main text, like the compact widgets'
 // label-above-content pattern, so every row's text starts on one
 // vertical line.
-const GLASS_BLOCK = `flex flex-col gap-1.5 rounded-xl p-3 ${GLASS_SURFACE}`;
-const GLASS_CHIP = "rounded-full bg-white/15 text-white backdrop-blur-sm";
+const GLASS_BLOCK = `flex flex-col gap-1.5 p-3 ${CARD_SURFACE}`;
+const GLASS_CHIP =
+  "rounded-full bg-white/15 text-chip-foreground backdrop-blur-sm";
 
 // The provenance chip and refresh control in the panel's header
 // right cluster: the "Insight from HH:MM" stamp (or the honest
 // absence) and the force-refresh button, in the panel's own glass
 // register so they read as the card's furniture.
 const PROVENANCE_CHIP =
-  "flex shrink-0 items-center rounded-full border border-white/20 bg-white/15 px-2.5 py-1 text-xs font-medium text-white tabular-nums backdrop-blur-sm";
+  "flex shrink-0 items-center rounded-full border border-white/20 bg-white/15 px-2.5 py-1 text-xs font-medium text-chip-foreground tabular-nums backdrop-blur-sm";
 
 // The header's right cluster shared by every render branch: the
 // Reasoning chip while the server regenerates, then the provenance
@@ -63,7 +66,7 @@ function HeaderCluster({
         title={refreshTitle}
         disabled={refreshDisabled}
         onClick={onRefresh}
-        className="cursor-pointer rounded-full p-1 text-white/60 transition-colors hover:text-white focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-40"
+        className="cursor-pointer rounded-full p-1 text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-40"
       >
         <RefreshCw className="size-3.5" aria-hidden="true" />
       </button>
@@ -72,9 +75,9 @@ function HeaderCluster({
 }
 
 // The notes zone's fine print: the horizon and context notes below the
-// rows - smaller text, the card's muted register, slightly more line
+// rows - smaller text, the card's quietest register, slightly more line
 // spacing. Plain text, never glass, never chips.
-const NOTE_TEXT = "text-[11px] leading-loose text-white";
+const NOTE_TEXT = "text-[11px] leading-loose text-subtle-foreground";
 
 // One piece of advice inside a day card: the lead sentence with its
 // right-side value chip, its supporting lines and optional trailing
@@ -108,21 +111,22 @@ function AdvisoryItemView({ item }: { item: AdvisoryItem }) {
       </div>
       {item.supporting.map((line, index) => (
         // The supporting lines sit one step below their title - the
-        // same translucent white the widget titles use, so the small
-        // text reads as explanation, not as a second command.
+        // same quiet register as the rest of the card's regular
+        // text, so the small text reads as explanation, not as a
+        // second command.
         <p
           key={index}
           className={
             line.tabular
-              ? "text-xs leading-relaxed tabular-nums text-white/80"
-              : "text-xs leading-relaxed text-white/80"
+              ? "text-xs leading-relaxed tabular-nums text-muted-foreground"
+              : "text-xs leading-relaxed text-muted-foreground"
           }
         >
           {line.text}
         </p>
       ))}
       {item.footer?.kind === "confidence" && (
-        <p className="text-[10px] font-medium uppercase tracking-wide">
+        <p className="text-[10px] font-medium uppercase tracking-wide text-subtle-foreground">
           {item.footer.label} confidence
         </p>
       )}
@@ -200,7 +204,7 @@ function SummaryInsight({
   // not pulse; only the shared Skeleton lines inside it do.
   const skeleton = (
     <div
-      className="h-full min-h-36 rounded-lg border bg-gradient-to-bl from-[#0d0805] via-[#241610] to-[#4a2c14] p-4 text-white shadow-card"
+      className="glass-card glass-inset h-full min-h-36 rounded-lg bg-gradient-to-bl from-[#0d0805] via-[#241610] to-[#4a2c14] p-4 text-card-foreground shadow-card"
       aria-busy="true"
     >
       {/* The header row during loading carries only the panel title:
@@ -213,9 +217,9 @@ function SummaryInsight({
       <div className="mt-2 space-y-2">
         {[0, 1].map((index) => (
           <div key={index} className={GLASS_BLOCK}>
-            <Skeleton className="h-3.5 w-20 bg-white/30" />
-            <Skeleton className="h-3 w-3/4 bg-white/30" />
-            <Skeleton className="h-3 w-1/2 bg-white/30" />
+            <Skeleton className="h-3.5 w-20" />
+            <Skeleton className="h-3 w-3/4" />
+            <Skeleton className="h-3 w-1/2" />
           </div>
         ))}
       </div>
@@ -229,7 +233,7 @@ function SummaryInsight({
   if (!insight?.primary_action) {
     return (
       <SkeletonReveal loading={loading} skeleton={skeleton}>
-        <div className="h-full min-h-36 rounded-lg border bg-gradient-to-bl from-[#0d0805] via-[#241610] to-[#4a2c14] p-4 text-white shadow-card">
+        <div className="glass-card glass-inset h-full min-h-36 rounded-lg bg-gradient-to-bl from-[#0d0805] via-[#241610] to-[#4a2c14] p-4 text-card-foreground shadow-card">
           <p className="flex items-center gap-2 font-heading text-lg font-medium text-muted-foreground">
             <Sparkles className="size-6" aria-hidden="true" />
             AI advisory
@@ -251,13 +255,15 @@ function SummaryInsight({
 
   return (
     <SkeletonReveal loading={loading} skeleton={skeleton}>
-      {/* The warm brown AI panel is the whole widget; the gradient
-          is the visual identity of AI content - the same
-          dark-to-warm-brown ramp as the page body (dark at the top
-          right, the body's lighter brown at the lower left) every AI
-          box uses. It stretches to the full grid row so it matches
-          the height of the stats column next to it. */}
-      <div className="h-full rounded-lg border bg-gradient-to-bl from-[#0d0805] via-[#241610] to-[#4a2c14] p-4 text-white shadow-card">
+      {/* The warm brown AI panel is the whole widget, in the stat
+          cards' own shape - the glass pane (blur, saturation, edge
+          seams), the token rounding, the card elevation, no border -
+          with the gradient kept as the AI content's visual identity:
+          the same dark-to-warm-brown ramp as the page body (dark at
+          the top right, the body's lighter brown at the lower left)
+          every AI box uses. It stretches to the full grid row so it
+          matches the height of the stats column next to it. */}
+      <div className="glass-card glass-inset h-full rounded-lg bg-gradient-to-bl from-[#0d0805] via-[#241610] to-[#4a2c14] p-4 text-card-foreground shadow-card">
         <p className="flex items-center gap-2 font-heading text-lg font-medium text-muted-foreground">
           <Sparkles className="size-6" aria-hidden="true" />
           AI advisory

@@ -21,7 +21,7 @@ function ModeToggle() {
           onClick={() => setMode(value)}
           className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition focus-visible:outline-none ${
             mode === value
-              ? "bg-white/20 text-foreground shadow-card backdrop-blur-sm"
+              ? "bg-white/20 text-chip-foreground shadow-card backdrop-blur-sm"
               : "text-muted-foreground hover:text-foreground"
           }`}
         >

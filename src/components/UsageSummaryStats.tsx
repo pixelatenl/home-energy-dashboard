@@ -100,7 +100,7 @@ function UsageSummaryStats({
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <div className="min-w-0 sm:col-span-2 lg:col-span-3">
           <SkeletonReveal loading={loading} skeleton={skeleton}>
-            <p className="min-h-12 text-sm text-muted-foreground">
+            <p className="min-h-12 text-sm text-subtle-foreground">
               {status === "error"
                 ? "Could not load the usage breakdown."
                 : "No usage data for this period."}
@@ -129,7 +129,7 @@ function UsageSummaryStats({
                 </div>
                 <CardHeader className="flex flex-1 flex-col items-stretch justify-between">
                   <div className="flex flex-col gap-1">
-                    <CardTitle className="flex items-center gap-1.5 text-muted-foreground">
+                    <CardTitle className="flex items-center gap-1.5 text-title-foreground">
                       <House className="size-5 shrink-0" aria-hidden="true" />
                       Household usage
                     </CardTitle>
@@ -163,7 +163,7 @@ function UsageSummaryStats({
               <Card className="relative min-h-24">
                 <CardHeader className="flex flex-1 flex-col items-stretch justify-between">
                   <div className="flex flex-col gap-1">
-                    <CardTitle className="flex items-center gap-1.5 text-muted-foreground">
+                    <CardTitle className="flex items-center gap-1.5 text-title-foreground">
                       <PlugZap className="size-5 shrink-0" aria-hidden="true" />
                       Net grid
                     </CardTitle>
@@ -190,7 +190,7 @@ function UsageSummaryStats({
               <Card className="relative min-h-24">
                 <CardHeader className="flex flex-1 flex-col items-stretch justify-between">
                   <div className="flex flex-col gap-1">
-                    <CardTitle className="flex items-center gap-1.5 text-muted-foreground">
+                    <CardTitle className="flex items-center gap-1.5 text-title-foreground">
                       <Recycle className="size-5 shrink-0" aria-hidden="true" />
                       Saved and earned
                     </CardTitle>

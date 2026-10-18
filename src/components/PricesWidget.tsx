@@ -223,7 +223,7 @@ function PriceBars({
         </svg>
         {nowFraction !== null && (
           <span
-            className="pointer-events-none absolute top-0 -translate-x-1/2 text-[10px] text-muted-foreground"
+            className="pointer-events-none absolute top-0 -translate-x-1/2 text-[10px] text-subtle-foreground"
             style={{
               left: `${((Math.floor(nowFraction) + 0.5) / 24) * 100}%`,
             }}
@@ -233,7 +233,7 @@ function PriceBars({
         )}
         {block && (
           <span
-            className="pointer-events-none absolute top-4 -translate-x-1/2 whitespace-nowrap text-[10px] text-muted-foreground"
+            className="pointer-events-none absolute top-4 -translate-x-1/2 whitespace-nowrap text-[10px] text-subtle-foreground"
             style={{
               left: `${((block.startHour + block.endHour) / 2 / 24) * 100}%`,
             }}
@@ -252,7 +252,7 @@ function PriceBars({
       {/* The hour labels sit centered under their bars - the label 12
           beneath the 12th bar, the price of that hour - not at the
           slot boundary where the hour starts. */}
-      <div className="relative mt-1 h-4 text-xs text-muted-foreground tabular-nums">
+      <div className="relative mt-1 h-4 text-xs text-subtle-foreground tabular-nums">
         {[0, 3, 6, 9, 12, 15, 18, 21].map((hour) => (
           <span
             key={hour}
@@ -270,7 +270,7 @@ function PriceBars({
 // Color swatches matching the chart elements in PriceBars.
 function PriceChartLegend() {
   return (
-    <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+    <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-subtle-foreground">
       <span className="flex items-center gap-1.5">
         <span
           className="h-3 w-6 rounded-sm"
@@ -418,12 +418,12 @@ function PricesWidget() {
             </div>
           ))}
         </div>
-        <div className="rounded-xl bg-muted/30 p-4">
+        <div className="rounded-inset bg-muted/30 p-4">
           <Skeleton className="h-36 w-full rounded-md" />
           <Skeleton className="mt-1 h-4 w-1/2" />
           <Skeleton className="mt-1 h-4 w-2/3" />
         </div>
-        <div className="rounded-xl bg-muted/30 p-4">
+        <div className="rounded-inset bg-muted/30 p-4">
           <div className="flex items-center justify-between">
             <Skeleton className="h-5 w-20" />
             <Skeleton className="h-4 w-32" />
@@ -432,7 +432,7 @@ function PricesWidget() {
           <Skeleton className="mt-1 h-4 w-1/2" />
         </div>
         <Skeleton className="h-5 w-48" />
-        <Skeleton className="h-24 w-full rounded-xl" />
+        <Skeleton className="h-24 w-full rounded-inset" />
       </CardContent>
     </Card>
   );
@@ -447,7 +447,7 @@ function PricesWidget() {
         />
         <CardContent className="space-y-4">
           {status === "error" && (
-            <div className="flex min-h-72 items-center justify-between rounded-xl border border-destructive/30 px-4">
+            <div className="flex min-h-72 items-center justify-between rounded-inset border border-destructive/30 px-4">
               <p className="text-sm text-destructive">
                 Could not load the prices.
               </p>
@@ -490,7 +490,7 @@ function PricesWidget() {
 
               {/* Same muted strip background as the battery and forecast
                 charts. */}
-              <div className="rounded-xl bg-muted/30 p-4">
+              <div className="rounded-inset bg-muted/30 p-4">
                 <PriceBars
                   hours={todayHours}
                   average={summary.today.average}
@@ -516,7 +516,7 @@ function PricesWidget() {
                   )}
               </div>
 
-              <div className="rounded-xl bg-muted/30 p-4">
+              <div className="rounded-inset bg-muted/30 p-4">
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-medium">Tomorrow</span>
                   {summary.tomorrow.available && tomorrowHours.length > 0 && (
@@ -541,7 +541,7 @@ function PricesWidget() {
                     // height - the bars (h-36) plus the hour label row
                     // (mt-1 h-4) - so the panel never changes height the
                     // moment tomorrow's prices drop in.
-                    <div className="flex h-41 items-center justify-center rounded-lg bg-card text-sm text-muted-foreground">
+                    <div className="flex h-41 items-center justify-center rounded-lg bg-card text-sm text-subtle-foreground">
                       Tomorrow&rsquo;s prices are not published yet
                     </div>
                   )}

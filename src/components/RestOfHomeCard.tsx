@@ -77,7 +77,7 @@ function RestOfHomeCard({ data, status, mode }: RestOfHomeCardProps) {
         />
         <div className="mt-2 flex flex-1 flex-col">
           {data === null ? (
-            <p className="min-h-24 text-sm text-muted-foreground">
+            <p className="min-h-24 text-sm text-subtle-foreground">
               {status === "error"
                 ? "Could not load the usage breakdown."
                 : "No usage data for this period."}
@@ -148,7 +148,7 @@ function RestOfHomeBody({ data, mode }: { data: UsageBreakdown; mode: Mode }) {
               <span className="flex items-center gap-1.5">
                 <span className="truncate">{entry.name}</span>
                 <span
-                  className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium leading-none text-muted-foreground"
+                  className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium leading-none text-chip-foreground"
                   title={
                     entry.derived
                       ? "Derived per day from this period's own hourly consumption"
@@ -171,7 +171,7 @@ function RestOfHomeBody({ data, mode }: { data: UsageBreakdown; mode: Mode }) {
                 }}
               />
             </div>
-            <p className="mt-1 text-[10px] leading-tight text-muted-foreground">
+            <p className="mt-1 text-[10px] leading-tight text-subtle-foreground">
               {entry.basis}
             </p>
           </div>
@@ -182,7 +182,7 @@ function RestOfHomeBody({ data, mode }: { data: UsageBreakdown; mode: Mode }) {
               <span className="flex items-center gap-1.5">
                 <span>Unexplained</span>
                 <span
-                  className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium leading-none text-muted-foreground"
+                  className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium leading-none text-chip-foreground"
                   title="Remainder the model does not cover"
                 >
                   model

@@ -53,7 +53,7 @@ function HeatingModelCard({
       <SkeletonReveal loading={loading} skeleton={skeleton}>
         {status === "error" ? (
           <Card>
-            <CardContent className="text-sm text-muted-foreground">
+            <CardContent className="text-sm text-subtle-foreground">
               Could not load the heating cost model. Try again in a moment.
             </CardContent>
           </Card>
@@ -75,7 +75,7 @@ function HeatingModelCard({
             <div className="space-y-2">
               <p className="text-sm font-medium">Gas</p>
               {gas.cost_per_kwh_heat === null ? (
-                <p className="text-sm text-muted-foreground">
+                <p className="text-sm text-subtle-foreground">
                   Not enough data for this period.
                 </p>
               ) : (
@@ -107,12 +107,12 @@ function HeatingModelCard({
             <div className="space-y-2">
               <p className="text-sm font-medium">
                 Heat pump
-                <span className="ml-1.5 rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
+                <span className="ml-1.5 rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-chip-foreground">
                   estimate
                 </span>
               </p>
               {pump.cost_per_kwh_heat === null ? (
-                <p className="text-sm text-muted-foreground">
+                <p className="text-sm text-subtle-foreground">
                   Not enough data for this period.
                 </p>
               ) : (

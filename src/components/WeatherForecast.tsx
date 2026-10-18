@@ -127,7 +127,7 @@ function niceCeil(value: number): number {
 // Color swatches matching the chart elements in HourlyChart.
 function ChartLegend() {
   return (
-    <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+    <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-subtle-foreground">
       <span className="flex items-center gap-1.5">
         <svg width="16" height="8" aria-hidden="true">
           <line
@@ -310,7 +310,7 @@ function HourlyChart({ hours }: { hours: WeatherHour[] }) {
           {ticks.map((tick) => (
             <span
               key={tick}
-              className="absolute right-0 -translate-y-1/2 text-xs text-muted-foreground tabular-nums"
+              className="absolute right-0 -translate-y-1/2 text-xs text-subtle-foreground tabular-nums"
               style={{ top: `${(yTemp(tick) / height) * 100}%` }}
             >
               {Math.round(tick)}&deg;
@@ -407,7 +407,7 @@ function HourlyChart({ hours }: { hours: WeatherHour[] }) {
           </svg>
           {showNow && (
             <span
-              className="pointer-events-none absolute top-0 -translate-x-1/2 text-[10px] text-muted-foreground"
+              className="pointer-events-none absolute top-0 -translate-x-1/2 text-[10px] text-subtle-foreground"
               style={{
                 left: `${((now.fraction - firstHour) / Math.max(hours.length, 1)) * 100}%`,
               }}
@@ -425,13 +425,13 @@ function HourlyChart({ hours }: { hours: WeatherHour[] }) {
         {/* Right axis: PV estimate scale in Wh, visually quiet - three
             ticks (0, half, max) plus a small unit label. */}
         <div className="relative h-36 w-8 shrink-0">
-          <span className="absolute left-0 top-0 text-[10px] text-muted-foreground">
+          <span className="absolute left-0 top-0 text-[10px] text-subtle-foreground">
             Wh
           </span>
           {pvTicks.map((tick) => (
             <span
               key={tick.value}
-              className="absolute left-0 -translate-y-1/2 text-xs text-muted-foreground tabular-nums"
+              className="absolute left-0 -translate-y-1/2 text-xs text-subtle-foreground tabular-nums"
               style={{ top: `${(pvY(tick.value) / height) * 100}%` }}
             >
               {tick.label}
@@ -446,7 +446,7 @@ function HourlyChart({ hours }: { hours: WeatherHour[] }) {
           collide with them. The mx-10 padding matches the chart
           row's two w-8 + gap-2 gutters, so the row spans the plot
           width exactly. */}
-      <div className="relative mx-10 mt-1 h-4 text-xs text-muted-foreground tabular-nums">
+      <div className="relative mx-10 mt-1 h-4 text-xs text-subtle-foreground tabular-nums">
         <Sunrise
           className="absolute left-0 top-0 hidden size-4 sm:block"
           aria-hidden="true"
@@ -501,7 +501,7 @@ function DayCard({
       type="button"
       onClick={() => onSelect(day.date)}
       aria-pressed={selected}
-      className={`flex w-full flex-col items-center gap-1.5 rounded-xl border p-3 text-center transition-colors ${
+      className={`flex w-full flex-col items-center gap-1.5 rounded-inset border p-3 text-center transition-colors ${
         selected
           ? "border-transparent bg-muted/60 shadow-sm"
           : "border-transparent hover:bg-muted/50"
@@ -722,7 +722,7 @@ function WeatherForecast() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-muted-foreground">
+        <CardTitle className="flex items-center gap-2 text-title-foreground">
           <Sun className="size-6" aria-hidden="true" />5 day solar forecast
         </CardTitle>
         <CardDescription>
@@ -730,7 +730,7 @@ function WeatherForecast() {
         </CardDescription>
         {hourlyData && (
           <CardAction>
-            <Badge variant="outline" className="tabular-nums">
+            <Badge variant="outline" className="text-chip-foreground tabular-nums">
               PV{" "}
               {(
                 hourlyData.hours.reduce(
@@ -757,7 +757,7 @@ function WeatherForecast() {
               {[0, 1, 2, 3, 4].map((index) => (
                 <Skeleton
                   key={index}
-                  className={`rounded-xl ${DAY_CARD_HEIGHT}`}
+                  className={`rounded-inset ${DAY_CARD_HEIGHT}`}
                 />
               ))}
             </div>
@@ -765,7 +765,7 @@ function WeatherForecast() {
         >
           {dailyStatus === "error" ? (
             <div
-              className={`flex items-center justify-between rounded-xl border border-destructive/30 px-4 ${DAY_CARD_HEIGHT}`}
+              className={`flex items-center justify-between rounded-inset border border-destructive/30 px-4 ${DAY_CARD_HEIGHT}`}
             >
               <p className="text-sm text-destructive">
                 Could not load the weather forecast.
@@ -793,7 +793,7 @@ function WeatherForecast() {
         </SkeletonReveal>
 
         {selectedDate && (
-          <div className={`rounded-xl bg-muted/30 p-4 ${STRIP_HEIGHT}`}>
+          <div className={`rounded-inset bg-muted/30 p-4 ${STRIP_HEIGHT}`}>
             {/* One skeleton session per first load and error retry
                 (keyed by the session counter): the keyed instance
                 mounts with loading already true, so the floor and

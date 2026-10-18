@@ -14,7 +14,7 @@ interface SectionHeaderProps {
 function SectionHeader({ icon: Icon, title, description }: SectionHeaderProps) {
   return (
     <div className="grid auto-rows-min items-start gap-1">
-      <p className="flex items-center gap-2 font-heading text-lg leading-snug font-medium text-muted-foreground">
+      <p className="flex items-center gap-2 font-heading text-lg leading-snug font-medium text-title-foreground">
         <Icon className="size-6" aria-hidden="true" />
         {title}
       </p>

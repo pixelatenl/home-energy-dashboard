@@ -234,13 +234,13 @@ function UsageSlotChart({
       <CardContent>
         <SkeletonReveal loading={loading} skeleton={contentSkeleton}>
           {data === null ? (
-            <p className="min-h-32 text-sm text-muted-foreground">
+            <p className="min-h-32 text-sm text-subtle-foreground">
               {status === "error"
                 ? "Could not load the usage breakdown."
                 : "No usage data for this period."}
             </p>
           ) : slots.length === 0 ? (
-            <p className="min-h-32 text-sm text-muted-foreground">
+            <p className="min-h-32 text-sm text-subtle-foreground">
               No usage data for this period.
             </p>
           ) : (
@@ -268,7 +268,7 @@ function UsageSlotChart({
                   (value) => (
                     <span
                       key={value}
-                      className="pointer-events-none absolute left-0 w-8 -translate-y-1/2 text-right text-[10px] text-muted-foreground tabular-nums"
+                      className="pointer-events-none absolute left-0 w-8 -translate-y-1/2 text-right text-[10px] text-subtle-foreground tabular-nums"
                       style={{ top: valueY(value) }}
                     >
                       {tickLabel(value)}
@@ -383,12 +383,12 @@ function UsageSlotChart({
                     )}
                   </svg>
                   {priceOverlay && prices.length > 0 && (
-                    <span className="pointer-events-none absolute right-1 top-0 text-[10px] text-muted-foreground tabular-nums">
+                    <span className="pointer-events-none absolute right-1 top-0 text-[10px] text-subtle-foreground tabular-nums">
                       €{priceMax.toFixed(2)}
                     </span>
                   )}
                   {priceOverlay && prices.length > 0 && (
-                    <span className="pointer-events-none absolute right-1 bottom-1 text-[10px] text-muted-foreground tabular-nums">
+                    <span className="pointer-events-none absolute right-1 bottom-1 text-[10px] text-subtle-foreground tabular-nums">
                       €{priceMin.toFixed(2)}
                     </span>
                   )}
@@ -423,7 +423,7 @@ function UsageSlotChart({
                   )}
                 </div>
               </div>
-              <div className="relative mt-1 h-4 pl-9 text-xs text-muted-foreground tabular-nums">
+              <div className="relative mt-1 h-4 pl-9 text-xs text-subtle-foreground tabular-nums">
                 {slots.map((slot, index) => {
                   const label = axisLabel(slot, index, unit);
                   if (label === "") {

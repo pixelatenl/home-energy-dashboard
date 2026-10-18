@@ -81,7 +81,7 @@ function StatsHeader() {
               fixed sub-lines spread to the bottom, so the card fills
               its grid cell without a bottom gap. */}
             <div className="flex flex-col gap-1">
-              <CardTitle className="flex items-center gap-1.5 text-muted-foreground">
+              <CardTitle className="flex items-center gap-1.5 text-title-foreground">
                 <PlugZap className="size-5 shrink-0" aria-hidden="true" />
                 From the grid
               </CardTitle>
@@ -128,7 +128,7 @@ function StatsHeader() {
               fixed sub-lines spread to the bottom, so the card fills
               its grid cell without a bottom gap. */}
             <div className="flex flex-col gap-1">
-              <CardTitle className="flex items-center gap-1.5 text-muted-foreground">
+              <CardTitle className="flex items-center gap-1.5 text-title-foreground">
                 <House className="size-5 shrink-0" aria-hidden="true" />
                 Home usage
                 {summary !== null && !summary.pv_available && (

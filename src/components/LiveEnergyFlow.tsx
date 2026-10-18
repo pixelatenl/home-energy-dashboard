@@ -208,7 +208,7 @@ function FlowNodeView({ node }: { node: FlowNode }) {
 function HomeLabel({ node }: { node: FlowNode }) {
   return (
     <div
-      className="absolute -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded-full border border-border/70 bg-background px-2.5 py-1 font-semibold leading-none tabular-nums shadow-sm"
+      className="absolute -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded-full border border-border/70 bg-background px-2.5 py-1 font-semibold leading-none tabular-nums text-chip-foreground shadow-sm"
       style={{
         left: `${(HOME_LABEL.x / DIAGRAM_WIDTH) * 100}%`,
         top: `${(HOME_LABEL.y / DIAGRAM_HEIGHT) * 100}%`,
@@ -226,7 +226,7 @@ function HomeLabel({ node }: { node: FlowNode }) {
 function FlowEdgeChip({ edge }: { edge: FlowEdge }) {
   return (
     <div
-      className="absolute -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded-full border border-border/70 bg-background px-2 py-0.5 font-semibold leading-none tabular-nums text-card-foreground shadow-sm"
+      className="absolute -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded-full border border-border/70 bg-background px-2 py-0.5 font-semibold leading-none tabular-nums text-chip-foreground shadow-sm"
       style={{
         left: `${(edge.chip.x / DIAGRAM_WIDTH) * 100}%`,
         top: `${(edge.chip.y / DIAGRAM_HEIGHT) * 100}%`,
@@ -318,7 +318,7 @@ function StackedNodes({ data }: { data: FlowData }) {
                 {node.sub}
               </span>
             )}
-            <span className="ml-auto shrink-0 rounded-full bg-muted px-2 py-0.5 text-sm font-semibold tabular-nums">
+            <span className="ml-auto shrink-0 rounded-full bg-muted px-2 py-0.5 text-sm font-semibold tabular-nums text-chip-foreground">
               {node.figure}
             </span>
           </div>
@@ -349,7 +349,7 @@ function LiveEnergyFlow() {
         <Skeleton className="h-4 w-56" />
       </CardHeader>
       <CardContent>
-        <Skeleton className="h-80 w-full rounded-xl" />
+        <Skeleton className="h-80 w-full rounded-inset" />
       </CardContent>
     </Card>
   );
@@ -372,7 +372,7 @@ function LiveEnergyFlow() {
         {/* The sky fills the card behind everything; content sits above it. */}
         <TimeOfDayBackground phase={phase} sunProgress={sunProgress} />
         <CardHeader className="relative z-10">
-          <CardTitle className="flex items-center gap-2 text-muted-foreground">
+          <CardTitle className="flex items-center gap-2 text-title-foreground">
             <Zap className="size-6" aria-hidden="true" />
             Live energy flow
           </CardTitle>

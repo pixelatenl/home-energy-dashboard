@@ -19,7 +19,7 @@ interface PanelHeaderProps {
 function PanelHeader({ icon: Icon, title, description }: PanelHeaderProps) {
   return (
     <CardHeader>
-      <CardTitle className="flex items-center gap-2 text-muted-foreground">
+      <CardTitle className="flex items-center gap-2 text-title-foreground">
         <Icon className="size-6" aria-hidden="true" />
         {title}
       </CardTitle>

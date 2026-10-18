@@ -47,7 +47,7 @@ function SelfUsageCard({ period, mode }: { period: Period; mode: Mode }) {
   if (data === null) {
     return (
       <SkeletonReveal loading={loading} skeleton={<StatCardSkeleton />}>
-        <p className="min-h-12 text-sm text-muted-foreground">
+        <p className="min-h-12 text-sm text-subtle-foreground">
           {status === "error"
             ? "Could not load the solar production data."
             : "No solar data for this period."}
@@ -66,7 +66,7 @@ function SelfUsageCard({ period, mode }: { period: Period; mode: Mode }) {
         </div>
         <CardHeader className="flex flex-1 flex-col items-stretch justify-between">
           <div className="flex flex-col gap-1">
-            <CardTitle className="flex items-center gap-1.5 text-muted-foreground">
+            <CardTitle className="flex items-center gap-1.5 text-title-foreground">
               <Sun className="size-5 shrink-0" aria-hidden="true" />
               Self usage
             </CardTitle>

@@ -86,7 +86,7 @@ function PeriodNavigator() {
         <button
           type="button"
           onClick={goToday}
-          className="inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none"
+          className="inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium text-chip-foreground transition-colors hover:text-foreground focus-visible:outline-none"
         >
           <Undo2 className="size-3.5" aria-hidden="true" />
           Today
@@ -123,7 +123,7 @@ function PeriodNavigator() {
               onClick={() => setKind(value)}
               className={`${segmentBase} ${
                 period.kind === value
-                  ? "bg-white/20 text-foreground shadow-card backdrop-blur-sm"
+                  ? "bg-white/20 text-chip-foreground shadow-card backdrop-blur-sm"
                   : "text-muted-foreground hover:text-foreground"
               }`}
             >

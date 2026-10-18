@@ -116,7 +116,7 @@ function ArchitecturePage() {
                       aria-hidden="true"
                     />
                   )}
-                  <span className="flex items-center gap-1.5 rounded-full border bg-card px-3 py-1.5 text-sm font-medium">
+                  <span className="flex items-center gap-1.5 rounded-full border bg-card px-3 py-1.5 text-sm font-medium text-chip-foreground">
                     <node.icon
                       className="size-4 shrink-0 text-muted-foreground"
                       aria-hidden="true"

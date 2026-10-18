@@ -220,7 +220,7 @@ function SolarProductionChart({
           description={`${periodLabel(period)} - PV production per ${hourly ? "hour" : "day"}`}
         />
         <CardContent>
-          <p className="min-h-32 text-sm text-muted-foreground">
+          <p className="min-h-32 text-sm text-subtle-foreground">
             No PV data for this period. Production data starts on 10 October
             2026.
           </p>
@@ -255,12 +255,12 @@ function SolarProductionChart({
         >
           {data === null ? (
             status === "error" ? (
-              <p className="min-h-32 text-sm text-muted-foreground">
+              <p className="min-h-32 text-sm text-subtle-foreground">
                 Could not load the solar production data.
               </p>
             ) : null
           ) : slots.length === 0 || data.series.length === 0 ? (
-            <p className="min-h-32 text-sm text-muted-foreground">
+            <p className="min-h-32 text-sm text-subtle-foreground">
               No production recorded for this period yet.
             </p>
           ) : (
@@ -384,7 +384,7 @@ function SolarProductionChart({
                   ).map((value) => (
                     <span
                       key={value}
-                      className="pointer-events-none absolute right-0 -translate-y-1/2 text-right text-[10px] text-muted-foreground tabular-nums"
+                      className="pointer-events-none absolute right-0 -translate-y-1/2 text-right text-[10px] text-subtle-foreground tabular-nums"
                       style={{ top: valueY(value) }}
                     >
                       {tickLabel(value)}
@@ -551,7 +551,7 @@ function SolarProductionChart({
                     forecast's wording and placement. */}
                   {nowVisible && nowHour !== null && (
                     <span
-                      className="pointer-events-none absolute -top-4 -translate-x-1/2 text-[10px] text-muted-foreground"
+                      className="pointer-events-none absolute -top-4 -translate-x-1/2 text-[10px] text-subtle-foreground"
                       style={{
                         left: `${((nowHour - dayStart + 0.5) / slotCount) * 100}%`,
                       }}
@@ -668,7 +668,7 @@ function SolarProductionChart({
                 edges, the 5-day forecast's idiom - hidden on narrow
                 widths, where the first and last labels would
                 collide with them. */}
-              <div className="relative mx-10 mt-1 h-4 text-xs text-muted-foreground tabular-nums">
+              <div className="relative mx-10 mt-1 h-4 text-xs text-subtle-foreground tabular-nums">
                 {period.kind === "day" && (
                   <>
                     <Sunrise
@@ -700,7 +700,7 @@ function SolarProductionChart({
                 })}
               </div>
               {mode === "cost" && (
-                <p className="mt-3 text-xs text-muted-foreground">
+                <p className="mt-3 text-xs text-subtle-foreground">
                   Solar benefit (savings + export) prices only the solar your
                   home used at the grid price plus what the raw export counter
                   earned; "if all production were self-consumed" values all

@@ -119,7 +119,7 @@ function LiveUsageCard() {
           <InfoTooltip text={LIVE_TOOLTIP} />
         </div>
         <CardHeader className="flex flex-1 flex-col items-stretch">
-          <CardTitle className="flex items-center gap-1.5 text-muted-foreground">
+          <CardTitle className="flex items-center gap-1.5 text-title-foreground">
             <Activity className="size-5 shrink-0" aria-hidden="true" />
             Live power
           </CardTitle>
@@ -185,12 +185,12 @@ function LiveUsageCard() {
                 />
                 <span
                   className={`text-2xl font-semibold tabular-nums ${
-                    headlineMuted ? "text-muted-foreground" : ""
+                    headlineMuted ? "text-subtle-foreground" : ""
                   }`}
                 >
                   {headline}
                 </span>
-                <span className="text-[10px] leading-tight text-muted-foreground">
+                <span className="text-[10px] leading-tight text-subtle-foreground">
                   Grid draw now
                 </span>
               </div>
@@ -210,12 +210,12 @@ function LiveUsageCard() {
                 />
                 <span
                   className={`text-2xl font-semibold tabular-nums ${
-                    headlineMuted ? "text-muted-foreground" : ""
+                    headlineMuted ? "text-subtle-foreground" : ""
                   }`}
                 >
                   {renewableHeadline}
                 </span>
-                <span className="text-[10px] leading-tight text-muted-foreground">
+                <span className="text-[10px] leading-tight text-subtle-foreground">
                   Renewable grid power
                 </span>
               </div>
