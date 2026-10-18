@@ -10,11 +10,13 @@ import {
 } from "../src/lib/gridPulse.ts";
 
 describe("gridPulseStep: the discrete pulse steps", () => {
-  it("rests at step 0 below and at the deadband, with no animation", () => {
+  it("creeps at step 0 below and at the deadband: one slow 8 s revolution", () => {
     for (const draw of [0, 5, 25]) {
       assert.equal(gridPulseStep(draw), 0);
     }
-    assert.equal(gridPulsePeriodS(0), null);
+    assert.equal(gridPulsePeriodS(0), 8);
+    // The creep is strictly slower than the first regular step.
+    assert.ok(gridPulsePeriodS(0) > gridPulsePeriodS(1));
   });
 
   it("starts pulsing at the first step above the deadband", () => {

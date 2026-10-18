@@ -44,7 +44,8 @@ const ARC_DASH = ARC_CIRCUMFERENCE / 4;
 // the current renewable grid power. A thick lined circle carries a
 // circular motion instead of a pulse: a quarter-turn arc rotates
 // around its track, its speed stepped by the draw's pulse steps - one
-// revolution per period, resting below the deadband - while the contents alternate every 4 seconds
+// revolution per period, creeping very slowly below the deadband, an
+// empty resting ring at zero draw - while the contents alternate every 4 seconds
 // between the draw ("1.2 kW" beneath the electricity glyph) and the
 // renewable share ("61%" beneath the leaf). The arc's line color
 // follows the grid score's color state. Without data the placeholders
@@ -80,8 +81,12 @@ function LiveUsageCard() {
   const headlineMuted = drawW === null && renewables === null;
   const renewableHeadline = renewables === null ? "\u2014" : `${renewables}%`;
 
-  const step = drawW === null ? 0 : gridPulseStep(drawW);
-  const periodS = gridPulsePeriodS(step);
+  // Zero draw is the one calm state: an empty ring, no arc, no
+  // rotation. Any current at all - even a watt - keeps the circle
+  // alive, the very low draws creeping at the step 0 period.
+  const hasDraw = drawW !== null && drawW > 0;
+  const step = hasDraw ? gridPulseStep(drawW) : 0;
+  const periodS = hasDraw ? gridPulsePeriodS(step) : null;
 
   return (
     // Before the first live reading the circle renders as a skeleton
@@ -123,7 +128,8 @@ function LiveUsageCard() {
             revolution per period, creeping very slowly below the
             deadband - while the glyph, figure and label sit on a
             steady layer inside, so they never move with it. The arc's
-            line color follows the grid score's state. */}
+            line color follows the grid score's state; with no draw
+            the ring renders empty and rests. */}
           <div className="relative flex flex-1 items-center justify-center">
             <svg
               viewBox="0 0 100 100"
@@ -145,16 +151,18 @@ function LiveUsageCard() {
                 strokeWidth="4.5"
                 className="stroke-muted-foreground/25"
               />
-              <circle
-                cx={ARC_CX}
-                cy={ARC_CX}
-                r={ARC_R}
-                fill="none"
-                strokeWidth="4.5"
-                strokeLinecap="round"
-                stroke={ARC_LINE[gridScore?.state ?? "grey"] ?? ARC_LINE.grey}
-                strokeDasharray={`${ARC_DASH} ${ARC_CIRCUMFERENCE - ARC_DASH}`}
-              />
+              {hasDraw && (
+                <circle
+                  cx={ARC_CX}
+                  cy={ARC_CX}
+                  r={ARC_R}
+                  fill="none"
+                  strokeWidth="4.5"
+                  strokeLinecap="round"
+                  stroke={ARC_LINE[gridScore?.state ?? "grey"] ?? ARC_LINE.grey}
+                  strokeDasharray={`${ARC_DASH} ${ARC_CIRCUMFERENCE - ARC_DASH}`}
+                />
+              )}
             </svg>
             {/* Two stacked layers alternate in sequence: the visible
               figure fades out completely, then the incoming one fades
