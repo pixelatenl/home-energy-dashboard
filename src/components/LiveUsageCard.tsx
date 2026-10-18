@@ -86,7 +86,7 @@ function LiveUsageCard() {
   const periodS = gridPulsePeriodS(step)
 
   return (
-    <Card className="relative min-h-32 transition-[background-color,border-color,box-shadow] hover:bg-card-hover hover:border-white/30 hover:shadow-card-lift">
+    <Card className="relative min-h-24 transition-[background-color,border-color,box-shadow] hover:bg-card-hover hover:border-white/30 hover:shadow-card-lift">
       {/* The whole card opens the live energy flow page. */}
       <StatCardLink
         to="/live"
@@ -109,7 +109,7 @@ function LiveUsageCard() {
         <div className="relative flex flex-1 items-center justify-center">
           <svg
             viewBox="0 0 100 100"
-            className={`absolute size-32 ${
+            className={`absolute size-28 ${
               periodS !== null ? "grid-spin" : ""
             }`}
             style={
@@ -142,7 +142,7 @@ function LiveUsageCard() {
               figure fades out completely, then the incoming one fades
               in - the hidden layer's transition is delayed by the
               fade duration so the two never overlap. */}
-          <div className="relative flex size-24 items-center justify-center text-center">
+          <div className="relative flex size-20 items-center justify-center text-center">
             <div
               className={`absolute inset-0 flex flex-col items-center justify-center gap-0.5 ${
                 renewablesTurn ? "opacity-0" : "opacity-100"

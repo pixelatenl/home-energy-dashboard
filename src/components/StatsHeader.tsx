@@ -6,6 +6,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
+import { STAT_HEADLINE } from "@/lib/statCard"
 import { useSummary } from "@/lib/useSummary"
 
 function formatKwh(value: number | null): string {
@@ -67,7 +68,7 @@ function StatsHeader() {
         {[0, 1].map((index) => (
           <div
             key={index}
-            className="min-h-32 animate-pulse rounded-lg bg-muted"
+            className="min-h-24 animate-pulse rounded-lg bg-muted"
             aria-hidden="true"
           />
         ))}
@@ -78,7 +79,7 @@ function StatsHeader() {
   return (
     <>
       {/* From the grid: the household's grid figures. */}
-      <Card className="relative min-h-32 transition-[background-color,border-color,box-shadow] hover:bg-card-hover hover:border-white/30 hover:shadow-card-lift">
+      <Card className="relative min-h-24 transition-[background-color,border-color,box-shadow] hover:bg-card-hover hover:border-white/30 hover:shadow-card-lift">
         {/* The whole card opens this week in the Usage tab. */}
         <StatCardLink
           to="/usage?period=week"
@@ -98,7 +99,7 @@ function StatsHeader() {
             </CardTitle>
             {/* The headline stays in the neutral foreground in every
                 state: placeholder, net export and normal alike. */}
-            <CardTitle className="text-[2.5rem] tabular-nums">
+            <CardTitle className={STAT_HEADLINE}>
               {summary === null
                 ? PLACEHOLDER
                 : formatKwh(netKwh(summary.today))}
@@ -123,7 +124,7 @@ function StatsHeader() {
       </Card>
 
       {/* Home usage: the household's consumption today. */}
-      <Card className="relative min-h-32 transition-[background-color,border-color,box-shadow] hover:bg-card-hover hover:border-white/30 hover:shadow-card-lift">
+      <Card className="relative min-h-24 transition-[background-color,border-color,box-shadow] hover:bg-card-hover hover:border-white/30 hover:shadow-card-lift">
         {/* The whole card opens this week in the Usage tab. */}
         <StatCardLink
           to="/usage?period=week"
@@ -151,7 +152,7 @@ function StatsHeader() {
             </CardTitle>
             {/* The headline stays in the neutral foreground in every
                 state: placeholder and normal alike. */}
-            <CardTitle className="text-[2.5rem] tabular-nums">
+            <CardTitle className={STAT_HEADLINE}>
               {formatKwh(usageToday)}
             </CardTitle>
           </div>

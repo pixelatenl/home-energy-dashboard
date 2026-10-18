@@ -30,7 +30,7 @@ function BatteryStatusWidget() {
   if (status === "loading") {
     return (
       <div
-        className="min-h-32 animate-pulse rounded-lg bg-muted"
+        className="min-h-24 animate-pulse rounded-lg bg-muted"
         aria-hidden="true"
       />
     )

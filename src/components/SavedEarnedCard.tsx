@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/card"
 import { todayInAmsterdam } from "@/lib/time"
 import { useUsageBreakdown } from "@/lib/useUsageBreakdown"
+import { STAT_HEADLINE } from "@/lib/statCard"
 import { netFigures } from "@/lib/usageNet"
 
 function formatKwh(value: number): string {
@@ -54,7 +55,7 @@ function SavedEarnedCard() {
   const net = data === null ? null : netFigures(data)
 
   return (
-    <Card className="relative min-h-32 transition-[background-color,border-color,box-shadow] hover:bg-card-hover hover:border-white/30 hover:shadow-card-lift">
+    <Card className="relative min-h-24 transition-[background-color,border-color,box-shadow] hover:bg-card-hover hover:border-white/30 hover:shadow-card-lift">
       {/* The whole card opens this week in the Usage tab. */}
       <StatCardLink
         to="/usage?period=week"
@@ -75,7 +76,7 @@ function SavedEarnedCard() {
           {/* Saved is money by definition; the light green accent
               makes the headline number pop - the single deliberate
               money-card exception to the neutral headline rule. */}
-          <CardTitle className="text-[2.5rem] tabular-nums text-green-300">
+          <CardTitle className={`${STAT_HEADLINE} text-green-300`}>
             {net === null ? "\u2014" : netEurLabel(net.savedEur)}
           </CardTitle>
         </div>

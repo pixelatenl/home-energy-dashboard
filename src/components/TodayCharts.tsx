@@ -21,6 +21,7 @@ import {
   DISCHARGING_COLOR,
   SOLAR_COLOR,
 } from "@/lib/flowDiagram"
+import { STAT_HEADLINE } from "@/lib/statCard"
 import { useSummary } from "@/lib/useSummary"
 import { useDataRefreshListener } from "@/lib/useDataRefresh"
 import { amsterdamNow, todayInAmsterdam, localHourFractionOf } from "@/lib/time"
@@ -86,7 +87,7 @@ function useNowFraction(): number {
 // dashed forecast curve's white, with matching swatch shapes.
 function TodaySolarLegend() {
   return (
-    <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+    <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
       <span className="flex items-center gap-1.5">
         <span
           className="h-2 w-4 rounded-sm"
@@ -116,7 +117,7 @@ function TodaySolarLegend() {
 // The battery chart's legend: the bar pair's green and amber.
 function TodayBatteryLegend() {
   return (
-    <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+    <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
       <span className="flex items-center gap-1.5">
         <span
           className="h-2 w-4 rounded-sm"
@@ -190,7 +191,7 @@ function TodaySolarChart({
   const hasActual = actual.some((hour) => hour.kwh > 0)
 
   return (
-    <Card className="relative min-h-32 transition-[background-color,border-color,box-shadow] hover:bg-card-hover hover:border-white/30 hover:shadow-card-lift">
+    <Card className="relative min-h-24 transition-[background-color,border-color,box-shadow] hover:bg-card-hover hover:border-white/30 hover:shadow-card-lift">
       {/* The whole card opens this week in the Solar tab. */}
       <StatCardLink
         to="/solar?period=week"
@@ -220,7 +221,7 @@ function TodaySolarChart({
           </Badge>
         </CardAction>
         <CardTitle
-          className={`text-[2.5rem] tabular-nums ${
+          className={`${STAT_HEADLINE} ${
             producedKwh === null ? "text-muted-foreground" : ""
           }`}
         >
@@ -238,7 +239,7 @@ function TodaySolarChart({
             <svg
               viewBox={`0 0 ${TODAY_CHART_W} ${TODAY_CHART_H}`}
               preserveAspectRatio="none"
-              className="mt-1 h-20 w-full"
+              className="h-16 w-full"
               role="img"
               aria-label="Hourly solar production today against the forecast"
             >
@@ -313,7 +314,7 @@ function TodayBatteryChart({
   const hasFlow = byHour.size > 0
 
   return (
-    <Card className="relative min-h-32 transition-[background-color,border-color,box-shadow] hover:bg-card-hover hover:border-white/30 hover:shadow-card-lift">
+    <Card className="relative min-h-24 transition-[background-color,border-color,box-shadow] hover:bg-card-hover hover:border-white/30 hover:shadow-card-lift">
       {/* The whole card opens this week in the Battery tab. */}
       <StatCardLink
         to="/battery?period=week"
@@ -328,7 +329,7 @@ function TodayBatteryChart({
           Battery today
         </CardTitle>
         <CardTitle
-          className={`text-[2.5rem] tabular-nums ${
+          className={`${STAT_HEADLINE} ${
             chargedKwh === null ? "text-muted-foreground" : ""
           }`}
         >
@@ -350,7 +351,7 @@ function TodayBatteryChart({
             <svg
               viewBox={`0 0 ${TODAY_CHART_W} ${TODAY_CHART_H}`}
               preserveAspectRatio="none"
-              className="mt-1 h-20 w-full"
+              className="h-16 w-full"
               role="img"
               aria-label="Hourly battery charge and discharge today"
             >

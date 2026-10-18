@@ -16,6 +16,7 @@ import {
   type WeatherDay,
   type WeatherHour,
 } from "@/lib/api"
+import { STAT_HEADLINE } from "@/lib/statCard"
 import { useSummary } from "@/lib/useSummary"
 import { amsterdamNow, todayInAmsterdam } from "@/lib/time"
 import {
@@ -187,7 +188,7 @@ function SolarForecastWidget() {
   if (status === "loading") {
     return (
       <div
-        className="min-h-48 animate-pulse rounded-lg bg-muted"
+        className="min-h-32 animate-pulse rounded-lg bg-muted"
         aria-hidden="true"
       />
     )
@@ -211,7 +212,7 @@ function SolarForecastWidget() {
             <Sun className="size-6" aria-hidden="true" />
             Solar forecast
           </CardTitle>
-          <p className="font-heading text-[2.5rem] font-medium tabular-nums">
+          <p className={`font-heading font-medium ${STAT_HEADLINE}`}>
             {formatKwh(producedKwh)}
           </p>
           <p className="text-sm text-muted-foreground">No forecast data</p>
@@ -270,14 +271,14 @@ function SolarForecastWidget() {
             Solar score {daily.solar_score}/100
           </Badge>
         </CardAction>
-        <p className="font-heading text-[2.5rem] font-medium tabular-nums">
+        <p className={`font-heading font-medium ${STAT_HEADLINE}`}>
           {daily.estimated_kwh.toFixed(1)} kWh
         </p>
         <p className="text-xs text-muted-foreground">
           Expected solar production today
         </p>
       </CardHeader>
-      <CardContent className="space-y-3">
+      <CardContent className="space-y-2">
         {/* Actual production so far toward the full-day expectation:
             the same amber as the full forecast widget's day bar, with
             the green portion past the forecast level marking the day
@@ -288,7 +289,7 @@ function SolarForecastWidget() {
             clipped container and reaches a little past its top and
             bottom, so it reads as a marker crossing the bar, not a
             scratch inside it. */}
-        <div className="relative pt-5">
+        <div className="relative pt-4">
           {showForecastMark && (
             <span
               className="absolute top-0 z-10 -translate-x-1/2 whitespace-nowrap text-[10px] text-muted-foreground"
@@ -314,15 +315,15 @@ function SolarForecastWidget() {
           </div>
           {/* The dashed forecast marker outside the bar's clipped
               container: from just below the "Forecasted" label to a
-              few pixels past the bar's bottom (the bar occupies 20 to
-              28 px inside this pt-5 wrapper, the line 16 to 32). */}
+              few pixels past the bar's bottom (the bar occupies 16 to
+              24 px inside this pt-4 wrapper, the line 14 to 30). */}
           {showForecastMark && (
             <div
-              className="absolute top-4 h-4 w-0 -translate-x-1/2 border-l border-dashed border-foreground/50"
+              className="absolute top-3.5 h-4 w-0 -translate-x-1/2 border-l border-dashed border-foreground/50"
               style={{ left: `${forecastPct}%` }}
             />
           )}
-          <div className="mt-2 flex items-center justify-between gap-2">
+          <div className="mt-1.5 flex items-center justify-between gap-2">
             <span className="text-xs text-muted-foreground tabular-nums">
               {formatKwh(producedKwh)} so far ({progressPct}% of expected)
             </span>
