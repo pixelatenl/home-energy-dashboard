@@ -103,7 +103,7 @@ function LiveUsageCard() {
           <div className="flex flex-1 flex-col items-stretch gap-1 px-4">
             <Skeleton className="h-[24.75px] w-20" />
             <div className="flex flex-1 items-center justify-center">
-              <Skeleton variant="circle" className="size-28" />
+              <Skeleton variant="circle" className="size-32" />
             </div>
           </div>
         </Card>
@@ -133,7 +133,7 @@ function LiveUsageCard() {
           <div className="relative flex flex-1 items-center justify-center">
             <svg
               viewBox="0 0 100 100"
-              className={`absolute size-28 ${
+              className={`absolute size-32 ${
                 periodS !== null ? "grid-spin" : ""
               }`}
               style={
