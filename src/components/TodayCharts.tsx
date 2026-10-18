@@ -1,5 +1,14 @@
 import { useCallback, useEffect, useState } from "react"
-import { Card, CardContent } from "@/components/ui/card"
+import {
+  Card,
+  CardAction,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
+import InfoTooltip from "@/components/InfoTooltip"
+import { BatteryCharging, Sun } from "lucide-react"
 import {
   fetchWeatherHourly,
   type BatteryFlowHour,
@@ -15,20 +24,25 @@ import { useSummary } from "@/lib/useSummary"
 import { useDataRefreshListener } from "@/lib/useDataRefresh"
 import { amsterdamNow, todayInAmsterdam, localHourFractionOf } from "@/lib/time"
 
-// The compact "today" charts, split out of the live energy flow hero
-// into their own widget pair: actual hourly solar production against
-// the forecast curve, and hourly battery charge versus discharge.
-// Each leads with its day total so the curves read with their value,
-// and both ride the same full-day time axis with a shared now
-// marker. No axes or gridlines; the animated flow lines in the hero
-// above carry the emotional weight, these carry the numbers. The
-// charts' white lines and markers read on the frosted dark-glass
-// cards like they read on the sky they used to sit on.
+// The compact "today" chart cards of the stats hub: actual hourly
+// solar production against the forecast curve, and hourly battery
+// charge versus discharge. Each card is its own stats-hub cell -
+// fetching its own summary slice, riding the shared full-day time
+// axis with the now marker - and leads with its day total so the
+// curves read with their value. No axes or gridlines; the animated
+// flow lines on the live page carry the emotional weight, these
+// carry the numbers.
 
 // Shared chart geometry: a wide, short viewBox stretched to the card
 // width; strokes use non-scaling so the stretch does not distort them.
 const TODAY_CHART_W = 240
 const TODAY_CHART_H = 48
+
+// The two cards' tooltips: what each headline and curve reads.
+const SOLAR_TODAY_TOOLTIP =
+  "Actual solar production today: the headline is the day total so far, the curve the hourly output, with the dashed line the hourly forecast. Self usage is the share of today's solar the home consumed on site instead of feeding it into the grid."
+const BATTERY_TODAY_TOOLTIP =
+  "Energy moved through the battery today: charged in green above the zero line, discharged in amber below, per hour. The headline is the day's charged total."
 
 // Palette: the flow's solar yellow for actual production; the
 // battery's muted green/amber pair for charge and discharge (the
@@ -37,6 +51,23 @@ const TODAY_CHART_H = 48
 // The now marker's x position for the full-day 0-24h axis.
 function nowXOf(nowFraction: number): number {
   return (Math.min(Math.max(nowFraction, 0), 24) / 24) * TODAY_CHART_W
+}
+
+// The live output sentence beneath the main stat value: "Now
+// producing 2553 W" with the number emphasized, or the honest absence
+// when nothing is producing (night, or the sensor unreachable).
+function NowProducing({ watts }: { watts: number | null }) {
+  if (watts === null || watts <= 0) {
+    return <>No current solar production</>
+  }
+  return (
+    <>
+      Now producing{" "}
+      <span className="font-medium tabular-nums text-foreground">
+        {watts} W
+      </span>
+    </>
+  )
 }
 
 // The now marker's x position updates once a minute so the charts
@@ -113,11 +144,18 @@ function TodaySolarChart({
   forecast,
   nowFraction,
   producedKwh,
+  selfConsumptionPct,
+  pvW,
 }: {
   actual: PvFlowHour[]
   forecast: WeatherHour[] | null
   nowFraction: number
   producedKwh: number | null
+  // The share of today's solar the home used on site, moved here
+  // from the home usage stat card; carried in the header's chip.
+  selfConsumptionPct: number | null
+  // The live PV output in watts, the value's sub-line.
+  pvW: number | null
 }) {
   // kWh per local hour, both series on the same scale.
   const actualByHour = new Array<number>(24).fill(0)
@@ -151,13 +189,42 @@ function TodaySolarChart({
   const hasActual = actual.some((hour) => hour.kwh > 0)
 
   return (
-    <Card>
-      <CardContent>
-        <p className="text-xs font-medium text-muted-foreground">Solar today</p>
-        <p className="mt-1 text-sm font-semibold tabular-nums">
-          {producedKwh === null ? "\u2014" : `${producedKwh.toFixed(1)} kWh`}{" "}
-          produced
+    <Card className="relative min-h-32">
+      <div className="absolute right-3 top-3">
+        <InfoTooltip text={SOLAR_TODAY_TOOLTIP} />
+      </div>
+      {/* The Solar forecast's header structure: the title row with
+          the self-usage chip in its right column, the big value and
+          sub-line beneath. The chip keeps its right end clear of the
+          corner's info tooltip. */}
+      <CardHeader>
+        <CardTitle className="flex items-center gap-1.5 text-muted-foreground">
+          <Sun className="size-5 shrink-0" aria-hidden="true" />
+          Solar today
+        </CardTitle>
+        <CardAction className="pr-5">
+          <Badge
+            variant="outline"
+            className="border-white/25 bg-white/15 text-white tabular-nums"
+          >
+            Self usage:{" "}
+            {selfConsumptionPct === null
+              ? "\u2014"
+              : `${Math.round(selfConsumptionPct)}%`}
+          </Badge>
+        </CardAction>
+        <CardTitle
+          className={`text-[2.5rem] tabular-nums ${
+            producedKwh === null ? "text-muted-foreground" : ""
+          }`}
+        >
+          {producedKwh === null ? "\u2014" : `${producedKwh.toFixed(1)} kWh`}
+        </CardTitle>
+        <p className="text-xs text-muted-foreground">
+          <NowProducing watts={pvW} />
         </p>
+      </CardHeader>
+      <CardContent className="flex flex-1 flex-col">
         {!hasActual && !hasForecast ? (
           <p className="mt-2 text-xs text-muted-foreground">No data yet</p>
         ) : (
@@ -240,17 +307,31 @@ function TodayBatteryChart({
   const hasFlow = byHour.size > 0
 
   return (
-    <Card>
-      <CardContent>
-        <p className="text-xs font-medium text-muted-foreground">Battery today</p>
-        <p className="mt-1 text-sm font-semibold tabular-nums">
-          {chargedKwh === null ? "\u2014" : `${chargedKwh.toFixed(1)} kWh`}{" "}
+    <Card className="relative min-h-32">
+      <div className="absolute right-3 top-3">
+        <InfoTooltip text={BATTERY_TODAY_TOOLTIP} />
+      </div>
+      <CardHeader className="flex flex-1 flex-col items-stretch">
+        <CardTitle className="flex items-center gap-1.5 text-muted-foreground">
+          <BatteryCharging className="size-5 shrink-0" aria-hidden="true" />
+          Battery today
+        </CardTitle>
+        <CardTitle
+          className={`text-[2.5rem] tabular-nums ${
+            chargedKwh === null ? "text-muted-foreground" : ""
+          }`}
+        >
+          {chargedKwh === null ? "\u2014" : `${chargedKwh.toFixed(1)} kWh`}
+        </CardTitle>
+        <p className="text-xs text-muted-foreground tabular-nums">
           charged &middot;{" "}
           {dischargedKwh === null
             ? "\u2014"
             : `${dischargedKwh.toFixed(1)} kWh`}{" "}
           discharged
         </p>
+      </CardHeader>
+      <CardContent className="flex flex-1 flex-col">
         {!hasFlow ? (
           <p className="mt-2 text-xs text-muted-foreground">No data yet</p>
         ) : (
@@ -317,7 +398,10 @@ function TodayBatteryChart({
 // The "today" charts widget: solar and battery side by side (stacked
 // on narrow widths), one compact card each, riding the shared summary
 // cycle and the weather forecast for the solar curve.
-function TodayCharts() {
+// The solar card: its own summary slice plus the hourly weather
+// forecast's estimated PV, refreshed with the panel cycle and the
+// header refresh button.
+export function TodaySolarCard() {
   const { summary } = useSummary()
   const nowFraction = useNowFraction()
 
@@ -346,21 +430,27 @@ function TodayCharts() {
   useDataRefreshListener(() => void loadForecast())
 
   return (
-    <div className="grid gap-4 sm:grid-cols-2">
-      <TodaySolarChart
-        actual={summary?.pv_flow_hourly ?? []}
-        forecast={forecastHours}
-        nowFraction={nowFraction}
-        producedKwh={summary?.today.pv_kwh ?? null}
-      />
-      <TodayBatteryChart
-        flow={summary?.battery_flow_hourly ?? []}
-        nowFraction={nowFraction}
-        chargedKwh={summary?.today.battery_charged_kwh ?? null}
-        dischargedKwh={summary?.today.battery_discharged_kwh ?? null}
-      />
-    </div>
+    <TodaySolarChart
+      actual={summary?.pv_flow_hourly ?? []}
+      forecast={forecastHours}
+      nowFraction={nowFraction}
+      producedKwh={summary?.today.pv_kwh ?? null}
+      selfConsumptionPct={summary?.today.self_consumption_pct ?? null}
+      pvW={summary?.flow.pv_w ?? null}
+    />
   )
 }
 
-export default TodayCharts
+// The battery card: its own summary slice, no forecast needed.
+export function TodayBatteryCard() {
+  const { summary } = useSummary()
+  const nowFraction = useNowFraction()
+  return (
+    <TodayBatteryChart
+      flow={summary?.battery_flow_hourly ?? []}
+      nowFraction={nowFraction}
+      chargedKwh={summary?.today.battery_charged_kwh ?? null}
+      dischargedKwh={summary?.today.battery_discharged_kwh ?? null}
+    />
+  )
+}

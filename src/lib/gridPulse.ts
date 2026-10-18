@@ -1,6 +1,6 @@
-// The live grid badge's pulse mapping: the current grid draw maps to
+// The live power card's speed mapping: the current grid draw maps to
 // a discrete pulse step, the step to the pulse period, and the draw
-// to its human label. Pure, so the badge's behavior is testable
+// to its human label. Pure, so the card's behavior is testable
 // without the network.
 
 // Below the shared 25 W deadband there is no pulse at all: a

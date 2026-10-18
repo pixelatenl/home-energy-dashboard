@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useState } from "react"
 import { Sun } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
+import InfoTooltip from "@/components/InfoTooltip"
 import {
   Card,
   CardAction,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
@@ -28,6 +28,10 @@ import {
 // existing weather endpoints. The full WeatherForecast widget moves
 // to the Solar tab in a later phase.
 
+// The card's tooltip: what the estimate and the bar mean.
+const FORECAST_TOOLTIP =
+  "Today's expected solar production from the hourly forecast model. The bar fills with the actual production so far and the caption compares it with the expected total; the Solar score grades the day's forecast conditions from 0 to 100."
+
 // Local hour fraction (8.5 for "2026-10-13T08:30") of a local-time ISO
 // string, the format the daily sunrise/sunset and hourly labels use.
 function localHourFraction(iso: string): number {
@@ -36,23 +40,6 @@ function localHourFraction(iso: string): number {
 
 function formatKwh(value: number | null): string {
   return value === null ? "\u2014" : `${value.toFixed(1)} kWh`
-}
-
-// The live output sentence in the card's description slot: "Now
-// producing 2553 W" with the number emphasized, or the honest absence
-// when nothing is producing (night, or the sensor unreachable).
-function NowProducing({ watts }: { watts: number | null }) {
-  if (watts === null || watts <= 0) {
-    return <>No current solar production</>
-  }
-  return (
-    <>
-      Now producing{" "}
-      <span className="font-medium tabular-nums text-foreground">
-        {watts} W
-      </span>
-    </>
-  )
 }
 
 // Ahead, on track or behind: produced so far versus the expected
@@ -209,25 +196,23 @@ function SolarForecastWidget() {
   // honest; no target, progress or verdict is fabricated.
   if (daily === null) {
     return (
-      <Card>
+      <Card className="relative">
+        <div className="absolute right-3 top-3">
+          <InfoTooltip text={FORECAST_TOOLTIP} />
+        </div>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-muted-foreground">
             <Sun className="size-6" aria-hidden="true" />
             Solar forecast
           </CardTitle>
-          <CardDescription>
-            <NowProducing watts={summary?.flow.pv_w ?? null} />
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <p className="text-sm text-muted-foreground">No forecast data</p>
           <p className="font-heading text-[2.5rem] font-medium tabular-nums">
             {formatKwh(producedKwh)}
           </p>
+          <p className="text-sm text-muted-foreground">No forecast data</p>
           <p className="text-xs text-muted-foreground">
             produced so far today
           </p>
-        </CardContent>
+        </CardHeader>
       </Card>
     )
   }
@@ -253,16 +238,18 @@ function SolarForecastWidget() {
     daily.estimated_kwh > 0 && producedValue > daily.estimated_kwh * 1.1
 
   return (
-    <Card>
+    <Card className="relative">
+      <div className="absolute right-3 top-3">
+        <InfoTooltip text={FORECAST_TOOLTIP} />
+      </div>
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-muted-foreground">
           <Sun className="size-6" aria-hidden="true" />
           Solar forecast
         </CardTitle>
-        <CardDescription>
-          <NowProducing watts={summary?.flow.pv_w ?? null} />
-        </CardDescription>
-        <CardAction>
+        {/* The chip keeps its right end clear of the corner's info
+            tooltip. */}
+        <CardAction className="pr-5">
           {/* The same glass treatment as the On-track pill: a neutral
               translucent white chip rather than a colored callout. */}
           <Badge
@@ -272,11 +259,14 @@ function SolarForecastWidget() {
             Solar score {daily.solar_score}/100
           </Badge>
         </CardAction>
-      </CardHeader>
-      <CardContent className="space-y-3">
         <p className="font-heading text-[2.5rem] font-medium tabular-nums">
           {daily.estimated_kwh.toFixed(1)} kWh
         </p>
+        <p className="text-xs text-muted-foreground">
+          Expected solar production today
+        </p>
+      </CardHeader>
+      <CardContent className="space-y-3">
         {/* Actual production so far toward the full-day expectation:
             the same amber as the full forecast widget's day bar, with
             the green portion past the forecast level marking the day

@@ -222,29 +222,19 @@
   animation-iteration-count: infinite;
 }
 
-/* Time-of-day background: clouds drift across the widget via transform
-   only, very slowly; the traversal is generous so the animation stays
-   seamless at every widget width. */
-@keyframes grid-pulse {
-  0%,
-  100% {
-    transform: scale(1);
-    opacity: 0.55;
-  }
-  50% {
-    transform: scale(1.15);
-    opacity: 1;
+/* The live power card's circular motion: a rotation, linear and
+   seamless - the speed comes from the draw's pulse steps via the
+   animation duration. */
+@keyframes grid-spin {
+  to {
+    transform: rotate(360deg);
   }
 }
 
-/* The live grid badge's breath: a gentle opacity-and-scale pulse
-   between fully muted and present, never a hard blink. The duration
-   is set per pulse step from the draw; at rest (no class) the glyph
-   sits fully opaque. */
-.grid-pulse {
-  animation-name: grid-pulse;
+.grid-spin {
+  animation-name: grid-spin;
   animation-duration: 4s;
-  animation-timing-function: ease-in-out;
+  animation-timing-function: linear;
   animation-iteration-count: infinite;
 }
 

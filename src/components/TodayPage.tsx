@@ -1,22 +1,26 @@
 import { useCallback, useEffect, useState } from "react"
 import BatteryStatusWidget from "@/components/BatteryStatusWidget"
-import LiveEnergyFlow from "@/components/LiveEnergyFlow"
+import LiveUsageCard from "@/components/LiveUsageCard"
 import PageLayout from "@/components/PageLayout"
 import PricesWidget from "@/components/PricesWidget"
+import SavedEarnedCard from "@/components/SavedEarnedCard"
 import SolarForecastWidget from "@/components/SolarForecastWidget"
 import StatsHeader from "@/components/StatsHeader"
 import SummaryInsight from "@/components/SummaryInsight"
-import TodayCharts from "@/components/TodayCharts"
+import { TodayBatteryCard, TodaySolarCard } from "@/components/TodayCharts"
 import { RefreshCw } from "lucide-react"
 import { fetchSummary, type SummaryInsight as SummaryInsightData } from "@/lib/api"
 import { greetingFor } from "@/lib/time"
 import { triggerAiRefresh } from "@/lib/useAiContext"
 import { triggerDataRefresh, useRefetchOnWake } from "@/lib/useDataRefresh"
 
-// The dashboard page: the widget grid, plus the insight loading (fetchSummary, the Mistral budget counter, the
-// 5-minute refresh cycle and the wake/focus catch-up). The greeting
-// header with the insight pill and refresh button lives in the shared
-// PageLayout's header slots.
+// The dashboard hub: the stats grid - four cards per row, every
+// widget at the same height, the Saved and earned card leading and
+// one slot held open for a future card - with the AI advisory beside
+// the prices where the live hero used to be. The live energy flow
+// itself moved to its own page at /live.
+// The greeting header with the insight pill and refresh button lives
+// in the shared PageLayout's header slots.
 function TodayPage() {
   // Ticks once a minute so the greeting follows the local time of day.
   const [nowTick, setNowTick] = useState(() => Date.now())
@@ -79,7 +83,7 @@ function TodayPage() {
       subtitle="Monitor your household energy use"
       actions={
         <span className="flex items-center gap-2">
-          {/* The insight provenance in the live grid badge's quiet outline
+          {/* The insight provenance in the shell's quiet outline
               chip idiom, so the header's right cluster reads as one
               family. */}
           <span className="inline-flex items-center gap-1.5 rounded-full border border-white/15 px-2.5 py-1 text-xs font-medium text-muted-foreground tabular-nums">
@@ -110,30 +114,27 @@ function TodayPage() {
         </span>
       }
     >
-      {/* One coherent compact cluster at the top of the hub: the two
-          stat cards (grid with its renewables strip, home usage with
-          self-consumption) plus the compact solar forecast and battery
-          status in one shared grid on the left - every top widget
-          renders at the same height (sm and up; the tallest row sets
-          the measure) - with the AI summary filling the right
-          column. */}
-      <div className="grid gap-6 lg:grid-cols-2">
-        <div className="grid gap-4 sm:grid-cols-2 sm:auto-rows-fr">
-          <StatsHeader />
-          <SolarForecastWidget />
-          <BatteryStatusWidget />
-        </div>
-        <SummaryInsight insight={insight} loading={insightLoading} />
+      {/* The stats grid spans the full page width: four cards per
+          row, every cell the same height, two rows - Saved and
+          earned, Live power (the breathing circle combining the live
+          draw with the renewable grid share), From the grid, Home
+          usage, Solar forecast, Solar today, Battery status, Battery
+          today. All eight slots fill. On phones the cards stack to
+          one per row at their natural heights. */}
+      <div className="grid grid-cols-1 gap-4 lg:auto-rows-fr lg:grid-cols-4">
+        <SavedEarnedCard />
+        <LiveUsageCard />
+        <StatsHeader />
+        <SolarForecastWidget />
+        <TodaySolarCard />
+        <BatteryStatusWidget />
+        <TodayBatteryCard />
       </div>
 
-      {/* The flow hero and the prices widget side by side; the
-          compact solar and battery today charts sit directly below
-          the flow, next to each other, as their own widget pair. */}
+      {/* The AI advisory where the live hero used to be, beside the
+          prices widget. */}
       <div className="grid gap-6 lg:grid-cols-2">
-        <div className="grid content-start gap-6">
-          <LiveEnergyFlow />
-          <TodayCharts />
-        </div>
+        <SummaryInsight insight={insight} loading={insightLoading} />
         <PricesWidget />
       </div>
     </PageLayout>

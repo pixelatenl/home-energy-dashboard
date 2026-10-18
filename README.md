@@ -30,12 +30,18 @@ src/
 
 ## Layout
 
-The top of the page has the stats header row - the four stat cards (From
-grid, Home usage, To grid, Energy cost) with their labels, week/month
-sublines and info tooltips - beside the AI insight panel, which carries
-the "Insight from HH:MM" stamp with its stale badge, the summary text, the
-action list and a force-refresh control that disables itself when the AI
-budget is exhausted or the insight already matches the data.
+The top of the page is the stats hub: a full-width grid of four
+cards per row over two rows - the Saved and earned card (today's
+usage-breakdown figures) leading, then the grid and home usage stat
+cards, the solar forecast, the battery status, and the Solar today and
+Battery today chart cards - with the eighth slot held open for a
+future card. Below it, the AI insight panel (which carries the
+"Insight from HH:MM" stamp with its stale badge, the summary text,
+the action list and a force-refresh control that disables itself when
+the AI budget is exhausted or the insight already matches the data)
+sits beside the price chart. The live energy flow lives on its own
+page at /live, which carries the flow hero alone and a Back to today
+link at its bottom.
 
 Below that the widgets form a 2x2 grid on wide screens: the battery panel
 and the live energy flow widget side by side in the first row, the solar
@@ -58,8 +64,8 @@ separate pass over that data, so a future illustrated house view can
 swap the render pass without touching the data logic. The layout is
 stable, so arrows appearing or disappearing never reflow it.
 
-Below roughly 1024 pixels the widget grid stacks to one column in the
-order battery panel, live energy flow, solar forecast, price chart.
+Below roughly 1024 pixels the stats grid stacks to two cards per
+row and the advisory and price chart to one column.
 
 ## Local data server
 

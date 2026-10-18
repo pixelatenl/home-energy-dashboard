@@ -9,6 +9,7 @@ import ArchitecturePage from "@/components/ArchitecturePage"
 import BatteryPage from "@/components/BatteryPage"
 import DebugPage from "@/components/DebugPage"
 import HeatPage from "@/components/HeatPage"
+import LivePage from "@/components/LivePage"
 import SolarPage from "@/components/SolarPage"
 import TodayPage from "@/components/TodayPage"
 import UsagePage from "@/components/UsagePage"
@@ -40,6 +41,7 @@ function App() {
             <Route path="/battery" element={<BatteryPage />} />
             <Route path="/appliances" element={<AppliancesRedirect />} />
             <Route path="/heat" element={<HeatPage />} />
+            <Route path="/live" element={<LivePage />} />
             <Route path="/debug" element={<DebugPage />} />
             <Route path="/architecture" element={<ArchitecturePage />} />
           </Routes>
