@@ -36,8 +36,12 @@ function netEurLabel(value: number | null): string {
 // endpoint and the same netFigures derivation the Usage panel uses,
 // anchored to the current day, so the number always agrees with the
 // Usage tab. Saved is money by definition; the light green accent
-// makes the headline number pop. Without data the placeholder reads,
-// never a fabricated zero.
+// makes the headline number pop. Like the other metric cards the
+// composition is fixed - title and headline at the top, then
+// exactly two sub-lines at the bottom: the derivation and the
+// average price, each a muted dash until its figure exists, so the
+// card's geometry never changes when data arrives. Without data the
+// placeholder reads, never a fabricated zero.
 function SavedEarnedCard() {
   // The anchor follows the clock: a kiosk crossing midnight
   // re-renders into the new day's anchor on its next data refresh.
@@ -59,28 +63,34 @@ function SavedEarnedCard() {
       <div className="absolute right-3 top-3 z-20">
         <InfoTooltip text={SAVED_TOOLTIP} />
       </div>
-      <CardHeader className="flex flex-1 flex-col items-stretch">
-        <CardTitle className="flex items-center gap-1.5 text-muted-foreground">
-          <Recycle className="size-5 shrink-0" aria-hidden="true" />
-          Saved and earned
-        </CardTitle>
-        {/* Saved is money by definition; the light green accent makes
-            the headline number pop. */}
-        <CardTitle className="text-[2.5rem] tabular-nums text-green-300">
-          {net === null ? "\u2014" : netEurLabel(net.savedEur)}
-        </CardTitle>
-        <p className="text-xs text-muted-foreground tabular-nums">
-          {net === null
-            ? "today so far"
-            : `from ${formatKwh(net.selfSuppliedKwh)} self-supplied plus feed-in`}
-        </p>
-        <p className="pb-2 text-xs text-muted-foreground tabular-nums">
-          avg{" "}
-          {data === null || data.avg_price_eur === null
-            ? "\u2014"
-            : `\u20ac${data.avg_price_eur.toFixed(2)}`}
-          /kWh
-        </p>
+      <CardHeader className="flex flex-1 flex-col items-stretch justify-between">
+        {/* The title and the big figure anchor the top; the two
+            fixed sub-lines spread to the bottom, so the card fills
+            its grid cell without a bottom gap. */}
+        <div className="flex flex-col gap-1">
+          <CardTitle className="flex items-center gap-1.5 text-muted-foreground">
+            <Recycle className="size-5 shrink-0" aria-hidden="true" />
+            Saved and earned
+          </CardTitle>
+          {/* Saved is money by definition; the light green accent
+              makes the headline number pop - the single deliberate
+              money-card exception to the neutral headline rule. */}
+          <CardTitle className="text-[2.5rem] tabular-nums text-green-300">
+            {net === null ? "\u2014" : netEurLabel(net.savedEur)}
+          </CardTitle>
+        </div>
+        <div className="flex flex-col gap-1">
+          <p className="text-xs text-muted-foreground tabular-nums">
+            {net === null
+              ? "\u2014"
+              : `from ${formatKwh(net.selfSuppliedKwh)} self-supplied plus feed-in`}
+          </p>
+          <p className="text-xs text-muted-foreground tabular-nums">
+            {data === null || data.avg_price_eur === null
+              ? "\u2014"
+              : `avg \u20ac${data.avg_price_eur.toFixed(2)}/kWh`}
+          </p>
+        </div>
       </CardHeader>
     </Card>
   )

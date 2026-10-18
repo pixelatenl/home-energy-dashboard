@@ -21,19 +21,24 @@ const GRID_TOOLTIP =
   "Grid electricity today: imported minus exported; negative means net export. The live grid renewables share lives in the Live power card."
 
 // The home usage card's tooltip: the headline figure's battery
-// accounting. Solar that charged
+// accounting, including the always-present balance sub-line's rule.
+// Solar that charged
 // the battery counts as self-consumption today, but as home usage
 // only on the day the battery discharges it.
 const USAGE_TOOLTIP =
-  "Home usage today: everything the household consumed - grid import plus solar used directly plus battery discharge, minus export. Energy that charged the battery today is not counted here; it counts on the day the battery discharges it. The self-consumption share lives in the Solar today card."
+  "Home usage today: everything the household consumed - grid import plus solar used directly plus battery discharge, minus export. Energy that charged the battery today is not counted here; it counts on the day the battery discharges it. The first sub-line states the battery balance: today's net-stored energy is excluded once it is large enough to notice, otherwise the line reads the balance as included. The self-consumption share lives in the Solar today card."
 
 // The two headline metric cards: From the grid (net of import and
-// export, with the in/out split as its sub-caption - the live
-// grid renewables share moved to the Live power card, the
-// self-consumption share to the Solar today card) and Home usage
-// (household consumption). Today's value is large, this week and
-// this month smaller beneath. Missing data shows a muted dash. The
-// battery and solar live in their own compact widgets beside these.
+// export) and Home usage (household consumption). Both share one
+// fixed composition so their height never changes during the day:
+// the title and the big figure at the top, then exactly two
+// sub-lines - the in/out split and the week/month figures for the
+// grid card, the battery balance and the week/month figures for
+// home usage - every line always present, a muted dash wherever a
+// figure does not exist. The two groups spread across the fixed
+// grid cell height, so no bottom gap opens up next to the taller
+// visual cards. The live grid renewables share moved to the Live
+// power card, the self-consumption share to the Solar today card.
 // Rendered as a bare fragment: TodayPage lays the cards into one
 // shared top-widget grid, so every widget shares one height.
 function StatsHeader() {
@@ -82,31 +87,38 @@ function StatsHeader() {
         <div className="absolute right-3 top-3 z-20">
           <InfoTooltip text={GRID_TOOLTIP} />
         </div>
-        <CardHeader className="flex flex-1 flex-col items-stretch">
-          <CardTitle className="flex items-center gap-1.5 text-muted-foreground">
-            <PlugZap className="size-5 shrink-0" aria-hidden="true" />
-            From the grid
-          </CardTitle>
-          <CardTitle
-            className={`text-[2.5rem] tabular-nums ${
-              summary === null ? "text-muted-foreground" : ""
-            }`}
-          >
-            {summary === null
-              ? PLACEHOLDER
-              : formatKwh(netKwh(summary.today))}
-          </CardTitle>
-          {summary !== null && (
+        <CardHeader className="flex flex-1 flex-col items-stretch justify-between">
+          {/* The title and the big figure anchor the top; the two
+              fixed sub-lines spread to the bottom, so the card fills
+              its grid cell without a bottom gap. */}
+          <div className="flex flex-col gap-1">
+            <CardTitle className="flex items-center gap-1.5 text-muted-foreground">
+              <PlugZap className="size-5 shrink-0" aria-hidden="true" />
+              From the grid
+            </CardTitle>
+            {/* The headline stays in the neutral foreground in every
+                state: placeholder, net export and normal alike. */}
+            <CardTitle className="text-[2.5rem] tabular-nums">
+              {summary === null
+                ? PLACEHOLDER
+                : formatKwh(netKwh(summary.today))}
+            </CardTitle>
+          </div>
+          <div className="flex flex-col gap-1">
+            {/* The in/out split, always present: a muted dash per
+                figure before the first data. */}
             <p className="text-xs text-muted-foreground tabular-nums">
-              {summary.today.import_kwh.toFixed(1)} kWh in,{" "}
-              {summary.today.export_kwh.toFixed(1)} kWh out
+              {summary === null
+                ? `${PLACEHOLDER} in, ${PLACEHOLDER} out`
+                : `${summary.today.import_kwh.toFixed(1)} kWh in, ${summary.today.export_kwh.toFixed(1)} kWh out`}
             </p>
-          )}
-          <p className="pb-2 text-xs text-muted-foreground tabular-nums">
-            This week {summary === null ? PLACEHOLDER : formatKwh(netKwh(summary.week))}{" "}
-            &middot; This month{" "}
-            {summary === null ? PLACEHOLDER : formatKwh(netKwh(summary.month))}
-          </p>
+            <p className="text-xs text-muted-foreground tabular-nums">
+              This week{" "}
+              {formatKwh(summary === null ? null : netKwh(summary.week))}{" "}
+              &middot; This month{" "}
+              {formatKwh(summary === null ? null : netKwh(summary.month))}
+            </p>
+          </div>
         </CardHeader>
       </Card>
 
@@ -120,37 +132,48 @@ function StatsHeader() {
         <div className="absolute right-3 top-3 z-20">
           <InfoTooltip text={USAGE_TOOLTIP} />
         </div>
-        <CardHeader className="flex flex-1 flex-col items-stretch">
-          <CardTitle className="flex items-center gap-1.5 text-muted-foreground">
-            <House className="size-5 shrink-0" aria-hidden="true" />
-            Home usage
-            {summary !== null && !summary.pv_available && (
-              <span
-                className="italic"
-                title="No PV entity found; home usage is grid import only"
-              >
-                {" "}(excl. solar)
-              </span>
-            )}
-          </CardTitle>
-          <CardTitle
-            className={`text-[2.5rem] tabular-nums ${
-              usageToday === null ? "text-muted-foreground" : ""
-            }`}
-          >
-            {formatKwh(usageToday)}
-          </CardTitle>
-          {batteryNetStored !== null && batteryNetStored >= 0.05 && (
+        <CardHeader className="flex flex-1 flex-col items-stretch justify-between">
+          {/* The title and the big figure anchor the top; the two
+              fixed sub-lines spread to the bottom, so the card fills
+              its grid cell without a bottom gap. */}
+          <div className="flex flex-col gap-1">
+            <CardTitle className="flex items-center gap-1.5 text-muted-foreground">
+              <House className="size-5 shrink-0" aria-hidden="true" />
+              Home usage
+              {summary !== null && !summary.pv_available && (
+                <span
+                  className="italic"
+                  title="No PV entity found; home usage is grid import only"
+                >
+                  {" "}(excl. solar)
+                </span>
+              )}
+            </CardTitle>
+            {/* The headline stays in the neutral foreground in every
+                state: placeholder and normal alike. */}
+            <CardTitle className="text-[2.5rem] tabular-nums">
+              {formatKwh(usageToday)}
+            </CardTitle>
+          </div>
+          <div className="flex flex-col gap-1">
+            {/* The battery balance, always present: the exclusion
+                whenever the net-stored figure is large enough to
+                notice (the threshold is unchanged at 0.05 kWh), the
+                neutral inclusion otherwise, a muted dash before the
+                first data. */}
             <p className="text-xs text-muted-foreground tabular-nums">
-              Excludes {batteryNetStored.toFixed(1)} kWh stored in the
-              battery
+              {batteryNetStored === null
+                ? PLACEHOLDER
+                : batteryNetStored >= 0.05
+                  ? `Excludes ${batteryNetStored.toFixed(1)} kWh stored in the battery`
+                  : "Battery balance included"}
             </p>
-          )}
-          <p className="pb-2 text-xs text-muted-foreground tabular-nums">
-            This week{" "}
-            {formatKwh(summary?.week.total_usage_kwh ?? null)} &middot; This
-            month {formatKwh(summary?.month.total_usage_kwh ?? null)}
-          </p>
+            <p className="text-xs text-muted-foreground tabular-nums">
+              This week{" "}
+              {formatKwh(summary?.week.total_usage_kwh ?? null)} &middot; This
+              month {formatKwh(summary?.month.total_usage_kwh ?? null)}
+            </p>
+          </div>
         </CardHeader>
       </Card>
     </>
