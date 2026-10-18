@@ -8,7 +8,6 @@ import SolarForecastWidget from "@/components/SolarForecastWidget"
 import StatsHeader from "@/components/StatsHeader"
 import SummaryInsight from "@/components/SummaryInsight"
 import { TodayBatteryCard, TodaySolarCard } from "@/components/TodayCharts"
-import { RefreshCw } from "lucide-react"
 import { fetchSummary, type SummaryInsight as SummaryInsightData } from "@/lib/api"
 import { greetingFor } from "@/lib/time"
 import { triggerAiRefresh } from "@/lib/useAiContext"
@@ -19,8 +18,8 @@ import { triggerDataRefresh, useRefetchOnWake } from "@/lib/useDataRefresh"
 // one slot held open for a future card - with the AI advisory beside
 // the prices where the live hero used to be. The live energy flow
 // itself moved to its own page at /live.
-// The greeting header with the insight pill and refresh button lives
-// in the shared PageLayout's header slots.
+// The greeting header is bare; the insight provenance chip and the
+// refresh control live in the AI advisory card's own header.
 function TodayPage() {
   // Ticks once a minute so the greeting follows the local time of day.
   const [nowTick, setNowTick] = useState(() => Date.now())
@@ -81,38 +80,6 @@ function TodayPage() {
     <PageLayout
       title={greetingFor(nowTick)}
       subtitle="Monitor your household energy use"
-      actions={
-        <span className="flex items-center gap-2">
-          {/* The insight provenance in the shell's quiet outline
-              chip idiom, so the header's right cluster reads as one
-              family. */}
-          <span className="inline-flex items-center gap-1.5 rounded-full border border-white/15 px-2.5 py-1 text-xs font-medium text-muted-foreground tabular-nums">
-            {insightFrom ? (
-              <>Insight from {insightFrom}</>
-            ) : (
-              <span className="font-normal">No insight yet</span>
-            )}
-          </span>
-          <button
-            type="button"
-            aria-label="Refresh dashboard"
-            title={
-              budgetExhausted
-                ? "Daily AI budget exhausted; the insight refreshes tomorrow"
-                : "Regenerate all AI insights and refresh widget data now"
-            }
-            disabled={refreshDisabled}
-            onClick={() => {
-              void loadInsight(true)
-              triggerAiRefresh()
-              triggerDataRefresh()
-            }}
-            className="rounded-full p-1 text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            <RefreshCw className="size-3.5" aria-hidden="true" />
-          </button>
-        </span>
-      }
     >
       {/* The stats grid spans the full page width: four cards per
           row, every cell the same height, two rows - Saved and
@@ -134,9 +101,20 @@ function TodayPage() {
       </div>
 
       {/* The AI advisory where the live hero used to be, beside the
-          prices widget. */}
+          prices widget; it carries its own provenance chip and
+          refresh control in its header. */}
       <div className="grid gap-6 lg:grid-cols-2">
-        <SummaryInsight insight={insight} loading={insightLoading} />
+        <SummaryInsight
+          insight={insight}
+          loading={insightLoading}
+          from={insightFrom}
+          refreshDisabled={refreshDisabled}
+          onRefresh={() => {
+            void loadInsight(true)
+            triggerAiRefresh()
+            triggerDataRefresh()
+          }}
+        />
         <PricesWidget />
       </div>
     </PageLayout>
