@@ -119,9 +119,11 @@ function TodayPage() {
           earned, Live power (the breathing circle combining the live
           draw with the renewable grid share), From the grid, Home
           usage, Solar forecast, Solar today, Battery status, Battery
-          today. All eight slots fill. On phones the cards stack to
-          one per row at their natural heights. */}
-      <div className="grid grid-cols-1 gap-4 lg:auto-rows-fr lg:grid-cols-4">
+          today. All eight slots fill. The layout steps with the
+          viewport: phones stack one card per row, tablets from 768px
+          take two per row (four rows), and from 1024px the four by
+          two grid returns. */}
+      <div className="grid grid-cols-1 gap-4 md:auto-rows-fr md:grid-cols-2 lg:grid-cols-4">
         <SavedEarnedCard />
         <LiveUsageCard />
         <StatsHeader />

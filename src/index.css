@@ -37,6 +37,9 @@
     --color-popover: var(--popover);
     --color-card-foreground: var(--card-foreground);
     --color-card: var(--card);
+    /* The hover surface of an interactive card: a touch brighter
+       than the resting fill in each theme. */
+    --color-card-hover: var(--card-hover);
     /* Elevation scale: every content surface shares the resting
        shadow; interactive lift uses the medium one. Dark overrides
        live on the same variables below. */
@@ -65,6 +68,8 @@
     /* Light text and chart lines on the dark glass surfaces. */
     --foreground: oklch(0.985 0 0);
     --card: rgb(255 255 255 / 0.15);
+    /* Hover glass: the same fill with the transparency lifted. */
+    --card-hover: rgb(255 255 255 / 0.24);
     --card-foreground: oklch(0.985 0 0);
     /* Glass resting elevation: soft, wide and shallow. */
     --card-shadow: 0 4px 30px rgb(0 0 0 / 0.1);
@@ -107,6 +112,8 @@
     --background: oklch(0.145 0 0);
     --foreground: oklch(0.985 0 0);
     --card: oklch(0.205 0 0);
+    /* Hover surface: one step lighter than the resting night fill. */
+    --card-hover: oklch(0.235 0 0);
     --card-foreground: oklch(0.985 0 0);
     /* Shadows barely read on dark backgrounds, so the night variants
        are deeper and wider: elevation must stay visible on the

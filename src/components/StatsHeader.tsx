@@ -1,5 +1,6 @@
 import { House, PlugZap } from "lucide-react"
 import InfoTooltip from "@/components/InfoTooltip"
+import StatCardLink from "@/components/StatCardLink"
 import {
   Card,
   CardHeader,
@@ -72,8 +73,13 @@ function StatsHeader() {
   return (
     <>
       {/* From the grid: the household's grid figures. */}
-      <Card className="relative min-h-32">
-        <div className="absolute right-3 top-3">
+      <Card className="relative min-h-32 transition-[background-color,border-color,box-shadow] hover:bg-card-hover hover:border-white/30 hover:shadow-card-lift">
+        {/* The whole card opens this week in the Usage tab. */}
+        <StatCardLink
+          to="/usage?period=week"
+          label="From the grid: open this week in the Usage tab"
+        />
+        <div className="absolute right-3 top-3 z-20">
           <InfoTooltip text={GRID_TOOLTIP} />
         </div>
         <CardHeader className="flex flex-1 flex-col items-stretch">
@@ -105,8 +111,13 @@ function StatsHeader() {
       </Card>
 
       {/* Home usage: the household's consumption today. */}
-      <Card className="relative min-h-32">
-        <div className="absolute right-3 top-3">
+      <Card className="relative min-h-32 transition-[background-color,border-color,box-shadow] hover:bg-card-hover hover:border-white/30 hover:shadow-card-lift">
+        {/* The whole card opens this week in the Usage tab. */}
+        <StatCardLink
+          to="/usage?period=week"
+          label="Home usage: open this week in the Usage tab"
+        />
+        <div className="absolute right-3 top-3 z-20">
           <InfoTooltip text={USAGE_TOOLTIP} />
         </div>
         <CardHeader className="flex flex-1 flex-col items-stretch">

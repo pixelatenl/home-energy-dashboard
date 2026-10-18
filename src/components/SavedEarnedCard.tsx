@@ -1,6 +1,7 @@
 import { useMemo } from "react"
 import { Recycle } from "lucide-react"
 import InfoTooltip from "@/components/InfoTooltip"
+import StatCardLink from "@/components/StatCardLink"
 import {
   Card,
   CardHeader,
@@ -49,8 +50,13 @@ function SavedEarnedCard() {
   const net = data === null ? null : netFigures(data)
 
   return (
-    <Card className="relative min-h-32">
-      <div className="absolute right-3 top-3">
+    <Card className="relative min-h-32 transition-[background-color,border-color,box-shadow] hover:bg-card-hover hover:border-white/30 hover:shadow-card-lift">
+      {/* The whole card opens this week in the Usage tab. */}
+      <StatCardLink
+        to="/usage?period=week"
+        label="Saved and earned: open this week in the Usage tab"
+      />
+      <div className="absolute right-3 top-3 z-20">
         <InfoTooltip text={SAVED_TOOLTIP} />
       </div>
       <CardHeader className="flex flex-1 flex-col items-stretch">

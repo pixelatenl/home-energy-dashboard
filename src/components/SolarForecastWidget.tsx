@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react"
 import { Sun } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import InfoTooltip from "@/components/InfoTooltip"
+import StatCardLink from "@/components/StatCardLink"
 import {
   Card,
   CardAction,
@@ -196,8 +197,13 @@ function SolarForecastWidget() {
   // honest; no target, progress or verdict is fabricated.
   if (daily === null) {
     return (
-      <Card className="relative">
-        <div className="absolute right-3 top-3">
+      <Card className="relative transition-[background-color,border-color,box-shadow] hover:bg-card-hover hover:border-white/30 hover:shadow-card-lift">
+        {/* The whole card opens this week in the Solar tab. */}
+        <StatCardLink
+          to="/solar?period=week"
+          label="Solar forecast: open this week in the Solar tab"
+        />
+        <div className="absolute right-3 top-3 z-20">
           <InfoTooltip text={FORECAST_TOOLTIP} />
         </div>
         <CardHeader>
@@ -238,8 +244,13 @@ function SolarForecastWidget() {
     daily.estimated_kwh > 0 && producedValue > daily.estimated_kwh * 1.1
 
   return (
-    <Card className="relative">
-      <div className="absolute right-3 top-3">
+    <Card className="relative transition-[background-color,border-color,box-shadow] hover:bg-card-hover hover:border-white/30 hover:shadow-card-lift">
+      {/* The whole card opens this week in the Solar tab. */}
+      <StatCardLink
+        to="/solar?period=week"
+        label="Solar forecast: open this week in the Solar tab"
+      />
+      <div className="absolute right-3 top-3 z-20">
         <InfoTooltip text={FORECAST_TOOLTIP} />
       </div>
       <CardHeader>
