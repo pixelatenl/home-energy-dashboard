@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { House, PlugZap, Recycle } from "lucide-react";
 import InfoTooltip from "@/components/InfoTooltip";
 import SkeletonReveal from "@/components/SkeletonReveal";
@@ -43,6 +44,9 @@ interface UsageSummaryStatsProps {
   data: UsageBreakdown | null;
   status: "loading" | "ok" | "error";
   mode: Mode;
+  // The row's fourth card, rendered in the far-right column: the
+  // page passes the period-aware Self usage card.
+  aside?: ReactNode;
 }
 
 // The period summary's three stats (docs/spec.md section 7.1) as
@@ -59,7 +63,12 @@ interface UsageSummaryStatsProps {
 // switches keep the previous cards and update in place. All
 // figures, sign handling and the null-cost rule are exactly those of
 // section 7.1.
-function UsageSummaryStats({ data, status, mode }: UsageSummaryStatsProps) {
+function UsageSummaryStats({
+  data,
+  status,
+  mode,
+  aside,
+}: UsageSummaryStatsProps) {
   const energyFirst = mode === "energy";
   const net = data === null ? null : netFigures(data);
   const costUnavailable =
@@ -79,7 +88,7 @@ function UsageSummaryStats({ data, status, mode }: UsageSummaryStatsProps) {
   // honest state.
   const loading = status === "loading" && data === null;
   const skeleton = (
-    <div className="grid gap-4 sm:grid-cols-3">
+    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
       {[0, 1, 2].map((index) => (
         <StatCardSkeleton key={index} />
       ))}
@@ -88,127 +97,138 @@ function UsageSummaryStats({ data, status, mode }: UsageSummaryStatsProps) {
 
   if (data === null || net === null) {
     return (
-      <SkeletonReveal loading={loading} skeleton={skeleton}>
-        <p className="min-h-12 text-sm text-muted-foreground">
-          {status === "error"
-            ? "Could not load the usage breakdown."
-            : "No usage data for this period."}
-        </p>
-      </SkeletonReveal>
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="min-w-0 sm:col-span-2 lg:col-span-3">
+          <SkeletonReveal loading={loading} skeleton={skeleton}>
+            <p className="min-h-12 text-sm text-muted-foreground">
+              {status === "error"
+                ? "Could not load the usage breakdown."
+                : "No usage data for this period."}
+            </p>
+          </SkeletonReveal>
+        </div>
+        {aside}
+      </div>
     );
   }
 
   return (
-    <SkeletonReveal loading={false} skeleton={skeleton}>
-      <>
-        {/* The three stats, one card each: horizontal from the sm
-          breakpoint up, vertical on phones. */}
-        <div className="grid gap-4 sm:grid-cols-3">
-          <Card className="relative min-h-24">
-            {/* The corner info tooltip over the household usage card,
+    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="min-w-0 sm:col-span-2 lg:col-span-3">
+        <SkeletonReveal loading={false} skeleton={skeleton}>
+          <>
+            {/* The three stats, one card each: two columns from the sm
+          breakpoint up, three inside the row's three-quarter span
+          from lg, stacked on phones. */}
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <Card className="relative min-h-24">
+                {/* The corner info tooltip over the household usage card,
               the hub stat cards' idiom. */}
-            <div className="absolute right-3 top-3 z-20">
-              <InfoTooltip text={CAVEATS_TOOLTIP} />
-            </div>
-            <CardHeader className="flex flex-1 flex-col items-stretch justify-between">
-              <div className="flex flex-col gap-1">
-                <CardTitle className="flex items-center gap-1.5 text-muted-foreground">
-                  <House className="size-5 shrink-0" aria-hidden="true" />
-                  Household usage
-                </CardTitle>
-                <CardTitle className={STAT_HEADLINE}>
-                  {energyFirst
-                    ? formatKwh(data.total.kwh)
-                    : costUnavailable
-                      ? "\u2014"
-                      : formatEur(data.total.cost_eur)}
-                </CardTitle>
-              </div>
-              <div className="flex flex-col gap-1">
-                <p className="text-xs text-muted-foreground tabular-nums">
-                  {energyFirst
-                    ? formatEur(data.total.cost_eur)
-                    : formatKwh(data.total.kwh)}
-                </p>
-                <p className="text-xs text-muted-foreground tabular-nums">
-                  vs previous{" "}
-                  {signedKwh(data.total.kwh - data.total.previous_kwh)}
-                  {data.total.cost_eur !== null &&
-                    data.total.previous_cost_eur !== null &&
-                    ` \u00b7 ${signedEur(
-                      data.total.cost_eur - data.total.previous_cost_eur,
-                    )}`}
-                </p>
-              </div>
-            </CardHeader>
-          </Card>
+                <div className="absolute right-3 top-3 z-20">
+                  <InfoTooltip text={CAVEATS_TOOLTIP} />
+                </div>
+                <CardHeader className="flex flex-1 flex-col items-stretch justify-between">
+                  <div className="flex flex-col gap-1">
+                    <CardTitle className="flex items-center gap-1.5 text-muted-foreground">
+                      <House className="size-5 shrink-0" aria-hidden="true" />
+                      Household usage
+                    </CardTitle>
+                    <CardTitle className={STAT_HEADLINE}>
+                      {energyFirst
+                        ? formatKwh(data.total.kwh)
+                        : costUnavailable
+                          ? "\u2014"
+                          : formatEur(data.total.cost_eur)}
+                    </CardTitle>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <p className="text-xs text-muted-foreground tabular-nums">
+                      {energyFirst
+                        ? formatEur(data.total.cost_eur)
+                        : formatKwh(data.total.kwh)}
+                    </p>
+                    <p className="text-xs text-muted-foreground tabular-nums">
+                      vs previous{" "}
+                      {signedKwh(data.total.kwh - data.total.previous_kwh)}
+                      {data.total.cost_eur !== null &&
+                        data.total.previous_cost_eur !== null &&
+                        ` \u00b7 ${signedEur(
+                          data.total.cost_eur - data.total.previous_cost_eur,
+                        )}`}
+                    </p>
+                  </div>
+                </CardHeader>
+              </Card>
 
-          <Card className="relative min-h-24">
-            <CardHeader className="flex flex-1 flex-col items-stretch justify-between">
-              <div className="flex flex-col gap-1">
-                <CardTitle className="flex items-center gap-1.5 text-muted-foreground">
-                  <PlugZap className="size-5 shrink-0" aria-hidden="true" />
-                  Net grid
-                </CardTitle>
-                <CardTitle className={STAT_HEADLINE}>
-                  {energyFirst
-                    ? netKwhLabel(net.netKwh)
-                    : netEurLabel(net.netCostEur)}
-                </CardTitle>
-              </div>
-              <div className="flex flex-col gap-1">
-                <p className="text-xs text-muted-foreground tabular-nums">
-                  {energyFirst
-                    ? netEurLabel(net.netCostEur)
-                    : netKwhLabel(net.netKwh)}
-                </p>
-                <p className="text-xs text-muted-foreground tabular-nums">
-                  import {formatKwh(data.grid_import_kwh)} &middot; export{" "}
-                  {formatKwh(data.grid_export_kwh)}
-                </p>
-              </div>
-            </CardHeader>
-          </Card>
+              <Card className="relative min-h-24">
+                <CardHeader className="flex flex-1 flex-col items-stretch justify-between">
+                  <div className="flex flex-col gap-1">
+                    <CardTitle className="flex items-center gap-1.5 text-muted-foreground">
+                      <PlugZap className="size-5 shrink-0" aria-hidden="true" />
+                      Net grid
+                    </CardTitle>
+                    <CardTitle className={STAT_HEADLINE}>
+                      {energyFirst
+                        ? netKwhLabel(net.netKwh)
+                        : netEurLabel(net.netCostEur)}
+                    </CardTitle>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <p className="text-xs text-muted-foreground tabular-nums">
+                      {energyFirst
+                        ? netEurLabel(net.netCostEur)
+                        : netKwhLabel(net.netKwh)}
+                    </p>
+                    <p className="text-xs text-muted-foreground tabular-nums">
+                      import {formatKwh(data.grid_import_kwh)} &middot; export{" "}
+                      {formatKwh(data.grid_export_kwh)}
+                    </p>
+                  </div>
+                </CardHeader>
+              </Card>
 
-          <Card className="relative min-h-24">
-            <CardHeader className="flex flex-1 flex-col items-stretch justify-between">
-              <div className="flex flex-col gap-1">
-                <CardTitle className="flex items-center gap-1.5 text-muted-foreground">
-                  <Recycle className="size-5 shrink-0" aria-hidden="true" />
-                  Saved and earned
-                </CardTitle>
-                {/* Saved is money by definition; the light green accent
+              <Card className="relative min-h-24">
+                <CardHeader className="flex flex-1 flex-col items-stretch justify-between">
+                  <div className="flex flex-col gap-1">
+                    <CardTitle className="flex items-center gap-1.5 text-muted-foreground">
+                      <Recycle className="size-5 shrink-0" aria-hidden="true" />
+                      Saved and earned
+                    </CardTitle>
+                    {/* Saved is money by definition; the light green accent
                   makes the headline number pop - the same single
                   money-card exception as the hub's. */}
-                <CardTitle className={`${STAT_HEADLINE} text-green-300`}>
-                  {netEurLabel(net.savedEur)}
-                </CardTitle>
-              </div>
-              <div className="flex flex-col gap-1">
-                <p className="text-xs text-muted-foreground tabular-nums">
-                  from {formatKwh(net.selfSuppliedKwh)} self-supplied plus
-                  feed-in
-                </p>
-                <p className="text-xs text-muted-foreground tabular-nums">
-                  avg{" "}
-                  {data.avg_price_eur === null
-                    ? "\u2014"
-                    : `\u20ac${data.avg_price_eur.toFixed(2)}`}
-                  /kWh
-                </p>
-              </div>
-            </CardHeader>
-          </Card>
-        </div>
+                    <CardTitle className={`${STAT_HEADLINE} text-green-300`}>
+                      {netEurLabel(net.savedEur)}
+                    </CardTitle>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <p className="text-xs text-muted-foreground tabular-nums">
+                      from {formatKwh(net.selfSuppliedKwh)} self-supplied plus
+                      feed-in
+                    </p>
+                    <p className="text-xs text-muted-foreground tabular-nums">
+                      avg{" "}
+                      {data.avg_price_eur === null
+                        ? "\u2014"
+                        : `\u20ac${data.avg_price_eur.toFixed(2)}`}
+                      /kWh
+                    </p>
+                  </div>
+                </CardHeader>
+              </Card>
+            </div>
 
-        {noPrices && (
-          <p className="mt-2 text-xs italic text-muted-foreground">
-            No price data for this period; the cost, net and saved figures are
-            unavailable, not zero.
-          </p>
-        )}
-      </>
-    </SkeletonReveal>
+            {noPrices && (
+              <p className="mt-2 text-xs italic text-muted-foreground">
+                No price data for this period; the cost, net and saved figures
+                are unavailable, not zero.
+              </p>
+            )}
+          </>
+        </SkeletonReveal>
+      </div>
+      {aside}
+    </div>
   );
 }
 

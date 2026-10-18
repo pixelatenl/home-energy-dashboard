@@ -1,17 +1,17 @@
-import { useMemo } from "react"
-import ModeToggle from "@/components/ModeToggle"
-import PageLayout from "@/components/PageLayout"
-import PeriodNavigator from "@/components/PeriodNavigator"
-import RestOfHomeCard from "@/components/RestOfHomeCard"
-import UsageSlotChart from "@/components/UsageSlotChart"
-import UsageSummaryStats from "@/components/UsageSummaryStats"
-import { Card, CardContent } from "@/components/ui/card"
-import { periodLabel } from "@/lib/period"
-import UsageTreemap from "@/components/UsageTreemap"
-import { useMode } from "@/lib/mode"
-import { periodHasData } from "@/lib/period"
-import { usePeriod } from "@/lib/usePeriod"
-import { useUsageBreakdown } from "@/lib/useUsageBreakdown"
+import { useMemo } from "react";
+import ModeToggle from "@/components/ModeToggle";
+import PageLayout from "@/components/PageLayout";
+import PeriodNavigator from "@/components/PeriodNavigator";
+import RestOfHomeCard from "@/components/RestOfHomeCard";
+import UsageSlotChart from "@/components/UsageSlotChart";
+import SelfUsageCard from "@/components/SelfUsageCard";
+import UsageSummaryStats from "@/components/UsageSummaryStats";
+import { Card, CardContent } from "@/components/ui/card";
+import UsageTreemap from "@/components/UsageTreemap";
+import { useMode } from "@/lib/mode";
+import { periodHasData } from "@/lib/period";
+import { usePeriod } from "@/lib/usePeriod";
+import { useUsageBreakdown } from "@/lib/useUsageBreakdown";
 
 // The Usage tab's final layout (docs/spec.md section 7): the left
 // column stacks the period summary card above the category treemap,
@@ -20,13 +20,13 @@ import { useUsageBreakdown } from "@/lib/useUsageBreakdown"
 // breakdown fetch anchored to the navigator's period; the Energy/Cost
 // mode swaps the primary and secondary metric everywhere on the tab.
 function UsagePage() {
-  const { period, isCurrent } = usePeriod()
-  const { mode } = useMode()
+  const { period, isCurrent } = usePeriod();
+  const { mode } = useMode();
   const anchor = useMemo(
     () => ({ period: period.kind, date: period.date }),
-    [period.kind, period.date]
-  )
-  const breakdown = useUsageBreakdown(anchor)
+    [period.kind, period.date],
+  );
+  const breakdown = useUsageBreakdown(anchor);
 
   return (
     <PageLayout
@@ -39,25 +39,15 @@ function UsagePage() {
         </div>
       }
     >
-      {/* The period summary: the section's title and period span the
-          page as a full-width header, outside any card, with the
-          three stats as a row of stat cards beneath - horizontal
-          from the sm breakpoint up, vertical on phones. */}
-      <div>
-        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-          <h2 className="text-xl font-semibold">Period summary</h2>
-          <p className="text-sm text-muted-foreground">
-            {periodLabel(period)}
-          </p>
-        </div>
-        <div className="mt-2">
-          <UsageSummaryStats
-            data={breakdown.data}
-            status={breakdown.status}
-            mode={mode}
-          />
-        </div>
-      </div>
+      {/* The period summary: the stat cards row opens the page
+          directly, like every other tab - no section header, the
+          navigator's own label already states the period. */}
+      <UsageSummaryStats
+        data={breakdown.data}
+        status={breakdown.status}
+        mode={mode}
+        aside={<SelfUsageCard period={period} mode={mode} />}
+      />
 
       {/* One glass card carries the two breakdown sections side by
           side: the Usage breakdown left, Rest of your home right,
@@ -95,7 +85,7 @@ function UsagePage() {
         />
       </div>
     </PageLayout>
-  )
+  );
 }
 
-export default UsagePage
+export default UsagePage;
