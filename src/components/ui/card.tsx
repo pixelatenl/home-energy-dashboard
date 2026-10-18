@@ -1,11 +1,11 @@
 import * as React from "react"
 import { cn } from "cn"
 
-// Glass surface: every Card is translucent (white fill, translucent
-// white border) over the dark-earth gradient body, without a backdrop
-// blur so the background gradient stays crisp behind the tint. The
-// fill, border and elevation all come from the theme tokens in
-// index.css.
+// Glass surface, the reference recipe: every Card is a nearly
+// clear pane over the dark-earth gradient body - a 0.02 white tint
+// with no border, so the .glass-card blur/saturate and gradient
+// seams (index.css) define the edges while the fill, elevation and
+// radius come from the theme tokens.
 function Card({
   className,
   size = "default",
@@ -16,7 +16,7 @@ function Card({
       data-slot="card"
       data-size={size}
       className={cn(
-        "group/card flex flex-col gap-(--card-spacing) overflow-hidden rounded-lg border bg-card py-(--card-spacing) text-sm text-card-foreground shadow-card [--card-spacing:--spacing(4)] has-data-[slot=card-footer]:pb-0 has-[>img:first-child]:pt-0 data-[size=sm]:[--card-spacing:--spacing(3)] data-[size=sm]:has-data-[slot=card-footer]:pb-0",
+        "group/card glass-card flex flex-col gap-(--card-spacing) overflow-hidden rounded-lg bg-card py-(--card-spacing) text-sm text-card-foreground shadow-card [--card-spacing:--spacing(4)] has-data-[slot=card-footer]:pb-0 has-[>img:first-child]:pt-0 data-[size=sm]:[--card-spacing:--spacing(3)] data-[size=sm]:has-data-[slot=card-footer]:pb-0",
         className
       )}
       {...props}

@@ -67,14 +67,26 @@
     --background: oklch(0.205 0 0);
     /* Light text and chart lines on the dark glass surfaces. */
     --foreground: oklch(0.985 0 0);
-    --card: rgb(255 255 255 / 0.15);
-    /* Hover glass: the same fill with the transparency lifted. */
-    --card-hover: rgb(255 255 255 / 0.24);
+    --card: rgb(255 255 255 / 0.06);
+    /* Hover glass: a gentle lift of the whisper fill. */
+    --card-hover: rgb(255 255 255 / 0.12);
     --card-foreground: oklch(0.985 0 0);
-    /* Glass resting elevation: soft, wide and shallow. */
-    --card-shadow: 0 4px 30px rgb(0 0 0 / 0.1);
-    /* Medium lift for interactive surfaces. */
-    --card-shadow-lift: 0 8px 40px rgb(0 0 0 / 0.18);
+    /* Glass elevation, the reference recipe: two stacked outer
+       drops (wide soft + tight shallow) and only 1px inner
+       highlight lines top and bottom - no halo. The card's edges
+       are defined by the .glass-card gradient seams instead. */
+    --card-shadow:
+      0 8px 32px rgb(0 0 0 / 0.15),
+      0 2px 8px rgb(0 0 0 / 0.05),
+      inset 0 1px 0 rgb(255 255 255 / 0.13),
+      inset 0 -1px 0 rgb(255 255 255 / 0.063);
+    /* Medium lift for interactive surfaces: the outer drops
+       deepen, the highlight lines stay. */
+    --card-shadow-lift:
+      0 8px 40px rgb(0 0 0 / 0.22),
+      0 2px 8px rgb(0 0 0 / 0.07),
+      inset 0 1px 0 rgb(255 255 255 / 0.13),
+      inset 0 -1px 0 rgb(255 255 255 / 0.063);
     --popover: oklch(0.205 0 0);
     --popover-foreground: oklch(0.985 0 0);
     --primary: oklch(0.922 0 0);
@@ -88,7 +100,7 @@
     --accent: oklch(0.269 0 0);
     --accent-foreground: oklch(0.985 0 0);
     --destructive: oklch(0.704 0.191 22.216);
-    --border: rgb(255 255 255 / 0.2);
+    --border: rgb(255 255 255 / 0.1);
     --input: oklch(1 0 0 / 15%);
     --ring: oklch(0.556 0 0);
     --chart-1: oklch(0.87 0 0);
@@ -96,8 +108,8 @@
     --chart-3: oklch(0.439 0 0);
     --chart-4: oklch(0.371 0 0);
     --chart-5: oklch(0.269 0 0);
-    /* Glass widgets round at 16px (rounded-lg/xl). */
-    --radius: 1rem;
+    /* Glass widgets round at 20px (rounded-lg/xl). */
+    --radius: 20px;
     --sidebar: oklch(0.205 0 0);
     --sidebar-foreground: oklch(0.985 0 0);
     --sidebar-primary: oklch(0.922 0 0);
@@ -189,6 +201,60 @@
   html {
     @apply font-sans;
     }
+}
+
+/* The frosted glass card surface, the reference recipe: a 20px
+   backdrop blur with a 1.2 saturation boost over the nearly-clear
+   token fill, with two 1px gradient edge seams - bright across the
+   top, one down the left - as the card's only edge definition (the
+   card carries no border). Fill, elevation and radius come from
+   the theme tokens; this layer carries only what tokens cannot
+   express. The dormant .dark theme keeps solid night cards: no
+   blur, no seams. */
+.glass-card {
+  position: relative;
+  -webkit-backdrop-filter: blur(20px) saturate(1.2);
+  backdrop-filter: blur(20px) saturate(1.2);
+}
+
+.glass-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.18),
+    transparent
+  );
+}
+
+.glass-card::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 1px;
+  height: 100%;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.18),
+    transparent,
+    rgba(255, 255, 255, 0.06)
+  );
+}
+
+.dark .glass-card {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+.dark .glass-card::before,
+.dark .glass-card::after {
+  content: none;
 }
 
 /* Live energy flow: a bright pulse travels along each path in the
