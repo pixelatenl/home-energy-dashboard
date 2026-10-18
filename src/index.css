@@ -29,6 +29,10 @@
     --color-accent: var(--accent);
     --color-muted-foreground: var(--muted-foreground);
     --color-muted: var(--muted);
+    /* The skeleton placeholders' own surface: a dark warm brown
+       instead of the neutral muted gray, so loading states sit in
+       the body gradient's palette. */
+    --color-skeleton: var(--skeleton);
     --color-secondary-foreground: var(--secondary-foreground);
     --color-secondary: var(--secondary);
     --color-primary-foreground: var(--primary-foreground);
@@ -94,6 +98,11 @@
     --secondary: oklch(0.269 0 0);
     --secondary-foreground: oklch(0.985 0 0);
     --muted: oklch(0.269 0 0);
+    /* The skeleton surface: the exact middle between the body
+       gradient's darkest base stop (#060402) and the ebony brown
+       (#23140a) - a quiet dark recess that keeps a wisp of the
+       warm undertone, with the pulse as the only signal. */
+    --skeleton: #150c06;
     /* Secondary text is white at a slight blend (75% opacity) so the
        small lines sit a touch softer than the primary figures. */
     --muted-foreground: rgb(255 255 255 / 0.75);
@@ -139,6 +148,8 @@
     --secondary: oklch(0.269 0 0);
     --secondary-foreground: oklch(0.985 0 0);
     --muted: oklch(0.269 0 0);
+    /* The night skeleton shares the same mid-ebony stop. */
+    --skeleton: #150c06;
     --muted-foreground: oklch(0.708 0 0);
     --accent: oklch(0.269 0 0);
     --accent-foreground: oklch(0.985 0 0);
