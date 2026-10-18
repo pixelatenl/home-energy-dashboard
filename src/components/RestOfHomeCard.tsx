@@ -1,6 +1,5 @@
 import { Lamp } from "lucide-react"
-import PanelHeader from "@/components/PanelHeader"
-import { Card, CardContent } from "@/components/ui/card"
+import SectionHeader from "@/components/SectionHeader"
 import type { UsageBreakdown } from "@/lib/api"
 import type { Mode } from "@/lib/mode"
 
@@ -36,13 +35,13 @@ interface RestOfHomeCardProps {
 // zero.
 function RestOfHomeCard({ data, status, mode }: RestOfHomeCardProps) {
   return (
-    <Card className="flex flex-col">
-      <PanelHeader
+    <div className="flex min-w-0 flex-col">
+      <SectionHeader
         icon={Lamp}
         title="Rest of your home"
         description="Per-day model averages of the unmeasured background; household consumption, grid export excluded"
       />
-      <CardContent className="flex flex-1 flex-col">
+      <div className="mt-2 flex flex-1 flex-col">
         {data === null ? (
           <p className="min-h-24 text-sm text-muted-foreground">
             {status === "error"
@@ -52,8 +51,8 @@ function RestOfHomeCard({ data, status, mode }: RestOfHomeCardProps) {
         ) : (
           <RestOfHomeBody data={data} mode={mode} />
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   )
 }
 

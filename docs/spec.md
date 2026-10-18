@@ -390,14 +390,19 @@ remainder exactly for all periods.
 
 ## 7. Right column and summary card (Usage tab)
 
-The Usage tab's final layout: the two-column grid holds the left
-column (the period summary card stacked above the Usage breakdown
-panel) and the right column (the Rest of your home card alone);
-beneath the grid, the per-slot chart (section 8) spans the full
-width. On narrow screens the single-column order is summary,
-treemap, Rest of your home, chart. Every panel uses the shared
-PanelHeader. Toggling Energy/Cost swaps their metrics in place, no
-remount.
+The Usage tab's final layout: the period summary leads as a
+full-width page header (the section's title and period, outside any
+card) with its three stats as a row of stat cards beneath - the
+home page stat cards' composition, horizontal from the sm
+breakpoint up, vertical on phones. One glass card then carries the
+two breakdown sections side by side - the Usage breakdown left,
+Rest of your home right, a soft divider between them from the lg
+breakpoint up; beneath it, the per-slot chart (section 8) spans
+the full width. On narrow screens the single-column order is
+summary stats, breakdown, Rest of your home, chart. Every section
+header uses the shared header idiom (PanelHeader for standalone
+panels, SectionHeader inside the shared card). Toggling
+Energy/Cost swaps their metrics in place, no remount.
 
 ### 7.1 Period summary strip
 

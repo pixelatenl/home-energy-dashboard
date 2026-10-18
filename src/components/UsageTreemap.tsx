@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { LayoutGrid } from "lucide-react"
-import PanelHeader from "@/components/PanelHeader"
-import { Card, CardContent } from "@/components/ui/card"
+import SectionHeader from "@/components/SectionHeader"
 import type { UsageBreakdown } from "@/lib/api"
 import { usageCategoryColor } from "@/lib/applianceColors"
 import type { Mode } from "@/lib/mode"
@@ -101,8 +100,8 @@ function UsageTreemap({
       : 0
 
   return (
-    <Card className="flex flex-col">
-      <PanelHeader
+    <div className="flex min-w-0 flex-col">
+      <SectionHeader
         icon={LayoutGrid}
         title="Usage breakdown"
         description={
@@ -111,7 +110,7 @@ function UsageTreemap({
             : `Metered appliances and heat pump estimate, ${formatMetric(knownPrimary, mode)} of ${formatMetric(totalPrimary, mode)}, ${coveragePct}% of the period`
         }
       />
-      <CardContent className="flex flex-1 flex-col">
+      <div className="mt-2 flex flex-1 flex-col">
         {status === "error" && (
           <p className="flex h-80 items-center justify-center rounded-xl border text-sm text-muted-foreground">
             Could not load the usage breakdown. Try again in a moment.
@@ -241,8 +240,8 @@ function UsageTreemap({
             )}
           </div>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   )
 }
 
