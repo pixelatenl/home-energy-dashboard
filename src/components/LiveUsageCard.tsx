@@ -129,8 +129,11 @@ function LiveUsageCard() {
             deadband - while the glyph, figure and label sit on a
             steady layer inside, so they never move with it. The arc's
             line color follows the grid score's state; with no draw
-            the ring renders empty and rests. */}
-          <div className="relative flex flex-1 items-center justify-center">
+            the ring renders empty and rests. The container holds the
+            ring's full height open: the ring itself is absolutely
+            positioned, so on phones - where the hub rows size to
+            their content - the card would otherwise clip it. */}
+          <div className="relative flex min-h-32 flex-1 items-center justify-center">
             <svg
               viewBox="0 0 100 100"
               className={`absolute size-32 ${
