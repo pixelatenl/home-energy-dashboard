@@ -6,8 +6,10 @@ import {
   type ComponentType,
   type MouseEvent,
   type TouchEvent,
-} from "react"
-import AIContextBox from "@/components/AIContextBox"
+} from "react";
+import { Skeleton } from "@/components/ui/skeleton";
+import SkeletonReveal from "@/components/SkeletonReveal";
+import AIContextBox from "@/components/AIContextBox";
 import {
   Cloud,
   CloudDrizzle,
@@ -19,9 +21,9 @@ import {
   Sun,
   Sunrise,
   Sunset,
-} from "lucide-react"
-import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
+} from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Card,
   CardAction,
@@ -29,7 +31,7 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card"
+} from "@/components/ui/card";
 import {
   fetchWeatherContext,
   fetchWeatherDaily,
@@ -37,12 +39,12 @@ import {
   type WeatherCurrent,
   type WeatherDay,
   type WeatherHour,
-} from "@/lib/api"
-import { useAiContext } from "@/lib/useAiContext"
-import { useDataRefreshListener } from "@/lib/useDataRefresh"
-import { amsterdamNow, todayInAmsterdam } from "@/lib/time"
+} from "@/lib/api";
+import { useAiContext } from "@/lib/useAiContext";
+import { useDataRefreshListener } from "@/lib/useDataRefresh";
+import { amsterdamNow, todayInAmsterdam } from "@/lib/time";
 
-type IconComponent = ComponentType<{ className?: string }>
+type IconComponent = ComponentType<{ className?: string }>;
 
 // WMO weather interpretation codes mapped to lucide icons.
 const WEATHER_ICONS: Record<number, IconComponent> = {
@@ -74,20 +76,20 @@ const WEATHER_ICONS: Record<number, IconComponent> = {
   95: CloudLightning,
   96: CloudLightning,
   99: CloudLightning,
-}
+};
 
 // The score ring's band color: muted, warm-leaning tones from the
 // app's shared data-viz palette - muted gold for mostly sunny,
 // terracotta for mixed, warm gray for overcast - instead of bright
 // signal colors.
 function solarScoreColor(score: number): string {
-  if (score >= 70) return "hsl(45 45% 42%)" // mostly sunny
-  if (score >= 40) return "hsl(28 40% 42%)" // mixed
-  return "#6b6157" // overcast
+  if (score >= 70) return "hsl(45 45% 42%)"; // mostly sunny
+  if (score >= 40) return "hsl(28 40% 42%)"; // mixed
+  return "#6b6157"; // overcast
 }
 
 function ScoreRing({ score }: { score: number }) {
-  const color = solarScoreColor(score)
+  const color = solarScoreColor(score);
   return (
     <div
       className="flex size-14 items-center justify-center rounded-full"
@@ -100,26 +102,26 @@ function ScoreRing({ score }: { score: number }) {
         {score}
       </div>
     </div>
-  )
+  );
 }
 
 function weekdayName(date: string): string {
   return new Date(`${date}T12:00:00`).toLocaleDateString("en-GB", {
     weekday: "short",
-  })
+  });
 }
 
 // Rounds a positive value up to a readable one-or-two significant digit
 // number for the Wh axis: 1173 -> 1500, 620 -> 750, 340 -> 400.
 function niceCeil(value: number): number {
   if (value <= 0) {
-    return 1
+    return 1;
   }
-  const magnitude = 10 ** Math.floor(Math.log10(value))
-  const normalized = value / magnitude
-  const steps = [1, 1.5, 2, 2.5, 3, 4, 5, 7.5, 10]
-  const step = steps.find((s) => normalized <= s + 1e-9) ?? 10
-  return step * magnitude
+  const magnitude = 10 ** Math.floor(Math.log10(value));
+  const normalized = value / magnitude;
+  const steps = [1, 1.5, 2, 2.5, 3, 4, 5, 7.5, 10];
+  const step = steps.find((s) => normalized <= s + 1e-9) ?? 10;
+  return step * magnitude;
 }
 
 // Color swatches matching the chart elements in HourlyChart.
@@ -148,12 +150,18 @@ function ChartLegend() {
         PV estimate (Wh)
       </span>
     </div>
-  )
+  );
 }
 
 // Floating tooltip shown while hovering an hour slot of the chart.
-function ChartTooltip({ hour, leftPercent }: { hour: WeatherHour; leftPercent: number }) {
-  const Icon = WEATHER_ICONS[hour.weather_code] ?? Cloud
+function ChartTooltip({
+  hour,
+  leftPercent,
+}: {
+  hour: WeatherHour;
+  leftPercent: number;
+}) {
+  const Icon = WEATHER_ICONS[hour.weather_code] ?? Cloud;
   return (
     <div
       className="pointer-events-none absolute top-1 z-10 min-w-28 -translate-x-1/2 rounded-lg border bg-popover px-2.5 py-1.5 text-popover-foreground shadow-md"
@@ -165,14 +173,14 @@ function ChartTooltip({ hour, leftPercent }: { hour: WeatherHour; leftPercent: n
         &deg;C
       </div>
       <div className="text-muted-foreground tabular-nums">
-        Cloud {hour.cloud_cover}% &middot; Rain{" "}
-        {hour.precipitation_probability}%
+        Cloud {hour.cloud_cover}% &middot; Rain {hour.precipitation_probability}
+        %
       </div>
       <div className="text-muted-foreground tabular-nums">
         PV {hour.estimated_pv_wh} Wh
       </div>
     </div>
-  )
+  );
 }
 
 // Hourly strip: temperature curve over cloud-cover shading, with a PV
@@ -186,132 +194,128 @@ function pvBarPath(
   x: number,
   width: number,
   top: number,
-  base: number
+  base: number,
 ): string {
-  const r = Math.min(5, width / 2, base - top)
-  return `M ${x} ${base} V ${top + r} A ${r} ${r} 0 0 1 ${x + r} ${top} H ${x + width - r} A ${r} ${r} 0 0 1 ${x + width} ${top + r} V ${base} Z`
+  const r = Math.min(5, width / 2, base - top);
+  return `M ${x} ${base} V ${top + r} A ${r} ${r} 0 0 1 ${x + r} ${top} H ${x + width - r} A ${r} ${r} 0 0 1 ${x + width} ${top + r} V ${base} Z`;
 }
 
-function HourlyChart({ hours }: { hours: WeatherHour[] }) {  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
+function HourlyChart({ hours }: { hours: WeatherHour[] }) {
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   // Suppresses the synthetic mouse events browsers fire after a touch, so
   // the tap toggle is not immediately undone.
-  const lastTouchAt = useRef(0)
+  const lastTouchAt = useRef(0);
   // Ticks once a minute so the "Now" marker stays in place.
-  const [nowTick, setNowTick] = useState(() => Date.now())
+  const [nowTick, setNowTick] = useState(() => Date.now());
   useEffect(() => {
-    const id = setInterval(() => setNowTick(Date.now()), 60_000)
-    return () => clearInterval(id)
-  }, [])
-  const width = 960
-  const height = 150
+    const id = setInterval(() => setNowTick(Date.now()), 60_000);
+    return () => clearInterval(id);
+  }, []);
+  const width = 960;
+  const height = 150;
   // Empty band at the top of the chart so the "Now" label has breathing
   // room above the data.
-  const topBand = 18
-  const slot = width / hours.length
-  const temperatures = hours.map((hour) => hour.temperature)
-  const minTemp = Math.min(...temperatures)
-  const maxTemp = Math.max(...temperatures)
-  const maxPv = Math.max(...hours.map((hour) => hour.estimated_pv_wh), 1)
-  const x = (index: number) => (index + 0.5) * slot
+  const topBand = 18;
+  const slot = width / hours.length;
+  const temperatures = hours.map((hour) => hour.temperature);
+  const minTemp = Math.min(...temperatures);
+  const maxTemp = Math.max(...temperatures);
+  const maxPv = Math.max(...hours.map((hour) => hour.estimated_pv_wh), 1);
+  const x = (index: number) => (index + 0.5) * slot;
   // Temperature axis domain: a low floor (0 degrees, or daily minimum
   // minus 8 when temperatures are near or below zero, so the line is
   // never pinned to the bottom of the chart) and a ceiling slightly
   // above the daily maximum.
-  const tempFloor = minTemp < 1 ? minTemp - 8 : 0
-  const tempCeil = Math.max(maxTemp + 2, tempFloor + 1)
+  const tempFloor = minTemp < 1 ? minTemp - 8 : 0;
+  const tempCeil = Math.max(maxTemp + 2, tempFloor + 1);
   // Shared plot band for both series: the Wh maximum sits at the same
   // height as the temperature maximum, and both scales use the same
   // number of steps (three), so their tick positions and the dashed
   // gridlines coincide - one gridline set serves both axes.
-  const bandTop = 34
-  const pvBase = height - 10
-  const bandRange = pvBase - bandTop
+  const bandTop = 34;
+  const pvBase = height - 10;
+  const bandRange = pvBase - bandTop;
   const yTemp = (temperature: number) =>
     bandTop +
-    (1 - (temperature - tempFloor) / (tempCeil - tempFloor)) * bandRange
-  const pvMaxWh = niceCeil(maxPv)
-  const pvY = (value: number) => pvBase - (value / pvMaxWh) * bandRange
+    (1 - (temperature - tempFloor) / (tempCeil - tempFloor)) * bandRange;
+  const pvMaxWh = niceCeil(maxPv);
+  const pvY = (value: number) => pvBase - (value / pvMaxWh) * bandRange;
   const pvTicks = [
     { value: pvMaxWh, label: pvMaxWh },
     { value: pvMaxWh / 2, label: pvMaxWh / 2 },
     { value: 0, label: 0 },
-  ]
+  ];
   // Gridlines at the shared step positions; they carry both axes' ticks.
-  const gridlines = [bandTop, bandTop + bandRange / 2, pvBase]
+  const gridlines = [bandTop, bandTop + bandRange / 2, pvBase];
   const points = hours
     .map((hour, index) => `${x(index)},${yTemp(hour.temperature)}`)
-    .join(" ")
+    .join(" ");
   // Temperature scale ticks: the domain ceiling, midpoint and floor,
   // positioned to match the curve band.
-  const ticks = [tempCeil, (tempFloor + tempCeil) / 2, tempFloor]
+  const ticks = [tempCeil, (tempFloor + tempCeil) / 2, tempFloor];
   // "Now" marker: drawn only when the charted day is the current
   // Europe/Amsterdam day and the local time is inside the shown window.
-  const now = amsterdamNow(nowTick)
-  const chartDate = hours[0]?.hour.slice(0, 10)
-  const firstHour = hours.length > 0 ? Number(hours[0].hour.slice(11, 13)) : 0
+  const now = amsterdamNow(nowTick);
+  const chartDate = hours[0]?.hour.slice(0, 10);
+  const firstHour = hours.length > 0 ? Number(hours[0].hour.slice(11, 13)) : 0;
   const lastHour =
-    hours.length > 0
-      ? Number(hours[hours.length - 1].hour.slice(11, 13))
-      : 0
+    hours.length > 0 ? Number(hours[hours.length - 1].hour.slice(11, 13)) : 0;
   const showNow =
     chartDate === now.date &&
     now.fraction >= firstHour &&
-    now.fraction <= lastHour + 1
-  const nowX =
-    ((now.fraction - firstHour) / Math.max(hours.length, 1)) * width
+    now.fraction <= lastHour + 1;
+  const nowX = ((now.fraction - firstHour) / Math.max(hours.length, 1)) * width;
 
   const indexFromClientX = (clientX: number, element: HTMLElement) => {
-    const rect = element.getBoundingClientRect()
+    const rect = element.getBoundingClientRect();
     const index = Math.floor(
-      ((clientX - rect.left) / rect.width) * hours.length
-    )
-    return index >= 0 && index < hours.length ? index : null
-  }
+      ((clientX - rect.left) / rect.width) * hours.length,
+    );
+    return index >= 0 && index < hours.length ? index : null;
+  };
 
   const handleMouseMove = (event: MouseEvent<HTMLDivElement>) => {
     if (Date.now() - lastTouchAt.current < 500) {
-      return // synthetic mouse event after a touch
+      return; // synthetic mouse event after a touch
     }
-    setHoveredIndex(indexFromClientX(event.clientX, event.currentTarget))
-  }
+    setHoveredIndex(indexFromClientX(event.clientX, event.currentTarget));
+  };
 
   // Tap to inspect an hour; tapping the same hour again dismisses the
   // tooltip. touchstart only, so scrolling past the chart stays smooth.
   const handleTouchStart = (event: TouchEvent<HTMLDivElement>) => {
-    const touch = event.touches[0]
+    const touch = event.touches[0];
     if (!touch) {
-      return
+      return;
     }
-    lastTouchAt.current = Date.now()
-    const index = indexFromClientX(touch.clientX, event.currentTarget)
+    lastTouchAt.current = Date.now();
+    const index = indexFromClientX(touch.clientX, event.currentTarget);
     if (index !== null && index === hoveredIndex) {
-      setHoveredIndex(null)
-      return
+      setHoveredIndex(null);
+      return;
     }
-    setHoveredIndex(index)
-  }
+    setHoveredIndex(index);
+  };
 
   // Horizontal anchor for the tooltip, clamped so it stays inside the chart.
-  const tooltipLeftPercent = hoveredIndex === null
-    ? 0
-    : Math.min(
-        Math.max(((hoveredIndex + 0.5) / hours.length) * 100, 10),
-        90
-      )
+  const tooltipLeftPercent =
+    hoveredIndex === null
+      ? 0
+      : Math.min(Math.max(((hoveredIndex + 0.5) / hours.length) * 100, 10), 90);
 
   return (
     <div>
       <div className="flex gap-2">
         <div className="relative h-36 w-8 shrink-0">
-        {ticks.map((tick) => (
-          <span
-            key={tick}
-            className="absolute right-0 -translate-y-1/2 text-xs text-muted-foreground tabular-nums"
-            style={{ top: `${(yTemp(tick) / height) * 100}%` }}
-          >
-            {Math.round(tick)}&deg;
-          </span>
-        ))}
+          {ticks.map((tick) => (
+            <span
+              key={tick}
+              className="absolute right-0 -translate-y-1/2 text-xs text-muted-foreground tabular-nums"
+              style={{ top: `${(yTemp(tick) / height) * 100}%` }}
+            >
+              {Math.round(tick)}&deg;
+            </span>
+          ))}
         </div>
         <div
           className="relative h-36 w-full"
@@ -327,8 +331,7 @@ function HourlyChart({ hours }: { hours: WeatherHour[] }) {  const [hoveredIndex
             aria-label="Hourly temperature, cloud cover and PV estimate"
           >
             {hours.map((hour, index) => {
-              const pvHeight =
-                (hour.estimated_pv_wh / pvMaxWh) * bandRange
+              const pvHeight = (hour.estimated_pv_wh / pvMaxWh) * bandRange;
               return (
                 <g key={hour.hour}>
                   <rect
@@ -348,13 +351,13 @@ function HourlyChart({ hours }: { hours: WeatherHour[] }) {  const [hoveredIndex
                         x(index) - slot * 0.3,
                         slot * 0.6,
                         pvBase - pvHeight,
-                        pvBase
+                        pvBase,
                       )}
                       fill="hsl(38 45% 42%)"
                     />
                   )}
                 </g>
-              )
+              );
             })}
             {/* One gridline set, at the shared step positions of both
                 the temperature (left) and Wh (right) scales. */}
@@ -466,33 +469,33 @@ function HourlyChart({ hours }: { hours: WeatherHour[] }) {  const [hoveredIndex
       </div>
       <ChartLegend />
     </div>
-  )
+  );
 }
 
-const STRIP_HEIGHT = "h-64"
-const DAY_CARD_HEIGHT = "min-h-48"
+const STRIP_HEIGHT = "h-64";
+const DAY_CARD_HEIGHT = "min-h-48";
 
 function DayCard({
   day,
   selected,
   onSelect,
 }: {
-  day: WeatherDay
-  selected: boolean
-  onSelect: (date: string) => void
+  day: WeatherDay;
+  selected: boolean;
+  onSelect: (date: string) => void;
 }) {
-  const Icon = WEATHER_ICONS[day.weather_code] ?? Cloud
-  const isToday = day.date === todayInAmsterdam()
+  const Icon = WEATHER_ICONS[day.weather_code] ?? Cloud;
+  const isToday = day.date === todayInAmsterdam();
   // Cumulative actual production so far against the full-day forecast;
   // the share is capped at 100 percent. Hidden before any production
   // today. Today shows a compact actual/estimate notation on one line so
   // its card keeps the same height as the other day cards (the full
   // sentence is in the hover tooltip).
-  const actual = isToday ? (day.actual_today_kwh ?? null) : null
+  const actual = isToday ? (day.actual_today_kwh ?? null) : null;
   const share =
     actual !== null && day.estimated_kwh > 0
       ? Math.min(100, Math.round((actual / day.estimated_kwh) * 100))
-      : 0
+      : 0;
   return (
     <button
       type="button"
@@ -504,7 +507,9 @@ function DayCard({
           : "border-transparent hover:bg-muted/50"
       } ${DAY_CARD_HEIGHT}`}
     >
-      <span className="text-sm font-medium">{isToday ? "Today" : weekdayName(day.date)}</span>
+      <span className="text-sm font-medium">
+        {isToday ? "Today" : weekdayName(day.date)}
+      </span>
       <Icon className="size-6" />
       <span className="text-xs text-muted-foreground tabular-nums">
         {Math.round(day.temp_max)} / {Math.round(day.temp_min)} &deg;C
@@ -531,7 +536,7 @@ function DayCard({
         </span>
       )}
     </button>
-  )
+  );
 }
 
 // Clips hourly rows to the daylight window (sunrise to sunset, inclusive of
@@ -540,20 +545,19 @@ function DayCard({
 // hours, rather than showing an empty chart.
 function clipToDaylight(
   hours: WeatherHour[],
-  day: WeatherDay | null
+  day: WeatherDay | null,
 ): WeatherHour[] {
   if (!day?.sunrise || !day?.sunset || hours.length === 0) {
-    return hours
+    return hours;
   }
   // Hour strings and sunrise/sunset are local-time ISO, so a prefix
   // comparison on "YYYY-MM-DDTHH" is a valid window test.
-  const start = day.sunrise.slice(0, 13)
-  const end = day.sunset.slice(0, 13)
+  const start = day.sunrise.slice(0, 13);
+  const end = day.sunset.slice(0, 13);
   const clipped = hours.filter(
-    (hour) =>
-      hour.hour.slice(0, 13) >= start && hour.hour.slice(0, 13) <= end
-  )
-  return clipped.length > 0 ? clipped : hours
+    (hour) => hour.hour.slice(0, 13) >= start && hour.hour.slice(0, 13) <= end,
+  );
+  return clipped.length > 0 ? clipped : hours;
 }
 
 // The current hour's slot shows the "current" analysis values instead of
@@ -561,15 +565,15 @@ function clipToDaylight(
 function withCurrentConditions(
   hours: WeatherHour[],
   current: WeatherCurrent | null,
-  dateKey: string | null
+  dateKey: string | null,
 ): WeatherHour[] {
   if (!current || !dateKey || hours.length === 0) {
-    return hours
+    return hours;
   }
   if (dateKey !== todayInAmsterdam()) {
-    return hours
+    return hours;
   }
-  const hour = Math.floor(amsterdamNow(Date.now()).fraction)
+  const hour = Math.floor(amsterdamNow(Date.now()).fraction);
   return hours.map((row) =>
     Number(row.hour.slice(11, 13)) === hour
       ? {
@@ -578,79 +582,90 @@ function withCurrentConditions(
           weather_code: current.weather_code ?? row.weather_code,
           cloud_cover: current.cloud_cover ?? row.cloud_cover,
         }
-      : row
-  )
+      : row,
+  );
 }
 
 function WeatherForecast() {
-  const weatherContext = useAiContext(fetchWeatherContext)
-  const [daily, setDaily] = useState<WeatherDay[] | null>(null)
+  const weatherContext = useAiContext(fetchWeatherContext);
+  const [daily, setDaily] = useState<WeatherDay[] | null>(null);
+  // Mirrors the loaded days for loadDaily's catch without a state
+  // dependency; see the comment on loadDaily.
+  const dailyRef = useRef<WeatherDay[] | null>(null);
   const [dailyStatus, setDailyStatus] = useState<"loading" | "ok" | "error">(
-    "loading"
-  )
-  const [selectedDate, setSelectedDate] = useState<string | null>(null)
-  const [hourly, setHourly] = useState<WeatherHour[] | null>(null)
+    "loading",
+  );
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [hourly, setHourly] = useState<WeatherHour[] | null>(null);
   const [currentWeather, setCurrentWeather] = useState<WeatherCurrent | null>(
-    null
-  )
+    null,
+  );
   const [hourlyStatus, setHourlyStatus] = useState<
     "idle" | "loading" | "error"
-  >("idle")
+  >("idle");
+  // Increments on every hourly load session, so each one gets a
+  // fresh skeleton reveal with its own floor and cross-fade: the
+  // initial strip load, every day switch and every retry.
+  const [hourlySession, setHourlySession] = useState(0);
 
   const loadHourly = useCallback(async (date: string) => {
-    setHourly(null)
-    setCurrentWeather(null)
-    setHourlyStatus("loading")
+    setHourly(null);
+    setCurrentWeather(null);
+    setHourlySession((value) => value + 1);
+    setHourlyStatus("loading");
     try {
-      const result = await fetchWeatherHourly(date)
-      setHourly(result.hours)
-      setCurrentWeather(result.current)
-      setHourlyStatus("idle")
+      const result = await fetchWeatherHourly(date);
+      setHourly(result.hours);
+      setCurrentWeather(result.current);
+      setHourlyStatus("idle");
     } catch {
-      setHourlyStatus("error")
+      setHourlyStatus("error");
     }
-  }, [])
+  }, []);
 
   // Fetches the daily forecast and selects the first day. State is only
   // updated after the await, so this is safe to call from effects.
   const loadDaily = useCallback(
     async (refresh: boolean) => {
-      if (refresh) {
-        setDaily(null)
-        setDailyStatus("loading")
-      }
+      // A refresh keeps the current forecast on screen and updates
+      // in place once the response lands; only the initial load
+      // shows the skeleton, and a failed refresh leaves the previous
+      // forecast standing.
       try {
-        const days = await fetchWeatherDaily(5)
-        setDaily(days)
-        setDailyStatus("ok")
+        const days = await fetchWeatherDaily(5);
+        dailyRef.current = days;
+        setDaily(days);
+        setDailyStatus("ok");
         if (days.length > 0) {
-          setSelectedDate(days[0].date)
-          void loadHourly(days[0].date)
+          setSelectedDate(days[0].date);
+          void loadHourly(days[0].date);
         }
       } catch {
-        setDailyStatus("error")
+        if (!refresh || dailyRef.current === null) {
+          setDailyStatus("error");
+        }
       }
     },
-    [loadHourly]
-  )
+    [loadHourly],
+  );
 
   useEffect(() => {
     // eslint-disable-next-line react/set-state-in-effect
-    void loadDaily(false)
-  }, [loadDaily])
+    void loadDaily(false);
+  }, [loadDaily]);
 
   // Re-fetch immediately when the header refresh button fires. This resets
   // to the first day, like the retry button does.
-  const refreshDaily = useCallback(() => void loadDaily(true), [loadDaily])
-  useDataRefreshListener(refreshDaily)
+  const refreshDaily = useCallback(() => void loadDaily(true), [loadDaily]);
+  useDataRefreshListener(refreshDaily);
 
   const selectDay = useCallback(
     (date: string) => {
-      setSelectedDate(date)
-      void loadHourly(date)
+      setSelectedDate(date);
+      void loadHourly(date);
     },
-    [loadHourly]
-  )
+    [loadHourly],
+  );
 
   // The strip only has value during daylight: clip the fetched hours to the
   // sunrise-sunset window of the selected day.
@@ -658,16 +673,15 @@ function WeatherForecast() {
     hourly && selectedDate
       ? clipToDaylight(
           hourly,
-          daily?.find((day) => day.date === selectedDate) ?? null
+          daily?.find((day) => day.date === selectedDate) ?? null,
         )
-      : null
+      : null;
 
   return (
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-muted-foreground">
-          <Sun className="size-6" aria-hidden="true" />
-          5 day solar forecast
+          <Sun className="size-6" aria-hidden="true" />5 day solar forecast
         </CardTitle>
         <CardDescription>
           Solar score and estimated PV yield for the coming days
@@ -677,10 +691,8 @@ function WeatherForecast() {
             <Badge variant="outline" className="tabular-nums">
               PV{" "}
               {(
-                hourly.reduce(
-                  (sum, hour) => sum + hour.estimated_pv_wh,
-                  0
-                ) / 1000
+                hourly.reduce((sum, hour) => sum + hour.estimated_pv_wh, 0) /
+                1000
               ).toFixed(1)}{" "}
               kWh estimated
             </Badge>
@@ -688,85 +700,118 @@ function WeatherForecast() {
         )}
       </CardHeader>
       <CardContent className="space-y-4">
-        {dailyStatus === "error" && (
-          <div
-            className={`flex items-center justify-between rounded-xl border border-destructive/30 px-4 ${DAY_CARD_HEIGHT}`}
-          >
-            <p className="text-sm text-destructive">
-              Could not load the weather forecast.
-            </p>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => void loadDaily(true)}
+        {/* The daily grid's reveal through the shared wrapper: the
+            skeleton grid owns the flow until the reveal, then the
+            two cross-fade in one cell - the manual phase handling
+            here stacked both grids when the (cached) forecast
+            answered faster than the floor. An error is not loading:
+            the honest message fades in like content. */}
+        <SkeletonReveal
+          loading={dailyStatus === "loading"}
+          skeleton={
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+              {[0, 1, 2, 3, 4].map((index) => (
+                <Skeleton
+                  key={index}
+                  className={`rounded-xl ${DAY_CARD_HEIGHT}`}
+                />
+              ))}
+            </div>
+          }
+        >
+          {dailyStatus === "error" ? (
+            <div
+              className={`flex items-center justify-between rounded-xl border border-destructive/30 px-4 ${DAY_CARD_HEIGHT}`}
             >
-              Retry
-            </Button>
-          </div>
-        )}
-        {dailyStatus === "loading" && (
-          <div className={`animate-pulse rounded-xl bg-muted ${DAY_CARD_HEIGHT}`} />
-        )}
-        {daily && (
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
-            {daily.map((day) => (
-              <DayCard
-                key={day.date}
-                day={day}
-                selected={day.date === selectedDate}
-                onSelect={selectDay}
-              />
-            ))}
-          </div>
-        )}
+              <p className="text-sm text-destructive">
+                Could not load the weather forecast.
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => void loadDaily(true)}
+              >
+                Retry
+              </Button>
+            </div>
+          ) : daily ? (
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+              {daily.map((day) => (
+                <DayCard
+                  key={day.date}
+                  day={day}
+                  selected={day.date === selectedDate}
+                  onSelect={selectDay}
+                />
+              ))}
+            </div>
+          ) : null}
+        </SkeletonReveal>
 
         {selectedDate && (
           <div className={`rounded-xl bg-muted/30 p-4 ${STRIP_HEIGHT}`}>
-            {hourlyStatus === "loading" && (
-              <div className="h-full w-full animate-pulse rounded-lg bg-muted" />
-            )}
-            {hourlyStatus === "error" && (
-              <div className="flex h-full flex-col items-center justify-center gap-2">
-                <p className="text-sm text-destructive">
-                  Could not load the hourly forecast.
-                </p>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => void loadHourly(selectedDate)}
-                >
-                  Retry
-                </Button>
-              </div>
-            )}
-            {visibleHours && visibleHours.length > 0 && (
-              <div className="flex h-full flex-col gap-2">
-                <div className="text-sm">
-                  <span className="font-medium">
-                    {selectedDate === todayInAmsterdam()
-                      ? "Today"
-                      : new Date(`${selectedDate}T12:00:00`).toLocaleDateString(
-                          "en-GB",
-                          { weekday: "long", day: "numeric", month: "short" }
-                        )}
-                  </span>
-                </div>
-                <HourlyChart
-                  hours={withCurrentConditions(
-                    visibleHours,
-                    currentWeather,
-                    selectedDate
-                  )}
+            {/* One reveal per hourly load session (the initial load,
+                every day switch, every retry): the keyed instance
+                mounts with loading already true, so the floor and
+                the cross-fade arm for each session. The strip keeps
+                its fixed height throughout. */}
+            <SkeletonReveal
+              key={`${selectedDate}-${hourlySession}`}
+              className="h-full"
+              loading={hourlyStatus === "loading"}
+              skeleton={
+                <Skeleton
+                  variant="block"
+                  className="h-full w-full rounded-lg"
                 />
-              </div>
-            )}
+              }
+            >
+              {hourlyStatus === "error" && (
+                <div className="flex h-full flex-col items-center justify-center gap-2">
+                  <p className="text-sm text-destructive">
+                    Could not load the hourly forecast.
+                  </p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => void loadHourly(selectedDate)}
+                  >
+                    Retry
+                  </Button>
+                </div>
+              )}
+              {visibleHours && visibleHours.length > 0 && (
+                <div className="flex h-full flex-col gap-2">
+                  <div className="text-sm">
+                    <span className="font-medium">
+                      {selectedDate === todayInAmsterdam()
+                        ? "Today"
+                        : new Date(
+                            `${selectedDate}T12:00:00`,
+                          ).toLocaleDateString("en-GB", {
+                            weekday: "long",
+                            day: "numeric",
+                            month: "short",
+                          })}
+                    </span>
+                  </div>
+                  <HourlyChart
+                    hours={withCurrentConditions(
+                      visibleHours,
+                      currentWeather,
+                      selectedDate,
+                    )}
+                  />
+                </div>
+              )}
+            </SkeletonReveal>
           </div>
         )}
 
         <AIContextBox {...weatherContext} />
       </CardContent>
     </Card>
-  )
+  );
 }
 
-export default WeatherForecast
+export default WeatherForecast;

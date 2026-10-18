@@ -1,14 +1,14 @@
-import { Zap } from "lucide-react"
-import houseUrl from "@/house.png"
-import TimeOfDayBackground from "@/components/TimeOfDayBackground"
-import { useTimeOfDayPhase } from "@/lib/timeOfDay"
+import { Zap } from "lucide-react";
+import houseUrl from "@/house.png";
+import TimeOfDayBackground from "@/components/TimeOfDayBackground";
+import { useTimeOfDayPhase } from "@/lib/timeOfDay";
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card"
+} from "@/components/ui/card";
 import {
   GRID_IMPORT_COLOR,
   DIAGRAM_WIDTH,
@@ -20,8 +20,10 @@ import {
   type FlowData,
   type FlowEdge,
   type FlowNode,
-} from "@/lib/flowDiagram"
-import { useSummary } from "@/lib/useSummary"
+} from "@/lib/flowDiagram";
+import SkeletonReveal from "@/components/SkeletonReveal";
+import { Skeleton } from "@/components/ui/skeleton";
+import { useSummary } from "@/lib/useSummary";
 
 // --- Render pass over the diagram data (see src/lib/flowDiagram.ts) ---
 // The home node is the house illustration from src/house.png, embedded
@@ -32,20 +34,20 @@ import { useSummary } from "@/lib/useSummary"
 
 // Line weight grows with power: 1.5 px at the flow threshold up to 4.5
 // px at high power; the sqrt scaling keeps midrange values readable.
-const FLOW_THRESHOLD_W = 25
-const FLOW_WIDTH_MAX_W = 4000
+const FLOW_THRESHOLD_W = 25;
+const FLOW_WIDTH_MAX_W = 4000;
 
 function flowWidth(value: number): number {
-  const t = Math.min(Math.max(value / FLOW_WIDTH_MAX_W, 0), 1)
-  return 1.5 + 3 * Math.sqrt(t)
+  const t = Math.min(Math.max(value / FLOW_WIDTH_MAX_W, 0), 1);
+  return 1.5 + 3 * Math.sqrt(t);
 }
 
 // Crossing time in seconds: how long the traveling pulse takes to run
 // one line - about six seconds near the threshold, under a second at
 // high power.
 function flowDuration(value: number): number {
-  const seconds = 6 * Math.sqrt(FLOW_THRESHOLD_W / value)
-  return Math.min(6, Math.max(0.7, seconds))
+  const seconds = 6 * Math.sqrt(FLOW_THRESHOLD_W / value);
+  return Math.min(6, Math.max(0.7, seconds));
 }
 
 // --- Shared flow line style (the only definition; every connection
@@ -56,9 +58,9 @@ function flowDuration(value: number): number {
 // (solar orange, grid indigo, battery state color). Inactive lines
 // are a single 1px white line at half opacity - present, but visually
 // quiet. No borders anywhere.
-const FLOW_BAND = "rgba(255, 255, 255, 0.5)"
-const ACTIVE_BASE_COLOR = GRID_IMPORT_COLOR
-const INACTIVE_LINE = "rgba(255, 255, 255, 0.3)"
+const FLOW_BAND = "rgba(255, 255, 255, 0.5)";
+const ACTIVE_BASE_COLOR = GRID_IMPORT_COLOR;
+const INACTIVE_LINE = "rgba(255, 255, 255, 0.3)";
 
 // The traveling pulse, in path-length fractions: every pulse path
 // carries pathLength="1", so these are the same for every edge. The
@@ -66,8 +68,8 @@ const INACTIVE_LINE = "rgba(255, 255, 255, 0.3)"
 // length before it re-enters at the start - one pulse per line,
 // wrapping seamlessly every 1.15 path lengths, the cycle the
 // flow-pulse keyframe in index.css matches.
-const PULSE_FRACTION = 0.15
-const PULSE_CYCLE = 1 + PULSE_FRACTION
+const PULSE_FRACTION = 0.15;
+const PULSE_CYCLE = 1 + PULSE_FRACTION;
 
 // One flow line: the shared base line with the flow's bright pulse
 // traveling along it when it carries power, a thin translucent white
@@ -75,9 +77,9 @@ const PULSE_CYCLE = 1 + PULSE_FRACTION
 // the pulse travels along the path direction, so a reversed flow runs
 // its own line the other way.
 function FlowLine({ edge }: { edge: FlowEdge }) {
-  const active = edge.active && edge.value !== null
-  const value = edge.value ?? 0
-  const width = flowWidth(value)
+  const active = edge.active && edge.value !== null;
+  const value = edge.value ?? 0;
+  const width = flowWidth(value);
   if (!active) {
     return (
       <path
@@ -88,7 +90,7 @@ function FlowLine({ edge }: { edge: FlowEdge }) {
         vectorEffect="non-scaling-stroke"
         strokeLinecap="round"
       />
-    )
+    );
   }
   return (
     <g className="flow-shadow">
@@ -121,7 +123,7 @@ function FlowLine({ edge }: { edge: FlowEdge }) {
         }}
       />
     </g>
-  )
+  );
 }
 
 // The house illustration, embedded as the reference image for the home
@@ -135,14 +137,14 @@ function HouseImage() {
       width={HOUSE_IMAGE.width}
       height={HOUSE_IMAGE.height}
     />
-  )
+  );
 }
 
 // Responsive node typography: nothing falls below a readable size on
 // phones, nothing grows past the diagram's design size on desktop.
-const NODE_TEXT = "clamp(0.7rem, 2.5vw, 0.9rem)"
-const NODE_SUB_TEXT = "clamp(0.65rem, 2.3vw, 0.8rem)"
-const NODE_ICON = "clamp(0.9rem, 3vw, 1.15rem)"
+const NODE_TEXT = "clamp(0.7rem, 2.5vw, 0.9rem)";
+const NODE_SUB_TEXT = "clamp(0.65rem, 2.3vw, 0.8rem)";
+const NODE_ICON = "clamp(0.9rem, 3vw, 1.15rem)";
 
 // A node: a rounded-corner square tile carrying its icon, name and
 // live figure over its flow's gradient (see the palette in
@@ -151,8 +153,8 @@ const NODE_ICON = "clamp(0.9rem, 3vw, 1.15rem)"
 // The battery tile follows its state color; the home node stays the
 // house illustration and never renders here.
 function FlowNodeView({ node }: { node: FlowNode }) {
-  const Icon = node.icon
-  const gradient = node.gradient ?? null
+  const Icon = node.icon;
+  const gradient = node.gradient ?? null;
   return (
     <div
       className={`absolute flex aspect-square -translate-x-1/2 -translate-y-1/2 flex-col items-center justify-center gap-0.5 rounded-xl border text-center shadow-card ${
@@ -163,7 +165,9 @@ function FlowNodeView({ node }: { node: FlowNode }) {
         top: `${(node.y / DIAGRAM_HEIGHT) * 100}%`,
         width: `${((NODE_RADIUS * 2) / DIAGRAM_WIDTH) * 100}%`,
         background: gradient ?? undefined,
-        borderColor: gradient ? undefined : node.borderColor ?? "var(--color-border)",
+        borderColor: gradient
+          ? undefined
+          : (node.borderColor ?? "var(--color-border)"),
       }}
     >
       <Icon
@@ -196,7 +200,7 @@ function FlowNodeView({ node }: { node: FlowNode }) {
         </span>
       )}
     </div>
-  )
+  );
 }
 
 // The home node: the house illustration with its consumption figure in a
@@ -214,7 +218,7 @@ function HomeLabel({ node }: { node: FlowNode }) {
       <span className="mr-1 font-medium">{node.name}</span>
       {node.figure}
     </div>
-  )
+  );
 }
 
 // An edge value chip: the watt figure in a solid pill on the
@@ -231,7 +235,7 @@ function FlowEdgeChip({ edge }: { edge: FlowEdge }) {
     >
       {edge.value === null ? "\u2014" : `${edge.value} W`}
     </div>
-  )
+  );
 }
 
 // Renders the diagram data: the house and flow lines in SVG, nodes and
@@ -239,13 +243,7 @@ function FlowEdgeChip({ edge }: { edge: FlowEdge }) {
 // width. Chips only appear on active flows. On the dark night sky the
 // inherited currentColor turns light so the "no active flow" note stays
 // legible.
-function FlowDiagram({
-  data,
-  onDark,
-}: {
-  data: FlowData
-  onDark: boolean
-}) {
+function FlowDiagram({ data, onDark }: { data: FlowData; onDark: boolean }) {
   return (
     <div
       className="relative mx-auto w-full max-w-[720px]"
@@ -290,10 +288,10 @@ function FlowDiagram({
           <HomeLabel key={node.key} node={node} />
         ) : (
           <FlowNodeView key={node.key} node={node} />
-        )
+        ),
       )}
     </div>
-  )
+  );
 }
 
 // Simplified stacked layout for phone widths, where the diamond diagram
@@ -302,7 +300,7 @@ function StackedNodes({ data }: { data: FlowData }) {
   return (
     <div className="space-y-2">
       {data.nodes.map((node) => {
-        const Icon = node.icon
+        const Icon = node.icon;
         return (
           <div
             key={node.key}
@@ -324,10 +322,10 @@ function StackedNodes({ data }: { data: FlowData }) {
               {node.figure}
             </span>
           </div>
-        )
+        );
       })}
     </div>
-  )
+  );
 }
 
 // The live energy flow widget: the flow snapshot from /api/summary drawn
@@ -337,49 +335,68 @@ function StackedNodes({ data }: { data: FlowData }) {
 // time-of-day sky. The compact today charts that used to ride beneath
 // the flow live in their own widget now (src/components/TodayCharts.tsx).
 function LiveEnergyFlow() {
-  const { summary, status } = useSummary()
-  const { phase, sunProgress, onDark } = useTimeOfDayPhase()
+  const { summary, status } = useSummary();
+  const { phase, sunProgress, onDark } = useTimeOfDayPhase();
 
-  if (status === "loading") {
-    return (
-      <div
-        className="min-h-[480px] animate-pulse rounded-lg bg-muted"
-        aria-hidden="true"
-      />
-    )
-  }
-
-  const diagram = buildFlowDiagram(summary)
-
-  return (
-    <Card className="relative">
-      {/* The sky fills the card behind everything; content sits above it. */}
-      <TimeOfDayBackground phase={phase} sunProgress={sunProgress} />
-      <CardHeader className="relative z-10">
-        <CardTitle className="flex items-center gap-2 text-muted-foreground">
-          <Zap className="size-6" aria-hidden="true" />
-          Live energy flow
-        </CardTitle>
-        <CardDescription
-          className={`transition-colors duration-[2500ms] ${
-            onDark ? "text-white" : "text-foreground"
-          }`}
-        >
-          Power between solar, home, grid and battery
-        </CardDescription>
+  // The skeleton mirrors the flow hero's shape: the card chrome
+  // with its header lines, then one large block standing in for the
+  // diagram. The children render only after the summary landed, so
+  // the diagram never builds from a null summary.
+  const skeleton = (
+    <Card className="min-h-[480px]" aria-busy="true">
+      <CardHeader>
+        <Skeleton className="h-[24.75px] w-32" />
+        <Skeleton className="h-4 w-56" />
       </CardHeader>
-      <CardContent className="relative z-10 flex justify-center">
-        {/* The diamond diagram on wider screens; a simplified stacked
-            list below 400 px, where the diagram gets cramped. */}
-        <div className="hidden w-full min-[400px]:block">
-          <FlowDiagram data={diagram} onDark={onDark} />
-        </div>
-        <div className="w-full min-[400px]:hidden">
-          <StackedNodes data={diagram} />
-        </div>
+      <CardContent>
+        <Skeleton className="h-80 w-full rounded-xl" />
       </CardContent>
     </Card>
-  )
+  );
+  const loading = status === "loading";
+  if (summary === null) {
+    return (
+      <SkeletonReveal loading={loading} skeleton={skeleton}>
+        {null}
+      </SkeletonReveal>
+    );
+  }
+
+  const diagram = buildFlowDiagram(summary);
+
+  return (
+    // The reveal stays in the same tree position across the
+    // transition, so the skeleton cross-fades into the diagram.
+    <SkeletonReveal loading={false} skeleton={skeleton}>
+      <Card className="relative">
+        {/* The sky fills the card behind everything; content sits above it. */}
+        <TimeOfDayBackground phase={phase} sunProgress={sunProgress} />
+        <CardHeader className="relative z-10">
+          <CardTitle className="flex items-center gap-2 text-muted-foreground">
+            <Zap className="size-6" aria-hidden="true" />
+            Live energy flow
+          </CardTitle>
+          <CardDescription
+            className={`transition-colors duration-[2500ms] ${
+              onDark ? "text-white" : "text-foreground"
+            }`}
+          >
+            Power between solar, home, grid and battery
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="relative z-10 flex justify-center">
+          {/* The diamond diagram on wider screens; a simplified stacked
+            list below 400 px, where the diagram gets cramped. */}
+          <div className="hidden w-full min-[400px]:block">
+            <FlowDiagram data={diagram} onDark={onDark} />
+          </div>
+          <div className="w-full min-[400px]:hidden">
+            <StackedNodes data={diagram} />
+          </div>
+        </CardContent>
+      </Card>
+    </SkeletonReveal>
+  );
 }
 
-export default LiveEnergyFlow
+export default LiveEnergyFlow;

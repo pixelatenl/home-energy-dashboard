@@ -1,17 +1,18 @@
-import { useCallback, useEffect, useState } from "react"
-import { useNavigate } from "react-router-dom"
-import { Badge } from "@/components/ui/badge"
-import PageLayout from "@/components/PageLayout"
-import { useModeSearch } from "@/lib/mode"
-import { Button } from "@/components/ui/button"
+import { useCallback, useEffect, useState } from "react";
+import { Skeleton } from "@/components/ui/skeleton";
+import { useNavigate } from "react-router-dom";
+import { Badge } from "@/components/ui/badge";
+import PageLayout from "@/components/PageLayout";
+import { useModeSearch } from "@/lib/mode";
+import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
+} from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import {
   fetchBatteryContext,
   fetchCheapestBlock,
@@ -33,29 +34,29 @@ import {
   type DebugMistral,
   type InsightCandidate,
   type InsightDebugData,
-} from "@/lib/api"
+} from "@/lib/api";
 
 interface EndpointResult {
-  status: "loading" | "ok" | "error"
-  data?: unknown
-  error?: string
-  durationMs?: number
-  loadedAt?: string
+  status: "loading" | "ok" | "error";
+  data?: unknown;
+  error?: string;
+  durationMs?: number;
+  loadedAt?: string;
 }
 
 interface ParamSpec {
-  key: "days" | "hours"
-  label: string
-  fallback: number
-  max: number
+  key: "days" | "hours";
+  label: string;
+  fallback: number;
+  max: number;
 }
 
 interface EndpointSpec {
-  key: string
-  label: string
-  description: string
-  params: ParamSpec[]
-  run: (args: Record<string, number>) => Promise<unknown>
+  key: string;
+  label: string;
+  description: string;
+  params: ParamSpec[];
+  run: (args: Record<string, number>) => Promise<unknown>;
 }
 
 const ENDPOINTS: EndpointSpec[] = [
@@ -168,29 +169,29 @@ const ENDPOINTS: EndpointSpec[] = [
     params: [],
     run: () => fetchWeatherContext(),
   },
-]
+];
 
 // The per-endpoint fallback params (in each spec) are used on mount;
 // the shared params state only holds values the user has typed.
 function rowCount(data: unknown): number | null {
-  return Array.isArray(data) ? data.length : null
+  return Array.isArray(data) ? data.length : null;
 }
 
 function formatJson(data: unknown): string {
   if (data === undefined) {
-    return ""
+    return "";
   }
-  return JSON.stringify(data, null, 2)
+  return JSON.stringify(data, null, 2);
 }
 
 function StatusBadge({ result }: { result?: EndpointResult }) {
   if (!result || result.status === "loading") {
-    return <Badge variant="secondary">loading</Badge>
+    return <Badge variant="secondary">loading</Badge>;
   }
   if (result.status === "error") {
-    return <Badge variant="destructive">error</Badge>
+    return <Badge variant="destructive">error</Badge>;
   }
-  return <Badge>ok</Badge>
+  return <Badge>ok</Badge>;
 }
 
 function EndpointCard({
@@ -200,11 +201,11 @@ function EndpointCard({
   onParamChange,
   onReload,
 }: {
-  spec: EndpointSpec
-  params: Record<string, number>
-  result?: EndpointResult
-  onParamChange: (key: string, value: number) => void
-  onReload: (key: string) => void
+  spec: EndpointSpec;
+  params: Record<string, number>;
+  result?: EndpointResult;
+  onParamChange: (key: string, value: number) => void;
+  onReload: (key: string) => void;
 }) {
   return (
     <Card>
@@ -228,13 +229,13 @@ function EndpointCard({
                 max={param.max}
                 value={params[param.key] ?? param.fallback}
                 onChange={(event) => {
-                  const parsed = Number.parseInt(event.target.value, 10)
+                  const parsed = Number.parseInt(event.target.value, 10);
                   onParamChange(
                     param.key,
                     Number.isFinite(parsed) && parsed >= 1
                       ? Math.min(parsed, param.max)
-                      : param.fallback
-                  )
+                      : param.fallback,
+                  );
                 }}
                 className="w-24"
               />
@@ -263,7 +264,7 @@ function EndpointCard({
         </pre>
       </CardContent>
     </Card>
-  )
+  );
 }
 
 // The read-only AI insight context panel: the exact payload the
@@ -275,8 +276,8 @@ function DebugSection({
   title,
   children,
 }: {
-  title: string
-  children: React.ReactNode
+  title: string;
+  children: React.ReactNode;
 }) {
   return (
     <div>
@@ -285,31 +286,29 @@ function DebugSection({
       </p>
       <div className="space-y-1 text-sm">{children}</div>
     </div>
-  )
+  );
 }
 
 function InsightContextCard() {
-  const [data, setData] = useState<InsightDebugData | null>(null)
-  const [status, setStatus] = useState<"loading" | "ok" | "error">(
-    "loading"
-  )
+  const [data, setData] = useState<InsightDebugData | null>(null);
+  const [status, setStatus] = useState<"loading" | "ok" | "error">("loading");
 
   const load = useCallback(async () => {
-    setStatus("loading")
+    setStatus("loading");
     try {
-      setData(await fetchInsightDebug())
-      setStatus("ok")
+      setData(await fetchInsightDebug());
+      setStatus("ok");
     } catch {
-      setStatus("error")
+      setStatus("error");
     }
-  }, [])
+  }, []);
 
   useEffect(() => {
     // eslint-disable-next-line react/set-state-in-effect
-    void load()
-  }, [load])
+    void load();
+  }, [load]);
 
-  const candidates = data?.context.candidates ?? []
+  const candidates = data?.context.candidates ?? [];
   // The insight consistency check, three rules: (a) a zero claimed
   // saving with an empty candidate list or all candidates
   // belowThreshold, on a no-opportunity insight, is the honest state -
@@ -318,7 +317,7 @@ function InsightContextCard() {
   // inverse - an above-threshold candidate exists but the insight
   // claims no opportunity or a lower saving - is a missed real saving,
   // red.
-  const CHECK_EPSILON = 0.00005
+  const CHECK_EPSILON = 0.00005;
   const bestAboveThreshold =
     candidates
       .filter((candidate) => !candidate.below_threshold)
@@ -327,17 +326,17 @@ function InsightContextCard() {
           best === null || candidate.saving_eur > best.saving_eur
             ? candidate
             : best,
-        null
-      ) ?? null
-  const claimed = data?.insight?.primary_action?.saving_eur ?? null
+        null,
+      ) ?? null;
+  const claimed = data?.insight?.primary_action?.saving_eur ?? null;
   const consistency: { ok: boolean; label: string } | null = (() => {
-    const insight = data?.insight
+    const insight = data?.insight;
     if (!insight?.primary_action || claimed === null) {
-      return null
+      return null;
     }
     const allBelowOrNone = candidates.every(
-      (candidate) => candidate.below_threshold
-    )
+      (candidate) => candidate.below_threshold,
+    );
     if (claimed === 0 && allBelowOrNone && insight.no_opportunity) {
       return {
         ok: true,
@@ -345,7 +344,7 @@ function InsightContextCard() {
           candidates.length === 0
             ? "no candidates today"
             : "only below-threshold candidates today",
-      }
+      };
     }
     if (
       bestAboveThreshold !== null &&
@@ -354,46 +353,44 @@ function InsightContextCard() {
       return {
         ok: false,
         label: `insight misses a candidate saving of ${bestAboveThreshold.saving_eur} EUR`,
-      }
+      };
     }
     if (
       candidates.some(
-        (candidate) =>
-          Math.abs(candidate.saving_eur - claimed) < CHECK_EPSILON
+        (candidate) => Math.abs(candidate.saving_eur - claimed) < CHECK_EPSILON,
       )
     ) {
-      return { ok: true, label: "saving matches candidate" }
+      return { ok: true, label: "saving matches candidate" };
     }
-    return { ok: false, label: "saving does not match any candidate" }
-  })()
+    return { ok: false, label: "saving does not match any candidate" };
+  })();
   // The guidance rule: the insight's guidance numbers must match the
   // price data in the context exactly; any mismatch is red - the model
   // recomputed instead of copying.
-  const contextGuidance = data?.context.guidance ?? null
-  const insightGuidance = data?.insight?.guidance ?? null
+  const contextGuidance = data?.context.guidance ?? null;
+  const insightGuidance = data?.insight?.guidance ?? null;
   const guidanceMismatch =
     contextGuidance !== null &&
     insightGuidance !== null &&
     (insightGuidance.window !== contextGuidance.window ||
       Math.abs(
         insightGuidance.cheapest_window_average_eur -
-          contextGuidance.cheapest_window_average_eur
+          contextGuidance.cheapest_window_average_eur,
       ) > CHECK_EPSILON ||
       insightGuidance.peak_hour !== (contextGuidance.peak_hour ?? "") ||
       Math.abs(
-        insightGuidance.peak_price_eur - contextGuidance.peak_price_eur
+        insightGuidance.peak_price_eur - contextGuidance.peak_price_eur,
       ) > CHECK_EPSILON ||
       Math.abs(
-        insightGuidance.spread_per_kwh_eur -
-          contextGuidance.spread_per_kwh_eur
-      ) > CHECK_EPSILON)
+        insightGuidance.spread_per_kwh_eur - contextGuidance.spread_per_kwh_eur,
+      ) > CHECK_EPSILON);
   // The advisory rule: the insight's advisory numbers must match the
   // price and forecast data in the context exactly; any mismatch is
   // red - the model recomputed instead of copying.
-  const contextAdvisory = data?.context.advisory ?? null
-  const insightAdvisory = data?.insight?.advisory ?? null
+  const contextAdvisory = data?.context.advisory ?? null;
+  const insightAdvisory = data?.insight?.advisory ?? null;
   const numberMatches = (a: number | null, b: number | null) =>
-    a === null || b === null ? a === b : Math.abs(a - b) <= CHECK_EPSILON
+    a === null || b === null ? a === b : Math.abs(a - b) <= CHECK_EPSILON;
   const advisoryMismatch =
     contextAdvisory !== null &&
     insightAdvisory !== null &&
@@ -401,24 +398,24 @@ function InsightContextCard() {
       insightAdvisory.compare_day !== contextAdvisory.compare_day ||
       !numberMatches(
         insightAdvisory.tomorrow_average_eur,
-        contextAdvisory.tomorrow_average_eur
+        contextAdvisory.tomorrow_average_eur,
       ) ||
       !numberMatches(
         insightAdvisory.tomorrow_solar_kwh,
-        contextAdvisory.tomorrow_solar_kwh
+        contextAdvisory.tomorrow_solar_kwh,
       ) ||
       !numberMatches(
         insightAdvisory.compare_average_eur,
-        contextAdvisory.compare_average_eur
+        contextAdvisory.compare_average_eur,
       ) ||
       !numberMatches(
         insightAdvisory.compare_solar_kwh,
-        contextAdvisory.compare_solar_kwh
+        contextAdvisory.compare_solar_kwh,
       ) ||
       !numberMatches(
         insightAdvisory.price_difference_per_kwh,
-        contextAdvisory.price_difference_per_kwh
-      ))
+        contextAdvisory.price_difference_per_kwh,
+      ));
 
   return (
     <Card>
@@ -429,9 +426,8 @@ function InsightContextCard() {
               GET /api/insight/debug
             </CardTitle>
             <CardDescription>
-              The exact context payload the summary insight is built
-              from, with the precomputed candidates - read-only, no AI
-              call
+              The exact context payload the summary insight is built from, with
+              the precomputed candidates - read-only, no AI call
             </CardDescription>
           </div>
           <div className="flex items-center gap-2">
@@ -459,9 +455,7 @@ function InsightContextCard() {
             )}
             <StatusBadge
               result={
-                status === "loading"
-                  ? undefined
-                  : { status, data: undefined }
+                status === "loading" ? undefined : { status, data: undefined }
               }
             />
             <Button
@@ -482,7 +476,7 @@ function InsightContextCard() {
           </p>
         )}
         {status === "loading" && (
-          <div className="h-24 animate-pulse rounded-lg bg-muted" />
+          <Skeleton className="h-24 w-full rounded-lg" />
         )}
         {status === "ok" && data && (
           <>
@@ -512,8 +506,8 @@ function InsightContextCard() {
             <DebugSection title={`Candidates (${candidates.length})`}>
               {candidates.length === 0 ? (
                 <p className="text-muted-foreground">
-                  No candidates: no appliance with at least 0.5 kWh today
-                  and no battery discharge.
+                  No candidates: no appliance with at least 0.5 kWh today and no
+                  battery discharge.
                 </p>
               ) : (
                 <div className="overflow-x-auto">
@@ -577,17 +571,14 @@ function InsightContextCard() {
                   </span>
                   :{" "}
                   <span className="font-mono">
-                    {(data.context.today_prices?.peak_hours ?? []).join(
-                      ", "
-                    ) || "none"}
+                    {(data.context.today_prices?.peak_hours ?? []).join(", ") ||
+                      "none"}
                   </span>
                 </p>
                 <p>
                   tomorrow available:{" "}
                   <span className="font-mono">
-                    {String(
-                      data.context.tomorrow_prices_available ?? false
-                    )}
+                    {String(data.context.tomorrow_prices_available ?? false)}
                   </span>
                   {data.context.tomorrow_prices && (
                     <>
@@ -606,16 +597,16 @@ function InsightContextCard() {
                   {data.context.guidance ? (
                     <span className="font-mono">
                       {data.context.guidance.window} @{" "}
-                      {data.context.guidance.cheapest_window_average_eur}{" "}
-                      avg · peak {data.context.guidance.peak_hour} @{" "}
+                      {data.context.guidance.cheapest_window_average_eur} avg ·
+                      peak {data.context.guidance.peak_hour} @{" "}
                       {data.context.guidance.peak_price_eur} · spread{" "}
                       {data.context.guidance.spread_per_kwh_eur} EUR/kWh ·
                       practical {String(data.context.guidance.practical)} ·
                       gate: start {data.context.guidance.window_start_hour}h,
                       left {data.context.guidance.hours_remaining}h, window{" "}
-                      {data.context.guidance.cheapest_window_average_eur} vs
-                      day {data.context.guidance.day_average_eur} · day's
-                      cheapest {data.context.guidance.day_cheapest_window} @{" "}
+                      {data.context.guidance.cheapest_window_average_eur} vs day{" "}
+                      {data.context.guidance.day_average_eur} · day's cheapest{" "}
+                      {data.context.guidance.day_cheapest_window} @{" "}
                       {data.context.guidance.day_cheapest_average_eur}
                     </span>
                   ) : (
@@ -632,8 +623,7 @@ function InsightContextCard() {
                       {data.context.advisory.compare_day}{" "}
                       {data.context.advisory.compare_average_eur} EUR /{" "}
                       {data.context.advisory.compare_solar_kwh} kWh · diff{" "}
-                      {data.context.advisory.price_difference_per_kwh}{" "}
-                      EUR/kWh
+                      {data.context.advisory.price_difference_per_kwh} EUR/kWh
                       {data.context.advisory.horizon_note
                         ? ` · ${data.context.advisory.horizon_note}`
                         : ""}
@@ -648,8 +638,7 @@ function InsightContextCard() {
                   {JSON.stringify(data.context.today)}
                 </p>
                 <p className="font-mono text-xs">
-                  appliances{" "}
-                  {JSON.stringify(data.context.top_appliances ?? [])}
+                  appliances {JSON.stringify(data.context.top_appliances ?? [])}
                 </p>
                 <p>
                   battery{" "}
@@ -669,7 +658,7 @@ function InsightContextCard() {
                         {data.context.week_outlook.days
                           .map(
                             (day) =>
-                              `${day.weekday_short} ${day.solar_kwh}kWh ${day.condition} @ ${day.average_price_eur === null ? "no price" : day.average_price_eur}`
+                              `${day.weekday_short} ${day.solar_kwh}kWh ${day.condition} @ ${day.average_price_eur === null ? "no price" : day.average_price_eur}`,
                           )
                           .join(", ")}
                         {data.context.week_outlook.best_solar_day &&
@@ -700,89 +689,97 @@ function InsightContextCard() {
         )}
       </CardContent>
     </Card>
-  )
+  );
 }
 
 function DebugPage() {
-  const navigate = useNavigate()
+  const navigate = useNavigate();
   // Carries the mode param back to the dashboard.
-  const modeSearch = useModeSearch()
-  const [params, setParams] = useState<Record<string, number>>({})
+  const modeSearch = useModeSearch();
+  const [params, setParams] = useState<Record<string, number>>({});
   // Server build identifier from /api/summary, to confirm on screen that
   // the running process matches the current code.
   const [serverInfo, setServerInfo] = useState<{
-    version: string | null
-    loaded: boolean
-  }>({ version: null, loaded: false })
+    version: string | null;
+    loaded: boolean;
+  }>({ version: null, loaded: false });
   // Observability from /api/debug/time, shown as a compact line: HA
   // price fetch health, forecast age and the Mistral budget.
   const [observability, setObservability] = useState<{
-    haFetch: DebugHaFetch | null
-    mistral: DebugMistral | null
-  }>({ haFetch: null, mistral: null })
+    haFetch: DebugHaFetch | null;
+    mistral: DebugMistral | null;
+  }>({ haFetch: null, mistral: null });
   useEffect(() => {
     // eslint-disable-next-line react/set-state-in-effect
     void fetchSummary()
       .then((summary) =>
-        setServerInfo({ version: summary.server_version ?? null, loaded: true })
+        setServerInfo({
+          version: summary.server_version ?? null,
+          loaded: true,
+        }),
       )
-      .catch(() => setServerInfo({ version: null, loaded: true }))
+      .catch(() => setServerInfo({ version: null, loaded: true }));
     void fetchDebugTime()
       .then((data) =>
         setObservability({
           haFetch: data.ha_fetch ?? null,
           mistral: data.mistral ?? null,
-        })
+        }),
       )
-      .catch(() => {})
-  }, [])
-  const [results, setResults] = useState<Record<string, EndpointResult>>(
-    () =>
-      Object.fromEntries(
-        ENDPOINTS.map((spec) => [spec.key, { status: "loading" } as EndpointResult])
-      )
-  )
+      .catch(() => {});
+  }, []);
+  const [results, setResults] = useState<Record<string, EndpointResult>>(() =>
+    Object.fromEntries(
+      ENDPOINTS.map((spec) => [
+        spec.key,
+        { status: "loading" } as EndpointResult,
+      ]),
+    ),
+  );
 
   // Runs an endpoint and stores the result. State is only updated after the
   // await, so this is safe to call from effects.
-  const load = useCallback(async (key: string, args: Record<string, number>) => {
-    const spec = ENDPOINTS.find((endpoint) => endpoint.key === key)
-    if (!spec) {
-      return
-    }
-    const started = performance.now()
-    try {
-      const data = await spec.run(args)
-      setResults((previous) => ({
-        ...previous,
-        [key]: {
-          status: "ok",
-          data,
-          durationMs: Math.round(performance.now() - started),
-          loadedAt: new Date().toLocaleTimeString(),
-        },
-      }))
-    } catch (error) {
-      setResults((previous) => ({
-        ...previous,
-        [key]: {
-          status: "error",
-          error: error instanceof Error ? error.message : String(error),
-        },
-      }))
-    }
-  }, [])
+  const load = useCallback(
+    async (key: string, args: Record<string, number>) => {
+      const spec = ENDPOINTS.find((endpoint) => endpoint.key === key);
+      if (!spec) {
+        return;
+      }
+      const started = performance.now();
+      try {
+        const data = await spec.run(args);
+        setResults((previous) => ({
+          ...previous,
+          [key]: {
+            status: "ok",
+            data,
+            durationMs: Math.round(performance.now() - started),
+            loadedAt: new Date().toLocaleTimeString(),
+          },
+        }));
+      } catch (error) {
+        setResults((previous) => ({
+          ...previous,
+          [key]: {
+            status: "error",
+            error: error instanceof Error ? error.message : String(error),
+          },
+        }));
+      }
+    },
+    [],
+  );
 
   const markLoading = useCallback((key: string) => {
-    setResults((previous) => ({ ...previous, [key]: { status: "loading" } }))
-  }, [])
+    setResults((previous) => ({ ...previous, [key]: { status: "loading" } }));
+  }, []);
 
   const loadAll = useCallback(() => {
     for (const spec of ENDPOINTS) {
-      markLoading(spec.key)
-      void load(spec.key, params)
+      markLoading(spec.key);
+      void load(spec.key, params);
     }
-  }, [load, markLoading, params])
+  }, [load, markLoading, params]);
 
   useEffect(() => {
     // Load once on mount, each endpoint with its own fallback params;
@@ -793,22 +790,24 @@ function DebugPage() {
       // eslint-disable-next-line react/set-state-in-effect
       void load(
         spec.key,
-        Object.fromEntries(spec.params.map((param) => [param.key, param.fallback]))
-      )
+        Object.fromEntries(
+          spec.params.map((param) => [param.key, param.fallback]),
+        ),
+      );
     }
-  }, [load])
+  }, [load]);
 
   const handleParamChange = useCallback((key: string, value: number) => {
-    setParams((previous) => ({ ...previous, [key]: value }))
-  }, [])
+    setParams((previous) => ({ ...previous, [key]: value }));
+  }, []);
 
   const handleReload = useCallback(
     (key: string) => {
-      markLoading(key)
-      void load(key, params)
+      markLoading(key);
+      void load(key, params);
     },
-    [load, markLoading, params]
-  )
+    [load, markLoading, params],
+  );
 
   return (
     <PageLayout
@@ -826,8 +825,8 @@ function DebugPage() {
               </p>
             ) : (
               <p className="mt-1 text-xs text-destructive">
-                Running API server predates the build identifier - restart
-                it to load the current code.
+                Running API server predates the build identifier - restart it to
+                load the current code.
               </p>
             ))}
           {observability.haFetch && observability.mistral && (
@@ -840,8 +839,7 @@ function DebugPage() {
                   : "failed"}
               {" · "}forecast age:{" "}
               {observability.haFetch.price_forecast_age_min ?? "?"} min
-              {" · "}Mistral budget:{" "}
-              {observability.mistral.remaining_calls}/
+              {" · "}Mistral budget: {observability.mistral.remaining_calls}/
               {observability.mistral.daily_limit} left (
               {observability.mistral.calls_today} today)
             </p>
@@ -855,7 +853,7 @@ function DebugPage() {
           </Button>
           <Button
             onClick={() => {
-              navigate(`/${modeSearch}`)
+              navigate(`/${modeSearch}`);
             }}
           >
             Back to dashboard
@@ -877,7 +875,7 @@ function DebugPage() {
         ))}
       </div>
     </PageLayout>
-  )
+  );
 }
 
-export default DebugPage
+export default DebugPage;

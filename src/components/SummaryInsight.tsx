@@ -1,30 +1,32 @@
-import { RefreshCw, Sparkles, TriangleAlert } from "lucide-react"
-import type { SummaryInsight as SummaryInsightData } from "@/lib/api"
+import { RefreshCw, Sparkles, TriangleAlert } from "lucide-react";
+import SkeletonReveal from "@/components/SkeletonReveal";
+import { Skeleton } from "@/components/ui/skeleton";
+import type { SummaryInsight as SummaryInsightData } from "@/lib/api";
 import {
   buildAdvisoryContent,
   type AdvisoryDayCard,
   type AdvisoryItem,
-} from "@/lib/advisoryRows"
+} from "@/lib/advisoryRows";
 
 // One shared glass definition for the whole advisory surface: 15
 // percent translucent white, white text and a soft backdrop blur. The
 // rows carry the subtle translucent white border; the chips render
 // borderless on top of them. Defined once, never per instance.
 const GLASS_SURFACE =
-  "border border-white/20 bg-white/15 text-white backdrop-blur-sm"
+  "border border-white/20 bg-white/15 text-white backdrop-blur-sm";
 // The structured advisory rows: a column block whose day chip sits on
 // its own line above the main text, like the compact widgets'
 // label-above-content pattern, so every row's text starts on one
 // vertical line.
-const GLASS_BLOCK = `flex flex-col gap-1.5 rounded-xl p-3 ${GLASS_SURFACE}`
-const GLASS_CHIP = "rounded-full bg-white/15 text-white backdrop-blur-sm"
+const GLASS_BLOCK = `flex flex-col gap-1.5 rounded-xl p-3 ${GLASS_SURFACE}`;
+const GLASS_CHIP = "rounded-full bg-white/15 text-white backdrop-blur-sm";
 
 // The provenance chip and refresh control in the panel's header
 // right cluster: the "Insight from HH:MM" stamp (or the honest
 // absence) and the force-refresh button, in the panel's own glass
 // register so they read as the card's furniture.
 const PROVENANCE_CHIP =
-  "flex shrink-0 items-center rounded-full border border-white/20 bg-white/15 px-2.5 py-1 text-xs font-medium text-white tabular-nums backdrop-blur-sm"
+  "flex shrink-0 items-center rounded-full border border-white/20 bg-white/15 px-2.5 py-1 text-xs font-medium text-white tabular-nums backdrop-blur-sm";
 
 // The header's right cluster shared by every render branch: the
 // Reasoning chip while the server regenerates, then the provenance
@@ -36,11 +38,11 @@ function HeaderCluster({
   refreshTitle,
   onRefresh,
 }: {
-  from: string | null
-  reasoning: boolean
-  refreshDisabled: boolean
-  refreshTitle: string
-  onRefresh: () => void
+  from: string | null;
+  reasoning: boolean;
+  refreshDisabled: boolean;
+  refreshTitle: string;
+  onRefresh: () => void;
 }) {
   return (
     <span className="ml-auto flex shrink-0 items-center gap-2">
@@ -66,13 +68,13 @@ function HeaderCluster({
         <RefreshCw className="size-3.5" aria-hidden="true" />
       </button>
     </span>
-  )
+  );
 }
 
 // The notes zone's fine print: the horizon and context notes below the
 // rows - smaller text, the card's muted register, slightly more line
 // spacing. Plain text, never glass, never chips.
-const NOTE_TEXT = "text-[11px] leading-loose text-white"
+const NOTE_TEXT = "text-[11px] leading-loose text-white";
 
 // One piece of advice inside a day card: the lead sentence with its
 // right-side value chip, its supporting lines and optional trailing
@@ -128,7 +130,7 @@ function AdvisoryItemView({ item }: { item: AdvisoryItem }) {
         <p className="text-xs leading-relaxed">{item.footer.text}</p>
       )}
     </div>
-  )
+  );
 }
 
 // One day of the advisory timeline: every piece of advice for that
@@ -156,7 +158,7 @@ function AdvisoryDayCardView({ card }: { card: AdvisoryDayCard }) {
         ))}
       </div>
     </div>
-  )
+  );
 }
 
 // Daily AI advisory at the top of the page: the structured decision
@@ -177,54 +179,48 @@ function SummaryInsight({
   refreshDisabled,
   onRefresh,
 }: {
-  insight: SummaryInsightData | null
-  loading: boolean
+  insight: SummaryInsightData | null;
+  loading: boolean;
   // The insight's as-of time as a formatted HH:MM label, or null
   // before the first insight.
-  from: string | null
-  refreshDisabled: boolean
-  onRefresh: () => void
+  from: string | null;
+  refreshDisabled: boolean;
+  onRefresh: () => void;
 }) {
-  const refreshTitle =
-    refreshDisabled
-      ? "Daily AI budget exhausted; the insight refreshes tomorrow"
-      : "Regenerate all AI insights and refresh widget data now"
+  const refreshTitle = refreshDisabled
+    ? "Daily AI budget exhausted; the insight refreshes tomorrow"
+    : "Regenerate all AI insights and refresh widget data now";
   // The first-paint placeholder: the same warm brown AI panel in
   // skeleton form - header plus two glass rows - so the kiosk shows
   // the panel's shape immediately. This covers the one moment the
   // panel can lag behind the widgets: the first /api/summary call
   // also waits for the server to generate the insight. Refreshes
   // keep the previous content visible instead, so this only ever
-  // renders before the first insight arrives.
-  if (loading) {
-    return (
-      <div
-        className="h-full min-h-36 animate-pulse rounded-lg border bg-gradient-to-bl from-[#0d0805] via-[#241610] to-[#4a2c14] p-4 text-white shadow-card"
-        aria-busy="true"
-      >
-        <p className="flex items-center gap-2 font-heading text-lg font-medium text-muted-foreground">
-          <Sparkles className="size-6" aria-hidden="true" />
-          AI advisory
-          <HeaderCluster
-            from={from}
-            reasoning={true}
-            refreshDisabled={refreshDisabled}
-            refreshTitle={refreshTitle}
-            onRefresh={onRefresh}
-          />
-        </p>
-        <div className="mt-2 space-y-2">
-          {[0, 1].map((index) => (
-            <div key={index} className={GLASS_BLOCK}>
-              <div className="h-3.5 w-20 rounded-full bg-white/30" />
-              <div className="h-3 w-3/4 rounded-full bg-white/30" />
-              <div className="h-3 w-1/2 rounded-full bg-white/30" />
-            </div>
-          ))}
-        </div>
+  // renders before the first insight arrives. The shell itself does
+  // not pulse; only the shared Skeleton lines inside it do.
+  const skeleton = (
+    <div
+      className="h-full min-h-36 rounded-lg border bg-gradient-to-bl from-[#0d0805] via-[#241610] to-[#4a2c14] p-4 text-white shadow-card"
+      aria-busy="true"
+    >
+      {/* The header row during loading carries only the panel title:
+          the provenance chip and refresh control appear with the
+          content, once the loading has completed. */}
+      <p className="flex items-center gap-2 font-heading text-lg font-medium text-muted-foreground">
+        <Sparkles className="size-6" aria-hidden="true" />
+        AI advisory
+      </p>
+      <div className="mt-2 space-y-2">
+        {[0, 1].map((index) => (
+          <div key={index} className={GLASS_BLOCK}>
+            <Skeleton className="h-3.5 w-20 bg-white/30" />
+            <Skeleton className="h-3 w-3/4 bg-white/30" />
+            <Skeleton className="h-3 w-1/2 bg-white/30" />
+          </div>
+        ))}
       </div>
-    )
-  }
+    </div>
+  );
 
   // The structured decision payload is the only insight format; no
   // primary action means no advice rows, but the panel keeps its
@@ -232,80 +228,84 @@ function SummaryInsight({
   // regenerate path stays reachable.
   if (!insight?.primary_action) {
     return (
-      <div className="h-full min-h-36 rounded-lg border bg-gradient-to-bl from-[#0d0805] via-[#241610] to-[#4a2c14] p-4 text-white shadow-card">
+      <SkeletonReveal loading={loading} skeleton={skeleton}>
+        <div className="h-full min-h-36 rounded-lg border bg-gradient-to-bl from-[#0d0805] via-[#241610] to-[#4a2c14] p-4 text-white shadow-card">
+          <p className="flex items-center gap-2 font-heading text-lg font-medium text-muted-foreground">
+            <Sparkles className="size-6" aria-hidden="true" />
+            AI advisory
+            <HeaderCluster
+              from={from}
+              reasoning={false}
+              refreshDisabled={refreshDisabled}
+              refreshTitle={refreshTitle}
+              onRefresh={onRefresh}
+            />
+          </p>
+          <p className="mt-2 text-sm text-white/60">No advice right now.</p>
+        </div>
+      </SkeletonReveal>
+    );
+  }
+
+  const content = buildAdvisoryContent(insight);
+
+  return (
+    <SkeletonReveal loading={loading} skeleton={skeleton}>
+      {/* The warm brown AI panel is the whole widget; the gradient
+          is the visual identity of AI content - the same
+          dark-to-warm-brown ramp as the page body (dark at the top
+          right, the body's lighter brown at the lower left) every AI
+          box uses. It stretches to the full grid row so it matches
+          the height of the stats column next to it. */}
+      <div className="h-full rounded-lg border bg-gradient-to-bl from-[#0d0805] via-[#241610] to-[#4a2c14] p-4 text-white shadow-card">
         <p className="flex items-center gap-2 font-heading text-lg font-medium text-muted-foreground">
           <Sparkles className="size-6" aria-hidden="true" />
           AI advisory
-          <HeaderCluster
-            from={from}
-            reasoning={false}
-            refreshDisabled={refreshDisabled}
-            refreshTitle={refreshTitle}
-            onRefresh={onRefresh}
-          />
-        </p>
-        <p className="mt-2 text-sm text-white/60">No advice right now.</p>
-      </div>
-    )
-  }
-
-  const content = buildAdvisoryContent(insight)
-
-  return (
-    // The warm brown AI panel is the whole widget; the gradient is
-    // the visual identity of AI content - the same dark-to-warm-brown
-    // ramp as the page body (dark at the top right, the body's
-    // lighter brown at the lower left) every AI box uses.
-    // It stretches to the full grid row so it matches the height of
-    // the stats column next to it.
-    <div className="h-full rounded-lg border bg-gradient-to-bl from-[#0d0805] via-[#241610] to-[#4a2c14] p-4 text-white shadow-card">
-      <p className="flex items-center gap-2 font-heading text-lg font-medium text-muted-foreground">
-        <Sparkles className="size-6" aria-hidden="true" />
-        AI advisory
-        {/* The regeneration signal rides in the same right cluster:
+          {/* The regeneration signal rides in the same right cluster:
             the chip pulses while the server rebuilds the insight for
             the new context signature, in the same glass register as
             the row chips, legible on the brown gradient in both
             themes. The previous content stays fully visible
             underneath. */}
-        <HeaderCluster
-          from={from}
-          reasoning={insight.state === "reasoning"}
-          refreshDisabled={refreshDisabled}
-          refreshTitle={refreshTitle}
-          onRefresh={onRefresh}
-        />
-      </p>
-      <div className="mt-2 space-y-2">
-        {content.cards.map((card, index) => (
-          <AdvisoryDayCardView key={`${card.chip}-${index}`} card={card} />
-        ))}
-        {insight.warning && (
-          // The amber exception: only something that needs attention.
-          <p className="flex items-start gap-2 text-sm font-medium leading-relaxed text-amber-300 dark:text-amber-200">
-            <TriangleAlert
-              className="mt-0.5 size-4 shrink-0"
-              aria-hidden="true"
-            />
-            <span className="min-w-0 flex-1">{insight.warning}</span>
-          </p>
+          <HeaderCluster
+            from={from}
+            reasoning={insight.state === "reasoning"}
+            refreshDisabled={refreshDisabled}
+            refreshTitle={refreshTitle}
+            onRefresh={onRefresh}
+          />
+        </p>
+        <div className="mt-2 space-y-2">
+          {content.cards.map((card, index) => (
+            <AdvisoryDayCardView key={`${card.chip}-${index}`} card={card} />
+          ))}
+          {insight.warning && (
+            // The amber exception: only something that needs attention.
+            <p className="flex items-start gap-2 text-sm font-medium leading-relaxed text-amber-300 dark:text-amber-200">
+              <TriangleAlert
+                className="mt-0.5 size-4 shrink-0"
+                aria-hidden="true"
+              />
+              <span className="min-w-0 flex-1">{insight.warning}</span>
+            </p>
+          )}
+        </div>
+        {content.showOutlookNote && (
+          // The notes zone: the card's fine print below a hairline
+          // separator between the day cards and the note - plain text,
+          // no glass, no chips. The quiet-day context explaining lives
+          // on the Today card instead, in the same register as the
+          // other advice.
+          <div className="mt-2 space-y-1.5 border-t border-white/15 pt-2">
+            <p className={NOTE_TEXT}>
+              Beyond tomorrow, grid prices are not yet published; there the
+              solar forecast is the deciding signal.
+            </p>
+          </div>
         )}
       </div>
-      {content.showOutlookNote && (
-        // The notes zone: the card's fine print below a hairline
-        // separator between the day cards and the note - plain text,
-        // no glass, no chips. The quiet-day context explaining lives
-        // on the Today card instead, in the same register as the
-        // other advice.
-        <div className="mt-2 space-y-1.5 border-t border-white/15 pt-2">
-          <p className={NOTE_TEXT}>
-            Beyond tomorrow, grid prices are not yet published; there
-            the solar forecast is the deciding signal.
-          </p>
-        </div>
-      )}
-    </div>
-  )
+    </SkeletonReveal>
+  );
 }
 
-export default SummaryInsight
+export default SummaryInsight;
