@@ -228,6 +228,24 @@ the six text guards fail:
   abstractly; the card states the exact charge and state from the
   server-computed facts (content class 7).
 
+The advisory integrity checker (server/checker.mjs) runs on every
+generated advisory before it is served, as a second layer over the
+guards: it extracts every price-plus-hour pair in the model's
+narrative and verifies it against the day's actual curve (the hour
+named as low must be the low, the hour named as peak must be the
+peak, and any stated price figure must match the curve within the
+checker's own rounding tolerance), and extracts every battery-state
+claim and verifies it against the context battery values (the stated
+SOC must match, and any charged/discharging/idle wording must match
+the context state). Window ranges and savings figures are never
+mistaken for price claims. On mismatch the advisory is rejected and
+regenerated once; a second failure serves the deterministic core
+facts alone (the templates' price and battery sentences) without the
+model's narrative - a mismatched advisory is never served. Verdicts
+are logged, rejects as throttled warnings in the live module's
+style; the checker's comparison constants live in the checker module
+only.
+
 The served guidance and advisory objects always carry the context's
 computed fields with a deterministically composed line; there is no
 model copy to drift.

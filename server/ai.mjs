@@ -12,6 +12,7 @@ import {
   localIsoWithOffset,
   nextDateKey,
 } from "./time.mjs";
+import { checkAdvisory, logCheckerVerdict } from "./checker.mjs";
 
 const MISTRAL_URL = "https://api.mistral.ai/v1/chat/completions";
 const MISTRAL_MODEL = "mistral-small-latest";
@@ -1331,6 +1332,7 @@ export async function getSummaryInsight(snapshot, options = {}) {
     // failure, then the previous insight stays in place (fail soft).
     // Every attempt counts against the shared daily cap.
     let validated = null;
+    let lastFailureWasChecker = false;
     for (let attempt = 0; attempt < 2 && !validated; attempt++) {
       if (dailyLimitReached()) {
         logMistral("summary", signature, reason, "skipped_daily_limit");
@@ -1355,9 +1357,31 @@ export async function getSummaryInsight(snapshot, options = {}) {
         if (failure !== null) {
           throw new Error(failure);
         }
+        // The advisory integrity checker: the generated narrative is
+        // verified against the grounding facts before it is served -
+        // every price-plus-hour pair against the day's curve, every
+        // battery-state claim against the context battery values. A
+        // rejection regenerates once; a second failure serves the
+        // deterministic core facts alone. Never a mismatched advisory.
+        const verdict = checkAdvisory(
+          {
+            what: candidate.what,
+            when: candidate.when,
+            warning: candidate.warning,
+            contextNote: candidate.contextNote,
+          },
+          extras?.facts ?? null
+        );
+        logCheckerVerdict(verdict);
+        if (!verdict.ok) {
+          throw new Error(`advisory checker: ${verdict.reason}`);
+        }
         validated = candidate;
         logMistral("summary", signature, reason, "ok");
       } catch (err) {
+        lastFailureWasChecker = String(err?.message ?? "").startsWith(
+          "advisory checker:"
+        );
         logMistral("summary", signature, reason, `error:${shortError(err)}`);
         // Retried on the next loop iteration; after it the previous
         // insight stays. The reason is logged so schema misses stay
@@ -1368,6 +1392,27 @@ export async function getSummaryInsight(snapshot, options = {}) {
       }
     }
     if (!validated) {
+      // Both generations failed the integrity checker: the
+      // deterministic core facts alone are served - the price and
+      // battery sentences composed by the templates, which ride the
+      // payload from the live snapshot extras - without the model's
+      // narrative. Cached for this signature so the polls do not
+      // hammer the model; the next signature change retries.
+      if (lastFailureWasChecker) {
+        logMistral("summary", signature, reason, "checker_core_only");
+        const coreResult = {
+          primaryAction: null,
+          supportingFacts: [],
+          warning: null,
+          contextNote: null,
+          noOpportunity: false,
+          candidates: context.candidates ?? [],
+          generatedAt: null,
+        };
+        summaryInsightCache = { signature, asOf, result: coreResult };
+        summaryWarmupError = null;
+        return serve(coreResult, "fresh");
+      }
       return degrade("ai_unavailable");
     }
 
