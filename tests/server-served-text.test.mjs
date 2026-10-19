@@ -113,6 +113,7 @@ function servedSentences() {
     }),
     outlook.best_solar_day?.line,
     outlook.poor_day?.line,
+    outlook.poor_day?.advice,
     candidates[0]?.basis,
     advisory?.horizon_note,
   ].filter((sentence) => typeof sentence === "string");
@@ -120,12 +121,12 @@ function servedSentences() {
 
 describe("the served-sentence audit", () => {
   it("covers every served sentence type", () => {
-    // Eleven sentence types: the guidance line (imperative and
+    // Twelve sentence types: the guidance line (imperative and
     // evening-demoted), the price and battery fact sentences, the
     // Tomorrow narrative (priced and low-solar), the price fallback,
-    // the best and poor outlook lines, the candidate basis and the
-    // defer horizon note.
-    assert.equal(servedSentences().length, 11);
+    // the best and poor outlook lines, the poor day's advice, the
+    // candidate basis and the defer horizon note.
+    assert.equal(servedSentences().length, 12);
   });
 
   it("opens every served sentence with a capital letter, or a figure or symbol", () => {

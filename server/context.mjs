@@ -157,6 +157,20 @@ export function buildOutlook(weatherDaily, priceParts) {
         ? `${day.condition === "rain" ? "Rain and " : ""}almost no solar of your own: ${day.solar_kwh} kWh expected.`
         : `${capSentence(day.condition)} that day, with ${day.solar_kwh} kWh of your own solar.`
     );
+  // The poor day's advice line, composed server-side in the household
+  // register: reason and guidance together, one short narrative
+  // sentence instead of a clipped fragment - deterministic from the
+  // outlook data, never model output, so all narrative voice stays in
+  // one place.
+  const poorAdvice = (day) => {
+    if (best.solar_kwh > 0 && day.solar_kwh < best.solar_kwh * 0.35) {
+      return "With little solar expected, it is not a good day to run your large appliances.";
+    }
+    if (day.condition === "rain") {
+      return "With rain expected, it is not a good day to run your large appliances.";
+    }
+    return "With the week's weakest solar expected, it is not a good day to run your large appliances.";
+  };
   // "Looks good for solar" only when the score backs it.
   const bestGood =
     best.solar_score !== null && best.solar_score >= GOOD_SOLAR_SCORE;
@@ -184,6 +198,7 @@ export function buildOutlook(weatherDaily, priceParts) {
             solar_kwh: poor.solar_kwh,
             condition: poor.condition,
             line: poorLine(poor),
+            advice: poorAdvice(poor),
           }
         : null,
   };

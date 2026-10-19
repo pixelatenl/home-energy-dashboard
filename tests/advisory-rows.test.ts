@@ -283,7 +283,7 @@ describe("the row builder: the served narrative descriptions", () => {
     // exact figures the narrative leaves out.
     assert.deepEqual(tomorrow.items[0].supporting, [
       {
-        text: "tomorrow \u20ac0.36 avg \u00b7 4 kWh solar vs today \u20ac0.36 avg \u00b7 14.4 kWh solar",
+        text: "Tomorrow \u20ac0.36 avg \u00b7 4 kWh solar vs today \u20ac0.36 avg \u00b7 14.4 kWh solar",
         tabular: true,
       },
     ]);
@@ -345,9 +345,10 @@ describe("the row builder: the served narrative descriptions", () => {
       friday.items[0].sentence,
       "Rain and almost no solar of your own: 0.8 kWh expected.",
     );
-    // The poor day's supporting line is unchanged.
+    // The poor day's supporting advice line is the capitalized
+    // fallback when the payload carries no served advice.
     assert.deepEqual(friday.items[0].supporting, [
-      { text: "avoid planning large appliances then" },
+      { text: "Avoid planning large appliances then" },
     ]);
   });
 
@@ -374,10 +375,110 @@ describe("the row builder: the served narrative descriptions", () => {
     // numbers line carries the exact comparison on this card too.
     assert.deepEqual(tomorrow.items[0].supporting, [
       {
-        text: "tomorrow 4 kWh solar vs today \u20ac0.36 avg \u00b7 14.4 kWh solar",
+        text: "Tomorrow 4 kWh solar vs today \u20ac0.36 avg \u00b7 14.4 kWh solar",
         tabular: true,
       },
     ]);
     assert.equal(tomorrow.items[0].footer?.kind, "note");
+  });
+});
+
+describe("the card refinement: fact prominence, battery removal, narrative advice", () => {
+  it("leads the Today block with the served price sentence at fact weight", () => {
+    const base = makeInsight();
+    const content = buildAdvisoryContent({
+      ...base,
+      priceSentence:
+        "Lowest price around 13:00 (\u20ac0.33); peak around 08:00 (\u20ac0.47).",
+    });
+    const today = content.cards.find((card) => card.chip === "Today");
+    assert.ok(today);
+    // The grounded price facts lead; verbatim from the served fields,
+    // the frontend composes nothing.
+    assert.equal(
+      today.items[0].sentence,
+      "Lowest price around 13:00 (\u20ac0.33); peak around 08:00 (\u20ac0.47).",
+    );
+    // Fact register: muted, no chip, no supporting lines.
+    assert.equal(today.items[0].muted, true);
+    assert.equal(today.items[0].valueChip, null);
+    assert.deepEqual(today.items[0].supporting, []);
+  });
+
+  it("omits the price line cleanly when the price fields are missing", () => {
+    const content = buildAdvisoryContent(makeInsight());
+    const today = content.cards.find((card) => card.chip === "Today");
+    assert.ok(today);
+    // No placeholder, no empty row: the block starts with the action
+    // as before.
+    assert.match(today.items[0].sentence, /^Run your large appliances/);
+  });
+
+  it("never renders the battery sentence anywhere on the card", () => {
+    const content = buildAdvisoryContent(
+      makeInsight({ batterySentence: "The battery is at 100% and is idle." }),
+    );
+    const texts: string[] = [];
+    for (const card of content.cards) {
+      for (const item of card.items) {
+        texts.push(item.sentence);
+        for (const line of item.supporting) {
+          texts.push(line.text);
+        }
+      }
+    }
+    assert.ok(
+      texts.every((text) => !text.includes("The battery is at")),
+    );
+  });
+
+  it("capitalizes the guidance supporting data strip", () => {
+    const content = buildAdvisoryContent(
+      makeInsight({
+        no_opportunity: true,
+        candidates: [
+          {
+            label: "Washing machine energy",
+            load_kwh: 0.8,
+            window: "09:00-12:00 today",
+            saving_eur: 0.03,
+            below_threshold: true,
+            basis: "Your washing machine used 0.8 kWh so far today",
+          },
+        ],
+      }),
+    );
+    const today = content.cards.find((card) => card.chip === "Today");
+    assert.ok(today);
+    const guidance = today.items.find((item) =>
+      item.sentence.startsWith("Run your large appliances between 13:00"),
+    );
+    assert.ok(guidance);
+    assert.match(
+      guidance.supporting[0].text,
+      /^Cheapest remaining window \u00b7 \u20ac0\.10\/kWh below the day's average of \u20ac0\.36/,
+    );
+  });
+
+  it("renders the served poor-day advice as a narrative sentence", () => {
+    const base = makeInsight();
+    const content = buildAdvisoryContent({
+      ...base,
+      outlook: {
+        ...base.outlook!,
+        poor_day: {
+          ...base.outlook!.poor_day!,
+          advice:
+            "With rain expected, it is not a good day to run your large appliances.",
+        },
+      },
+    });
+    const friday = content.cards.find((card) => card.chip === "Fri");
+    assert.ok(friday);
+    assert.deepEqual(friday.items[0].supporting, [
+      {
+        text: "With rain expected, it is not a good day to run your large appliances.",
+      },
+    ]);
   });
 });

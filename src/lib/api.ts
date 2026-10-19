@@ -750,6 +750,10 @@ export interface WeekOutlook {
     // The server-composed narrative description for the card; the
     // card renders it verbatim. Optional for pre-line payloads.
     line?: string | null
+    // The server-composed narrative advice line (reason and guidance
+    // in one household sentence); the card renders it verbatim.
+    // Optional for pre-line payloads.
+    advice?: string | null
   } | null
 }
 

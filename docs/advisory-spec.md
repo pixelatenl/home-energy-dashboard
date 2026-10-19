@@ -89,10 +89,14 @@ The card renders their rows from its own deterministic templates.
    served next to the advisory: today's lowest and peak price, each
    with its own timestamp, and the battery state (SOC percentage and
    charging/discharging/idle) verbatim from the context values. The
-   card renders their sentences from deterministic templates
-   ("Lowest price around 02:00 (€0.19); peak around 08:00
-   (€0.41)."; "The battery is at 72% and is idle."); the model
-   never writes them. When a fact is missing its sentence is omitted
+   card renders the price sentence from its deterministic template
+   ("Lowest price around 02:00 (€0.19); peak around 08:00 (€0.41).")
+   at full description weight, leading the Today block in the fact
+   register - verbatim from the served fields, the frontend composes
+   nothing, omitted cleanly when the price fields are missing. The
+   battery sentence is served but not rendered on the card: the hub
+   battery widgets already show the state. The model never writes
+   these sentences. When a fact is missing its sentence is omitted
    entirely - never approximated, never filled by the model. The
    model may reference the battery only abstractly; battery-state
    claims in its own words are rejected by the validator.
@@ -209,9 +213,12 @@ the honest statement:
   deferral phrasing such as "Wait for tomorrow": the tomorrow
   comparison belongs to the planning rows, which already carry it.
 - Horizon honesty: the horizon note renders exactly when the outlook
-  extends beyond tomorrow, once: "Beyond tomorrow, grid prices are
-  not yet published; there the solar forecast is the deciding
-  signal." The wording names the days beyond tomorrow explicitly, so
+  extends beyond tomorrow, once: "Note: Beyond tomorrow, grid prices
+  are not yet published; there the solar forecast is the deciding
+  signal." A fixed standard note - the constant (with its "Note:"
+  prefix) lives in advisoryText.ts, identical every day, never
+  through the model or the checker. The wording names the days
+  beyond tomorrow explicitly, so
   it never reads as covering the published tomorrow row.
   A defer advisory may carry its own referent note (cheapest known
   day); an advance advisory carries none.
@@ -317,15 +324,20 @@ model copy to drift.
   day earns it, wherever it falls in the order. The best solar day
   renders when it clearly exceeds tomorrow (>= 1.2x and not tomorrow
   itself); the rain day renders whenever the forecast shows rain,
-  phrased plainly as the day to avoid. No noteworthy days, no weekday
+  phrased plainly as the day to avoid, its advice line served
+  server-composed as one narrative household sentence ("With rain
+  expected, it is not a good day to run your large appliances.").
+  No noteworthy days, no weekday
   rows.
-- The notes zone is the card's fine print: the price and battery fact
-  sentences (content class 7, consumed verbatim as the server
-  composed them), the horizon note, the
+- The notes zone is the card's fine print: the fixed standard note
+  (the "Note: Beyond tomorrow, ..." constant), the
   context note (quiet days only - never alongside a real action) and
   the stale note render below a hairline separator
   in the muted register (smaller text, more line spacing), as plain
-  text - no glass, no chips. The warning stays the amber exception
+  text - no glass, no chips. The price sentence leads the Today block
+  at full description weight instead, and the battery sentence is not
+  rendered at all - the hub battery widgets already show the state.
+  The warning stays the amber exception
   above the zone.
 - The value chips carry their qualifiers inside the chip text: the
   saving chip reads "€ 0.16 potential savings", the guidance chip

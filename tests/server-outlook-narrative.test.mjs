@@ -325,3 +325,50 @@ describe("buildOutlook: the sibling day cards' narrative lines", () => {
     );
   });
 });
+
+describe("buildOutlook: the poor day's narrative advice line", () => {
+  it("advises against large appliances on a tiny-solar day", () => {
+    const outlook = buildOutlook(
+      [
+        forecastDay("2027-06-16", 15.3, 68, 0),
+        forecastDay("2027-06-17", 0.8, 8, 63),
+      ],
+      null
+    );
+    assert.equal(
+      outlook.poor_day.advice,
+      "With little solar expected, it is not a good day to run your large appliances."
+    );
+  });
+
+  it("advises against large appliances on a rain day with decent solar", () => {
+    const outlook = buildOutlook(
+      [
+        forecastDay("2027-06-16", 12.55, 29, 3),
+        forecastDay("2027-06-17", 5.73, 15, 63),
+      ],
+      null
+    );
+    assert.equal(
+      outlook.poor_day.advice,
+      "With rain expected, it is not a good day to run your large appliances."
+    );
+  });
+
+  it("names the week's weakest solar for a share-poor non-rain day", () => {
+    const outlook = buildOutlook(
+      [
+        forecastDay("2027-06-16", 15.3, 68, 0),
+        // 5.8 kWh: under 40 percent of the best day (poor) but above
+        // the 35 percent tiny threshold, and not rain.
+        forecastDay("2027-06-17", 5.8, 20, 3),
+      ],
+      null
+    );
+    assert.equal(outlook.poor_day.solar_kwh, 5.8);
+    assert.equal(
+      outlook.poor_day.advice,
+      "With the week's weakest solar expected, it is not a good day to run your large appliances."
+    );
+  });
+});

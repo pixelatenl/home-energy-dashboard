@@ -153,6 +153,20 @@ export function buildAdvisoryContent(
 
   const todayItems: AdvisoryItem[] = []
 
+  // The grounded price facts lead the Today block: the served price
+  // sentence, verbatim - the frontend composes nothing - at full
+  // description weight in the card's fact register (muted), no
+  // chip, no supporting lines. Omitted cleanly when the price
+  // fields are missing.
+  if (insight.priceSentence) {
+    todayItems.push({
+      valueChip: null,
+      sentence: insight.priceSentence,
+      supporting: [],
+      muted: true,
+    })
+  }
+
   if (showActionRow && primary !== null) {
     todayItems.push({
       valueChip: !noOpportunity
@@ -198,7 +212,7 @@ export function buildAdvisoryContent(
         sentence: todayImperative(guidanceLine.window, guidanceLine),
         supporting: [
           {
-            text: `cheapest remaining window \u00b7 ${
+            text: `Cheapest remaining window \u00b7 ${
               guidanceLine.day_average_eur !== null
                 ? `${humanEur(
                     guidanceLine.day_average_eur -
@@ -206,7 +220,7 @@ export function buildAdvisoryContent(
                   )}/kWh below the day's average of ${humanEur(
                     guidanceLine.day_average_eur,
                   )}`
-                : "the best hours left"
+                : "The best hours left"
             }`,
             tabular: true,
           },
@@ -294,7 +308,7 @@ export function buildAdvisoryContent(
       text:
         advisory.type === "defer"
           ? `${advisoryNumbers(advisory.compare_average_eur, advisory.compare_solar_kwh)} vs tomorrow ${advisoryNumbers(advisory.tomorrow_average_eur, advisory.tomorrow_solar_kwh)}`
-          : `tomorrow ${advisoryNumbers(advisory.tomorrow_average_eur, advisory.tomorrow_solar_kwh)} vs today ${advisoryNumbers(advisory.compare_average_eur, advisory.compare_solar_kwh)}`,
+          : `Tomorrow ${advisoryNumbers(advisory.tomorrow_average_eur, advisory.tomorrow_solar_kwh)} vs today ${advisoryNumbers(advisory.compare_average_eur, advisory.compare_solar_kwh)}`,
       tabular: true,
     }
     // The description line: the server-composed narrative is the
@@ -404,7 +418,13 @@ export function buildAdvisoryContent(
               ? `almost no solar of your own, ${humanNumber(poorDay.solar_kwh)} kWh`
               : `${humanNumber(poorDay.solar_kwh)} kWh of your own solar`
           }`,
-        supporting: [{ text: "avoid planning large appliances then" }],
+        // The advice line is served server-composed - reason and
+        // guidance in one narrative sentence, deterministic from the
+        // outlook data; the capitalized fragment stays only as the
+        // fallback for payloads that carry no advice line.
+        supporting: [
+          { text: poorDay.advice ?? "Avoid planning large appliances then" },
+        ],
         muted: true,
       },
     })

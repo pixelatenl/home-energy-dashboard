@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  HORIZON_NOTE,
   delaySentence,
   eveningPriceSentence,
   humanEur,
@@ -361,6 +362,15 @@ describe("the hedged low-solar expectation", () => {
     assert.equal(
       sentence,
       "8.2 kWh of your own solar expected against today's 14.4"
+    );
+  });
+});
+
+describe("the fixed standard note", () => {
+  it("carries the Note: prefix as part of the constant, identical every day", () => {
+    assert.equal(
+      HORIZON_NOTE,
+      "Note: Beyond tomorrow, grid prices are not yet published; there the solar forecast is the deciding signal.",
     );
   });
 });

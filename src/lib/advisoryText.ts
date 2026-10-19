@@ -199,6 +199,12 @@ export function sentenceForAdvisory(
 export const LOW_SOLAR_MARKET_NOTE =
   "Grid prices are usually higher on days like that; a better picture follows once tomorrow's prices are published"
 
+// The fixed standard note for the notes zone: a constant, identical
+// every day, with the "Note:" prefix part of the constant - composed
+// once here, never through the model or the checker.
+export const HORIZON_NOTE =
+  "Note: Beyond tomorrow, grid prices are not yet published; there the solar forecast is the deciding signal."
+
 // The peak-avoidance supporting line (Phase E): renders only while
 // the day's peak hour is still ahead of now - the server's peak_ahead
 // flag, a live reference, so the line never chases a passed peak.
