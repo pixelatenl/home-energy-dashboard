@@ -656,6 +656,11 @@ async function getFlowSnapshot(map) {
   return flow;
 }
 
+// The shared power deadband in watts: readings at or below this magnitude
+// read as no flow, both for the battery state here and for the live
+// isExporting flag in live.mjs.
+export const POWER_DEADBAND_W = 25;
+
 // Battery state from net power with a 25 W deadband. Stale or absent power
 // readings read as idle (the sensors stop updating around zero load);
 // 'unavailable' when the battery entities have no data.
@@ -663,10 +668,10 @@ function batteryStateFromPower(available, powerW) {
   if (!available) {
     return "unavailable";
   }
-  if (powerW === null || Math.abs(powerW) <= 25) {
+  if (powerW === null || Math.abs(powerW) <= POWER_DEADBAND_W) {
     return "idle";
   }
-  return powerW > 25 ? "charging" : "discharging";
+  return powerW > POWER_DEADBAND_W ? "charging" : "discharging";
 }
 
 // The current grid CO2 intensity (g/kWh) from Electricity Maps, fetched

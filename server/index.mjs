@@ -34,6 +34,7 @@ import {
   SOLAR_DATA_START,
 } from "./solar-production.mjs";
 import { BATTERY_DATA_START, getBatteryFlow } from "./battery-flow.mjs";
+import { getLiveSnapshot } from "./live.mjs";
 import {
   applianceHourly,
   applianceLatestPower,
@@ -190,6 +191,15 @@ app.get(
   "/api/current",
   asyncHandler(async (_req, res) => {
     res.json(await currentMeasurements());
+  })
+);
+
+// Live power snapshot: the whitelisted HA sensors with a fail-soft
+// database fallback, served read-only from live.mjs.
+app.get(
+  "/api/live",
+  asyncHandler(async (_req, res) => {
+    res.json(await getLiveSnapshot());
   })
 );
 
