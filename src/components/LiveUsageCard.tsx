@@ -10,12 +10,16 @@ import {
   gridPulsePeriodS,
   gridPulseStep,
 } from "@/lib/gridPulse";
-import { useLiveGridWatts } from "@/lib/useLiveGridWatts";
+import {
+  LIVE_STALE_AFTER_MS,
+  liveFieldAgeMs,
+  useLive,
+} from "@/lib/useLive";
 import { useSummary } from "@/lib/useSummary";
 
 // The card's tooltip: what the circle shows and how it moves.
 const LIVE_TOOLTIP =
-  "The household's live grid draw from the meter, polled every 20 seconds, alternating every 4 seconds with the renewable share of the grid's current power mix. The circle rotates faster as the draw rises and rests below 25 W; its color follows the grid's renewable share.";
+  "The household's live net grid draw (import minus export) from the meter, polled every 20 seconds, alternating every 4 seconds with the renewable share of the grid's current power mix. While the home exports - net export above the 25 W deadband - the figure reads the export magnitude with an Exporting caption, so battery selling never reads as no usage. The circle rotates faster as the flow rises and rests at zero; its color follows the grid's renewable share. A dimmed figure with a dot is an honest reading more than a minute old.";
 
 // The alternation cadence: the circle's headline swaps between the
 // live draw and the renewable share every 4 seconds, sequenced as a
@@ -23,6 +27,18 @@ const LIVE_TOOLTIP =
 // next, never an overlap.
 const ALTERNATE_MS = 4_000;
 const FADE_MS = 400;
+
+// The headline figure joins the hub stat cards' shared responsive
+// headline scale (lib/statCard.ts) at the ring's own established
+// size: the full size on phones and large desktops, one step smaller
+// inside the two-column tablet band, with the same whitespace-nowrap
+// keeping figure and unit on one line as a single non-breaking unit.
+// The metric cards' 2.5 rem step never applies here - the figure sits
+// inside the fixed 128 px ring composition, whose geometry stays
+// untouched - so the shared scale's tablet treatment (the step down
+// and the nowrap) is what the card adopts.
+const HEADLINE_SCALE =
+  "whitespace-nowrap text-2xl md:text-xl lg:text-2xl";
 
 // The arc's line color by the grid score's state - the app's own
 // interpretation of Zonneplan's color badge, in the muted palette:
@@ -40,23 +56,52 @@ const ARC_R = 46;
 const ARC_CIRCUMFERENCE = 2 * Math.PI * ARC_R;
 const ARC_DASH = ARC_CIRCUMFERENCE / 4;
 
-// The stats hub's Live power card: the live grid draw combined with
-// the current renewable grid power. A thick lined circle carries a
+// The stats hub's Live power card: the live net grid draw (import
+// minus export, from /api/live) combined with the current renewable
+// grid power. A thick lined circle carries a
 // circular motion instead of a pulse: a quarter-turn arc rotates
 // around its track, its speed stepped by the draw's pulse steps - one
 // revolution per period, creeping very slowly below the deadband, an
 // empty resting ring at zero draw - while the contents alternate every 4 seconds
 // between the draw ("1.2 kW" beneath the electricity glyph) and the
-// renewable share ("61%" beneath the leaf). The arc's line color
+// renewable share ("61%" beneath the leaf); the alternation is
+// presentation only, the data cadence stays the 20-second live poll.
+// While the home exports above the deadband the figure reads the
+// export magnitude with an Exporting caption; a reading older than a
+// minute renders dimmed with a dot. The arc's line color
 // follows the grid score's color state. Without data the placeholders
 // read, never a fabricated number, and without a draw the arc
 // rests.
 function LiveUsageCard() {
-  const drawW = useLiveGridWatts();
+  const { snapshot: live, status: liveStatus } = useLive();
   const { summary } = useSummary();
   const gridScore = summary?.grid_score ?? null;
   const renewables =
     gridScore?.current == null ? null : Math.round(gridScore.current);
+
+  // Frame 1 reads the live snapshot: the net grid draw (import minus
+  // export). While the home exports above the shared 25 W deadband,
+  // the figure shows the export magnitude and the caption reads
+  // Exporting - the direction indicator, in the same muted caption
+  // voice as the grid card's in/out split - so battery selling never
+  // reads as a zero or missing draw. The value is used exactly as
+  // served; nothing is interpolated between polls.
+  const netField = live?.fields.netGridW ?? null;
+  const netW =
+    typeof netField?.value === "number" ? netField.value : null;
+  const exporting = live?.fields.isExporting?.value === true;
+  const drawW = netW === null ? null : exporting ? Math.abs(netW) : netW;
+
+  // Stale handling: a figure whose honest age - the server-reported
+  // reading age plus the snapshot's time in the browser - passes the
+  // threshold, or one kept after a failed poll, renders dimmed with a
+  // dot. The honest number stays; nothing fresher is invented.
+  const drawAgeMs =
+    live !== null && netField !== null ? liveFieldAgeMs(live, netField) : null;
+  const drawStale =
+    drawW !== null &&
+    (liveStatus === "error" ||
+      (drawAgeMs !== null && drawAgeMs > LIVE_STALE_AFTER_MS));
 
   // The headline alternates every 4 seconds when both figures
   // exist; with one missing, the other shows steadily.
@@ -89,11 +134,12 @@ function LiveUsageCard() {
   const periodS = hasDraw ? gridPulsePeriodS(step) : null;
 
   return (
-    // Before the first live reading the circle renders as a skeleton
-    // in its own shape; once a draw exists the card never leaves the
-    // content state again.
+    // Before the first snapshot the circle renders as a skeleton
+    // in its own shape; once a snapshot exists the card never leaves
+    // the content state again - a snapshot without the net figure
+    // shows the placeholder dash, never a fabricated number.
     <SkeletonReveal
-      loading={drawW === null}
+      loading={live === null}
       skeleton={
         // The skeleton mirrors the loaded card's own stack: title
         // row, then the circle centered in the remaining space at
@@ -187,14 +233,27 @@ function LiveUsageCard() {
                   aria-hidden="true"
                 />
                 <span
-                  className={`text-2xl font-semibold tabular-nums ${
-                    headlineMuted ? "text-subtle-foreground" : ""
+                  className={`${HEADLINE_SCALE} font-semibold tabular-nums ${
+                    headlineMuted || drawStale ? "text-subtle-foreground" : ""
                   }`}
+                  title={
+                    drawStale
+                      ? "last live reading is more than a minute old"
+                      : undefined
+                  }
                 >
                   {headline}
+                  {drawStale && (
+                    <sup
+                      className="ml-0.5 text-[10px]"
+                      aria-hidden="true"
+                    >
+                      &middot;
+                    </sup>
+                  )}
                 </span>
                 <span className="text-[10px] leading-tight text-subtle-foreground">
-                  Grid draw now
+                  {exporting ? "Exporting" : "Grid draw now"}
                 </span>
               </div>
               <div
@@ -212,7 +271,7 @@ function LiveUsageCard() {
                   aria-hidden="true"
                 />
                 <span
-                  className={`text-2xl font-semibold tabular-nums ${
+                  className={`${HEADLINE_SCALE} font-semibold tabular-nums ${
                     headlineMuted ? "text-subtle-foreground" : ""
                   }`}
                 >

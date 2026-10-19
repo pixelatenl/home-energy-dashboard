@@ -47,6 +47,40 @@ export interface CurrentMeasurement {
   unit: string | null
 }
 
+// One field of the live snapshot (GET /api/live): the reading, its
+// unit, where it came from and how old the reading is. A missing
+// field is value null with source "none" - the server never
+// fabricates a zero, so neither does the frontend.
+export type LiveSource = "ha" | "db" | "none"
+
+export interface LiveField {
+  value: number | boolean | null
+  unit: string | null
+  source: LiveSource
+  ageSeconds: number | null
+}
+
+// The live power snapshot: the whitelisted power sensors (net grid
+// draw, battery flow, SOC, PV) with per-field source and age.
+export interface LiveSnapshot {
+  fetchedAt: string
+  cacheSeconds: number
+  fields: {
+    gridImportW: LiveField
+    gridExportW: LiveField
+    netGridW: LiveField
+    batteryChargeW: LiveField
+    batteryDischargeW: LiveField
+    batterySocPct: LiveField
+    // The panels feeding the Anker directly (the solar split's input).
+    batterySolarInW: LiveField
+    pvPowerW: LiveField
+    // Net export above the shared 25 W deadband; boolean, null when
+    // the grid fields are missing.
+    isExporting: LiveField
+  }
+}
+
 export type PriceSource = "db" | "ha"
 
 export interface PriceHour {
@@ -963,6 +997,10 @@ export function getHourlySeries(hours = 24): Promise<HourlySeriesPoint[]> {
 
 export function getCurrentMeasurements(): Promise<CurrentMeasurement[]> {
   return getJson<CurrentMeasurement[]>("/api/current")
+}
+
+export function fetchLiveSnapshot(): Promise<LiveSnapshot> {
+  return getJson<LiveSnapshot>("/api/live")
 }
 
 export function fetchWeatherDaily(days = 5): Promise<WeatherDay[]> {
