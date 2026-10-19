@@ -62,7 +62,10 @@ function PageLayout({
         </div>
       </div>
 
-      <main className="space-y-6 px-3 pt-4 pb-8 sm:px-6">{children}</main>
+      {/* One whitespace rhythm everywhere: the space between stacked
+          cards matches the stats cluster's own gap-4, so every
+          card-to-card distance on every tab is the same. */}
+      <main className="space-y-4 px-3 pt-4 pb-8 sm:px-6">{children}</main>
 
       <footer className="border-t">
         <div className="flex flex-wrap items-center gap-4 px-3 py-4 text-sm sm:px-6">

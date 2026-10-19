@@ -102,8 +102,10 @@ function TodayPage() {
 
       {/* The AI advisory where the live hero used to be, beside the
           prices widget; it carries its own provenance chip and
-          refresh control in its header. */}
-      <div className="grid gap-6 lg:grid-cols-2">
+          refresh control in its header. The gap matches the stats
+          cluster's own, so all card-to-card whitespace is one
+          rhythm. */}
+      <div className="grid gap-4 lg:grid-cols-2">
         <SummaryInsight
           insight={insight}
           loading={insightLoading}

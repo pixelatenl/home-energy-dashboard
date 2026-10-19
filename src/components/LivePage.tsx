@@ -25,7 +25,8 @@ function LivePage() {
           </div>
         </div>
       </header>
-      <main className="space-y-6 px-3 pb-8 sm:px-6">
+      {/* The shared card rhythm: 16 px below the flow card. */}
+      <main className="space-y-4 px-3 pb-8 sm:px-6">
         <LiveEnergyFlow />
         <Link
           to={`/${modeSearch}`}

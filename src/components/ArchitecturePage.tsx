@@ -81,7 +81,7 @@ function ArchitecturePage() {
           </CardContent>
         </Card>
 
-        <div className="grid gap-6 lg:grid-cols-3">
+        <div className="grid gap-4 lg:grid-cols-3">
           {LAYERS.map((layer) => (
             <Card key={layer.name}>
               <CardHeader>

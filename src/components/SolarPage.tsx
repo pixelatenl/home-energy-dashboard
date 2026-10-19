@@ -50,7 +50,9 @@ function SolarPage() {
         </div>
       }
     >
-      <div className="space-y-6">
+      {/* The shared card rhythm: 16 px between cards, like the stats
+          cluster. */}
+      <div className="space-y-4">
         <SolarProductionChart
           data={production.data}
           status={production.status}
