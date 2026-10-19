@@ -42,7 +42,7 @@ const LIVE_ENTITIES = {
     unit: "%",
   },
   batterySolarInW: {
-    entity: "sensor.anker_solix_solarbank_max_ac_009_battery_solar_power",
+    entity: "sensor.anker_solix_solarbank_max_ac_009_solar_power",
     unit: "W",
   },
   pvPowerW: {

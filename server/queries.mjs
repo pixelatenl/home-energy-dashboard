@@ -157,7 +157,7 @@ const FLOW_MEASUREMENT_ENTITIES = {
   gridImportPower: "sensor.connect_energiemeter_electricity_consumption",
   gridExportPower: "sensor.connect_energiemeter_electricity_production",
   batterySolarInPower:
-    "sensor.anker_solix_solarbank_max_ac_009_battery_solar_power",
+    "sensor.anker_solix_solarbank_max_ac_009_solar_power",
 };
 
 // Live flow fields and the entity role backing each.
