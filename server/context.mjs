@@ -6,6 +6,10 @@
 // the served insight against the data shown next to it.
 
 import { buildSummaryContext, dayLabel, summarySignature } from "./ai.mjs";
+import {
+  GUIDANCE_MIN_SPREAD_EUR,
+  PRACTICAL_MIN_ADVANTAGE_EUR,
+} from "./advisory-constants.mjs";
 import { getPriceContextData } from "./prices.mjs";
 import {
   applianceTotals,
@@ -25,13 +29,17 @@ import {
 const round2 = (value) => Math.round(value * 100) / 100;
 const round4 = (value) => Math.round(value * 10_000) / 10_000;
 
+// The price-spread thresholds live in advisory-constants.mjs, defined
+// once with the distinction (0.03 = minimum detectable spread;
+// 0.05 = minimum benefit worth acting on).
+
 // Generic timing guidance, exactly computable from the price data
 // alone: today's cheapest remaining window, today's peak hour, and the
 // spread per kWh between them. Unlike candidates it is generic and
 // honest per kWh - never attached to an appliance load or an EUR
-// total. Omitted on flat-price days (spread under 0.03 EUR/kWh),
-// which have no advice to give.
-const GUIDANCE_MIN_SPREAD_EUR = 0.03;
+// total. Omitted on flat-price days (spread under the minimum
+// detectable spread, GUIDANCE_MIN_SPREAD_EUR in
+// advisory-constants.mjs), which have no advice to give.
 
 // WMO weather codes mapped to home-language condition summaries for
 // the week outlook.
@@ -157,14 +165,14 @@ export function buildOutlook(weatherDaily, priceParts) {
 // only when the remaining window is a real opportunity. Three named
 // conditions, tunable together (recorded in docs/advisory-spec.md):
 // the window starts before the evening pivot hour (default 18:00,
-// EMS_EVENING_PIVOT_HOUR), at least this many hours of it remain, and
-// its average sits at least this far below the day's average - a live
-// reference comparison. Outside the gate the card states the passed
-// cheap hours plainly instead of commanding.
+// EMS_EVENING_PIVOT_HOUR), at least PRACTICAL_MIN_HOURS of it remain,
+// and its average sits at least PRACTICAL_MIN_ADVANTAGE_EUR below the
+// day's average - a live reference comparison (the threshold itself
+// lives in advisory-constants.mjs). Outside the gate the card states
+// the passed cheap hours plainly instead of commanding.
 const EVENING_PIVOT_HOUR =
   Number.parseInt(process.env.EMS_EVENING_PIVOT_HOUR ?? "", 10) || 18;
 const PRACTICAL_MIN_HOURS = 2;
-const PRACTICAL_MIN_ADVANTAGE_EUR = 0.05;
 // The evening delay rule (Phase E): tomorrow's cheapest window must be
 // at least this much cheaper than the best window remaining today
 // before the card advises delaying heavy usage to it.
@@ -210,6 +218,20 @@ export function buildGuidance(priceParts) {
   );
   const windowStartHour = localHourIndex(new Date(cheapest.start));
   const dayAverage = today.average ?? null;
+  // The C17 evening-window gate inputs: an evening window (starting
+  // at or after the evening pivot hour, e.g. 21:00-00:00) carries its
+  // expected benefit - the actual curve's day average minus the
+  // window's average, the honest live reference that assumes the
+  // household's usage would otherwise pay the day's average price,
+  // never a fabricated benefit figure. The gate itself compares this
+  // against the minimum benefit worth acting on
+  // (PRACTICAL_MIN_ADVANTAGE_EUR), never the minimum detectable
+  // spread, when the served guidance line picks its voice.
+  const eveningWindow = windowStartHour >= EVENING_PIVOT_HOUR;
+  const expectedBenefitEur =
+    dayAverage === null
+      ? null
+      : round4(dayAverage - cheapest.average_price);
   // The gate inputs ride the payload so the debug view can show them.
   const practical =
     windowStartHour < EVENING_PIVOT_HOUR &&
@@ -263,6 +285,11 @@ export function buildGuidance(priceParts) {
     window_start_hour: windowStartHour,
     hours_remaining: Math.round(hoursRemaining * 10) / 10,
     day_average_eur: dayAverage === null ? null : round4(dayAverage),
+    // The C17 evening-window gate inputs: whether the cheapest
+    // remaining window is an evening window (at or after the pivot),
+    // and its expected benefit against the day's average.
+    evening_window: eveningWindow,
+    expected_benefit_eur: expectedBenefitEur,
     // The Phase E today modes: the peak-avoidance line while the peak
     // is ahead, the passed-hours honesty, the evening price situation
     // and the cross-day delay comparison.

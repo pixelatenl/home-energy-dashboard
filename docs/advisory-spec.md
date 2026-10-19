@@ -126,6 +126,24 @@ the honest statement:
   EUR 0.19 average". It never renders while today commands, and a
   defer trigger (an even better later day) supersedes it.
 
+- **Evening-window gate (C17)**: an evening window (starting at or
+  after EVENING_PIVOT_HOUR, e.g. 21:00-00:00) whose expected benefit
+  against the day's average - the actual curve's day average minus the
+  window's average, an honest live reference, never a fabricated
+  figure - sits below PRACTICAL_MIN_ADVANTAGE_EUR is stated in the
+  served guidance line as a plain fact: "Prices are low between
+  21:00 and 00:00 (EUR 0.03 below average)." No imperative wording
+  below the threshold. Windows at or above the threshold keep the
+  line's imperative advisory voice, and windows outside the evening
+  range are untouched. The two thresholds live in
+  server/advisory-constants.mjs, defined once with the distinction:
+  GUIDANCE_MIN_SPREAD_EUR (0.03) is the minimum detectable spread
+  (below it the day reads as flat and the guidance object is omitted
+  entirely); PRACTICAL_MIN_ADVANTAGE_EUR (0.05) is the minimum benefit
+  worth acting on (the practicality gate and this gate). The gate
+  inputs (`evening_window`, `expected_benefit_eur`) ride the guidance
+  object with the other gate inputs.
+
 ## Voice rules
 
 - The imperative belongs to today: when a today window exists, the

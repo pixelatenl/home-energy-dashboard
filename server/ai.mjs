@@ -13,6 +13,7 @@ import {
   nextDateKey,
 } from "./time.mjs";
 import { checkAdvisory, logCheckerVerdict } from "./checker.mjs";
+import { PRACTICAL_MIN_ADVANTAGE_EUR } from "./advisory-constants.mjs";
 
 const MISTRAL_URL = "https://api.mistral.ai/v1/chat/completions";
 const MISTRAL_MODEL = "mistral-small-latest";
@@ -953,6 +954,28 @@ function asFiniteNumber(value) {
 // that want a sentence (the debug view). The routes call them with
 // the live snapshot extras at request time.
 export function composeGuidanceLine(g) {
+  // The C17 evening-window gate: an evening window (at or after the
+  // evening pivot, e.g. 21:00-00:00) whose expected benefit against
+  // the day's average sits below the practicality threshold is
+  // demoted to plain-fact voice - no imperative wording below the
+  // minimum benefit worth acting on, and never the 0.03 minimum
+  // detectable spread. The benefit is the honest live reference
+  // computed in buildGuidance from the actual curve; an evening
+  // window without a computable benefit never commands either.
+  if (
+    g.evening_window &&
+    (g.expected_benefit_eur === null ||
+      g.expected_benefit_eur < PRACTICAL_MIN_ADVANTAGE_EUR)
+  ) {
+    const hours = g.window.replace(" today", "").replace("-", " and ");
+    return g.expected_benefit_eur !== null && g.expected_benefit_eur > 0
+      ? `Prices are low between ${hours} (${eurFactText(
+          g.expected_benefit_eur
+        )} below average).`
+      : `The cheapest remaining window today is ${g.window} at ${eurFactText(
+          g.cheapest_window_average_eur
+        )} average.`;
+  }
   return `Cheapest remaining window today is ${g.window} at ${g.cheapest_window_average_eur} average; running heavy appliances then instead of the ${g.peak_hour} peak saves about ${g.spread_per_kwh_eur} per kWh.`;
 }
 
