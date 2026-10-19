@@ -464,7 +464,7 @@ function PricesWidget() {
                   <p className="text-3xl font-semibold tabular-nums">
                     {formatPrice(currentPrice)}
                   </p>
-                  <p className="text-xs text-muted-foreground">EUR/kWh</p>
+                  <p className="text-xs text-muted-foreground">€/kWh</p>
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground">
@@ -473,7 +473,7 @@ function PricesWidget() {
                   <p className="text-3xl font-semibold tabular-nums">
                     {formatPrice(summary.today.average)}
                   </p>
-                  <p className="text-xs text-muted-foreground">EUR/kWh</p>
+                  <p className="text-xs text-muted-foreground">€/kWh</p>
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground">
