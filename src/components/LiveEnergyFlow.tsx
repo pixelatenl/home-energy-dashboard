@@ -17,13 +17,19 @@ import {
   HOUSE_IMAGE,
   NODE_RADIUS,
   buildFlowDiagram,
+  type FlowDiagramInput,
   type FlowData,
   type FlowEdge,
   type FlowNode,
 } from "@/lib/flowDiagram";
+import { GRID_PULSE_DEADBAND_W } from "@/lib/gridPulse";
 import SkeletonReveal from "@/components/SkeletonReveal";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useSummary } from "@/lib/useSummary";
+import {
+  liveFieldAgeMs,
+  useLive,
+} from "@/lib/useLive";
+import type { BatteryState, LiveField } from "@/lib/api";
 
 // --- Render pass over the diagram data (see src/lib/flowDiagram.ts) ---
 // The home node is the house illustration from src/house.png, embedded
@@ -274,7 +280,7 @@ function FlowDiagram({ data, onDark }: { data: FlowData; onDark: boolean }) {
             fill="currentColor"
             opacity="0.6"
           >
-            no active flow
+            {data.hasData ? "no active flow" : "no live data available"}
           </text>
         )}
       </svg>
@@ -328,20 +334,108 @@ function StackedNodes({ data }: { data: FlowData }) {
   );
 }
 
-// The live energy flow widget: the flow snapshot from /api/summary drawn
-// around the house illustration - Solar top left, Battery bottom left,
-// Grid bottom right - with rounded flow lines carrying traveling
-// pulses and value chips at the stat card value size, over a
-// time-of-day sky. The compact today charts that used to ride beneath
-// the flow live in their own widget now (src/components/TodayCharts.tsx).
+// The live energy flow widget: the live snapshot from /api/live (the
+// same useLive poll as the hub's Live power card) drawn around the
+// house illustration - Solar top left, Battery bottom left, Grid
+// bottom right - with rounded flow lines carrying traveling pulses and
+// value chips at the stat card value size, over a time-of-day sky. The
+// balanced model, clamps and netting rules live unchanged in
+// flowDiagram.ts; only the inputs moved to the live values. The
+// compact today charts that used to ride beneath the flow live in
+// their own widget now (src/components/TodayCharts.tsx).
 function LiveEnergyFlow() {
-  const { summary, status } = useSummary();
+  const { snapshot: live, status } = useLive();
   const { phase, sunProgress, onDark } = useTimeOfDayPhase();
+
+  // The snapshot's fields feed the diagram exactly as served: values
+  // are used, never invented or interpolated between polls.
+  const fields = live?.fields;
+  const wattOf = (field?: LiveField): number | null =>
+    typeof field?.value === "number" ? field.value : null;
+  const chargeW = wattOf(fields?.batteryChargeW);
+  const dischargeW = wattOf(fields?.batteryDischargeW);
+  // Net battery power in the summary's sign convention: charging
+  // minus discharging, positive while charging.
+  const batteryPowerW =
+    chargeW !== null || dischargeW !== null
+      ? (chargeW ?? 0) - (dischargeW ?? 0)
+      : null;
+  // The battery state from net power at the same shared deadband the
+  // server's summary applies; both power series missing reads
+  // unavailable.
+  const batteryState: BatteryState =
+    chargeW === null && dischargeW === null
+      ? "unavailable"
+      : batteryPowerW !== null && batteryPowerW > GRID_PULSE_DEADBAND_W
+        ? "charging"
+        : batteryPowerW !== null && batteryPowerW < -GRID_PULSE_DEADBAND_W
+          ? "discharging"
+          : "idle";
+  const exporting =
+    typeof fields?.isExporting?.value === "boolean"
+      ? fields.isExporting.value
+      : null;
+  const diagramInput: FlowDiagramInput | null =
+    live === null
+      ? null
+      : {
+          flow: {
+            pv_w: wattOf(fields?.pvPowerW),
+            grid_import_w: wattOf(fields?.gridImportW),
+            grid_export_w: wattOf(fields?.gridExportW),
+            battery_solar_in_w: wattOf(fields?.batterySolarInW),
+            battery_charge_w: chargeW,
+            battery_discharge_w: dischargeW,
+          },
+          battery_soc_pct: wattOf(fields?.batterySocPct),
+          battery_power_w: batteryPowerW,
+          battery_state: batteryState,
+          is_exporting: exporting,
+        };
+
+  // Fail-soft, visibly: the flow states where its readings come from
+  // and how old they are - live HA readings, the newest stored (db)
+  // readings when HA is unreachable, or the honest empty state - so a
+  // degraded diagram never poses as a live one.
+  const flowFields = fields
+    ? [
+        fields.pvPowerW,
+        fields.gridImportW,
+        fields.gridExportW,
+        fields.batterySolarInW,
+        fields.batteryChargeW,
+        fields.batteryDischargeW,
+      ]
+    : [];
+  const withValues = flowFields.filter((field) => field.value !== null);
+  const hasHa = withValues.some((field) => field.source === "ha");
+  const hasDb = withValues.some((field) => field.source === "db");
+  const maxAgeMs =
+    live !== null
+      ? Math.max(
+          0,
+          ...withValues.map((field) => liveFieldAgeMs(live, field) ?? 0)
+        )
+      : 0;
+  const ageText =
+    maxAgeMs < 60_000
+      ? `${Math.max(0, Math.round(maxAgeMs / 1000))} s`
+      : `${Math.round(maxAgeMs / 60_000)} min`;
+  const sourceNote =
+    withValues.length === 0
+      ? "No live data available right now"
+      : hasHa && !hasDb
+        ? `Live readings, ${ageText} old`
+        : hasDb && !hasHa
+          ? `Newest stored readings, up to ${ageText} old`
+          : `Live and stored readings, up to ${ageText} old`;
 
   // The skeleton mirrors the flow hero's shape: the card chrome
   // with its header lines, then one large block standing in for the
-  // diagram. The children render only after the summary landed, so
-  // the diagram never builds from a null summary.
+  // diagram. The children render only after the first snapshot
+  // landed, so the diagram never builds from a null snapshot - except
+  // after a failed first poll, where the honest empty state renders
+  // instead of a skeleton that never resolves.
   const skeleton = (
     <Card className="min-h-[480px]" aria-busy="true">
       <CardHeader>
@@ -353,16 +447,15 @@ function LiveEnergyFlow() {
       </CardContent>
     </Card>
   );
-  const loading = status === "loading";
-  if (summary === null) {
+  if (live === null && status !== "error") {
     return (
-      <SkeletonReveal loading={loading} skeleton={skeleton}>
+      <SkeletonReveal loading skeleton={skeleton}>
         {null}
       </SkeletonReveal>
     );
   }
 
-  const diagram = buildFlowDiagram(summary);
+  const diagram = buildFlowDiagram(diagramInput);
 
   return (
     // The reveal stays in the same tree position across the
@@ -383,6 +476,15 @@ function LiveEnergyFlow() {
           >
             Power between solar, home, grid and battery
           </CardDescription>
+          {/* The source and age note: live, stored or empty - the
+            fail-soft state is stated, never hidden. */}
+          <p
+            className={`relative z-10 text-xs transition-colors duration-[2500ms] ${
+              onDark ? "text-white/80" : "text-muted-foreground"
+            }`}
+          >
+            {sourceNote}
+          </p>
         </CardHeader>
         <CardContent className="relative z-10 flex justify-center">
           {/* The diamond diagram on wider screens; a simplified stacked

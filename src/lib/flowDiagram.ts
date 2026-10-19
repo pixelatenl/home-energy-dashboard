@@ -1,6 +1,6 @@
 import { BatteryCharging, Home, Sun, UtilityPole } from "lucide-react"
 import type { CSSProperties, ComponentType } from "react"
-import type { BatteryState, SummaryData } from "@/lib/api"
+import type { BatteryState, FlowSnapshot } from "@/lib/api"
 
 // Flow palette - the colors of the flows' traveling pulses, the only
 // per-flow difference in the diagram: solar warm orange, grid deep
@@ -228,6 +228,24 @@ export interface FlowData {
   nodes: FlowNode[]
   edges: FlowEdge[]
   hasFlow: boolean
+  // Whether any flow series carried a value at all: with data the quiet
+  // diagram reads "no active flow"; without any it is the honest
+  // empty state, never a fabricated zero flow.
+  hasData: boolean
+}
+
+// The diagram's input: the six instantaneous flow series plus the
+// battery context fields, decoupled from the payload that carries
+// them - the live snapshot feeds it today (see useLive). The export
+// flag mirrors the live isExporting field (net export above the
+// shared deadband), so the grid node shows the same direction
+// indicator as the Live power card.
+export interface FlowDiagramInput {
+  flow: FlowSnapshot | null
+  battery_soc_pct: number | null
+  battery_power_w: number | null
+  battery_state: BatteryState
+  is_exporting: boolean | null
 }
 
 const isShown = (value: number | null): value is number =>
@@ -267,8 +285,8 @@ function subtractClamped(
 // Known limitation: with simultaneous import and export the P1 net
 // figures hide both gross streams, so a negative grid_to_home is
 // rendered as inactive rather than split into import and export.
-export function buildFlowDiagram(summary: SummaryData | null): FlowData {
-  const flow = summary?.flow
+export function buildFlowDiagram(input: FlowDiagramInput | null): FlowData {
+  const flow = input?.flow
 
   // Raw sensor values. grid_import_w and grid_export_w are net P1
   // figures; battery_charge_w is the gross AC-side charging power.
@@ -384,9 +402,9 @@ export function buildFlowDiagram(summary: SummaryData | null): FlowData {
       : gridExportW !== null
         ? `${gridExportW} W`
         : "\u2014"
-  const soc = summary?.battery_soc_pct
-  const batteryPowerW = summary?.battery_power_w ?? null
-  const batteryState = summary?.battery_state
+  const soc = input?.battery_soc_pct
+  const batteryPowerW = input?.battery_power_w ?? null
+  const batteryState = input?.battery_state
   const batteryColor =
     batteryState === "charging"
       ? CHARGING_COLOR
@@ -416,6 +434,10 @@ export function buildFlowDiagram(summary: SummaryData | null): FlowData {
       ...FLOW_POSITIONS.grid,
       name: "Grid",
       figure: gridFigure,
+      // The direction indicator while the home exports above the
+      // shared deadband, the same word the Live power card's caption
+      // carries - so battery selling never reads as a bare figure.
+      sub: input?.is_exporting === true ? "Exporting" : null,
       icon: UtilityPole,
       gradient: GRID_TILE_GRADIENT,
     },
@@ -435,5 +457,20 @@ export function buildFlowDiagram(summary: SummaryData | null): FlowData {
     },
   ]
 
-  return { nodes, edges, hasFlow: edges.some((edge) => edge.active) }
+  // The honest empty state: without a single flow reading there is no
+  // flow to draw, and none is invented - the render pass labels it.
+  const hasData =
+    pvW !== null ||
+    gridImportW !== null ||
+    gridExportW !== null ||
+    batterySolarInW !== null ||
+    batteryChargeW !== null ||
+    batteryDischargeW !== null
+
+  return {
+    nodes,
+    edges,
+    hasFlow: edges.some((edge) => edge.active),
+    hasData,
+  }
 }
