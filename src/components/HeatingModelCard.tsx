@@ -90,7 +90,7 @@ function HeatingModelCard({
                   <div className="space-y-1">
                     <ModelInput
                       label="Gas price"
-                      value={`${gas.price_eur_per_m3?.toFixed(4)} EUR/m3`}
+                      value={`${gas.price_eur_per_m3?.toFixed(4)} €/m3`}
                     />
                     <ModelInput
                       label="Calorific value"
@@ -127,7 +127,7 @@ function HeatingModelCard({
                   <div className="space-y-1">
                     <ModelInput
                       label="Avg electricity price (estimate)"
-                      value={`${pump.avg_electricity_price_eur_per_kwh?.toFixed(4)} EUR/kWh`}
+                      value={`${pump.avg_electricity_price_eur_per_kwh?.toFixed(4)} €/kWh`}
                     />
                     <ModelInput
                       label="Avg COP (estimate)"
