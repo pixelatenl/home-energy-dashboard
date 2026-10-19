@@ -979,20 +979,104 @@ export function composeGuidanceLine(g) {
   return `Cheapest remaining window today is ${g.window} at ${g.cheapest_window_average_eur} average; running heavy appliances then instead of the ${g.peak_hour} peak saves about ${g.spread_per_kwh_eur} per kWh.`;
 }
 
-export function composeAdvisoryLine(a) {
-  // The informational row (no trigger fired): the plain comparison,
-  // honest about the horizon when tomorrow's prices are unpublished.
-  if (a.triggered === false) {
-    if (a.tomorrow_average_eur === null) {
-      return a.compare_solar_kwh !== null
-        ? `Tomorrow brings ${a.tomorrow_solar_kwh} kWh of solar expected against today's ${a.compare_solar_kwh}; grid prices for tomorrow are not yet published.`
-        : `Tomorrow brings ${a.tomorrow_solar_kwh} kWh of solar expected; grid prices for tomorrow are not yet published.`;
-    }
-    return `Tomorrow averages ${a.tomorrow_average_eur} EUR per kWh with ${a.tomorrow_solar_kwh} kWh of solar expected; today averages ${a.compare_average_eur} with ${a.compare_solar_kwh} kWh.`;
+// The solar narrative branches at a 20 percent swing either way:
+// within it the expected solar reads as "about the same" - a smaller
+// difference is noise in the forecast, not a meaning worth stating.
+const NARRATIVE_SOLAR_FACTOR = 0.2;
+
+// Capitalizes the first letter of a composed sentence; shared with
+// the context builder's outlook lines.
+export function capSentence(text) {
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+// The price half of the Tomorrow narrative: cheaper, pricier or
+// similar against the compare day, derived from the computed figures
+// and stated at the minimum benefit worth acting on - never the
+// minimum detectable spread. Null when either average is missing
+// (the clause is then omitted entirely, never guessed).
+function advisoryPriceClause(a) {
+  if (a.tomorrow_average_eur === null || a.compare_average_eur === null) {
+    return null;
   }
-  return a.type === "advance"
-    ? `Tomorrow averages ${a.tomorrow_average_eur} EUR per kWh with ${a.tomorrow_solar_kwh} kWh of solar expected; today averages ${a.compare_average_eur} with ${a.compare_solar_kwh} kWh: consider running heavy appliances tomorrow instead of today.`
-    : `${a.compare_day} averages ${a.compare_average_eur} EUR per kWh with ${a.compare_solar_kwh} kWh of solar expected; tomorrow averages ${a.tomorrow_average_eur} with ${a.tomorrow_solar_kwh} kWh: consider running heavy appliances on ${a.compare_day} instead of tomorrow.`;
+  const diff =
+    Math.round((a.tomorrow_average_eur - a.compare_average_eur) * 10_000) /
+    10_000;
+  const referent = a.compare_day === "today" ? "today" : `on ${a.compare_day}`;
+  if (diff <= -PRACTICAL_MIN_ADVANTAGE_EUR) {
+    return `grid power should cost you less than ${referent}`;
+  }
+  if (diff >= PRACTICAL_MIN_ADVANTAGE_EUR) {
+    return `grid power will cost you more than ${referent}`;
+  }
+  return `grid power should cost about the same as ${referent}`;
+}
+
+// The solar half of the Tomorrow narrative: more, less or similar
+// solar against the compare day, or the low-solar meaning (grid
+// reliance) when the score flags it. The trailing form joins a price
+// clause; the lead form stands alone when prices are unavailable.
+// Null when no honest comparison exists.
+function advisorySolarClause(a) {
+  if (a.tomorrow_solar_kwh === null) {
+    return null;
+  }
+  if (a.tomorrow_low_solar === true) {
+    return {
+      trailing: "with little sun expected",
+      lead: "Little sun is expected - you'll lean mostly on grid power",
+    };
+  }
+  const compare = a.compare_solar_kwh;
+  if (compare === null || compare <= 0) {
+    return null;
+  }
+  const referent = a.compare_day === "today" ? "today" : `on ${a.compare_day}`;
+  // The trailing form rides a price clause that already names the
+  // compare day, so the "today" referent is left implicit.
+  const trailingReferent = a.compare_day === "today" ? "" : ` than ${referent}`;
+  if (a.tomorrow_solar_kwh >= compare * (1 + NARRATIVE_SOLAR_FACTOR)) {
+    return {
+      trailing: `with more of your own solar${trailingReferent}`,
+      lead: `More of your own solar is expected than ${referent}`,
+    };
+  }
+  if (a.tomorrow_solar_kwh <= compare * (1 - NARRATIVE_SOLAR_FACTOR)) {
+    return {
+      trailing: `with less of your own solar${trailingReferent}`,
+      lead: `Less of your own solar is expected than ${referent}`,
+    };
+  }
+  return {
+    trailing: `with about as much of your own solar${trailingReferent}`,
+    lead: `Your own solar should come in about the same as ${referent}`,
+  };
+}
+
+// The Tomorrow description: one short narrative sentence about what
+// the figures MEAN - cheaper or pricier, more or less solar - in
+// household voice. It complements the card's subtext, which carries
+// the exact comparison, so it never restates the figures; and it never
+// opens by restating the card title ("Tomorrow"). Deterministically
+// composed from the computed figures, one writer on the server; were
+// it ever model-generated it would have to pass the advisory
+// integrity checker and state only figures matching the computed
+// values. A missing figure omits its clause, and with nothing to say
+// the line is null - the card then falls back to its own composer,
+// never a guess.
+export function composeAdvisoryLine(a) {
+  const price = advisoryPriceClause(a);
+  const solar = advisorySolarClause(a);
+  if (price !== null && solar !== null) {
+    return `${capSentence(price)}, ${solar.trailing}.`;
+  }
+  if (price !== null) {
+    return `${capSentence(price)}.`;
+  }
+  if (solar !== null) {
+    return `${capSentence(solar.lead)}.`;
+  }
+  return null;
 }
 
 // The deterministic price sentence over the grounding facts: the

@@ -47,15 +47,25 @@ The card renders their rows from its own deterministic templates.
    available." The informational row (no trigger) never commands —
    and it carries no invitation either: the "If you can wait"
    phrasing belongs only to genuinely better days (a fired trigger).
-   A neutral day reads as plain information: "Tomorrow: EUR 0.36
-   average grid price with 11.99 kWh of your own solar expected."
+   A neutral day reads as plain information: the Tomorrow
+   description is a server-composed narrative about what the figures
+   mean (cheaper or pricier than today at the
+   PRACTICAL_MIN_ADVANTAGE_EUR boundary, more or less or similar
+   solar at a 20 percent swing), never a restatement of the figures -
+   the numbers line beneath carries the exact comparison. It never
+   opens with "Tomorrow", a missing figure omits its half, and were
+   it ever model-generated it would have to pass the advisory
+   integrity checker with every figure matching the computed values.
+   A neutral day narrates: "Grid power should cost about the same as
+   today, with about as much of your own solar."
 4. **Week outlook** — every forecast day after today with weekday,
    expected solar kWh, its solar score (0 to 100 versus the annual
    peak), a home-language condition, and a grid price
    field that is non-null only for tomorrow (unpublished prices are
    null, never a number). Names the best solar day and the rain day.
    The best day speaks qualitative solar language grounded in the
-   score: "Thursday looks good for solar: score 68, 15.3 kWh expected"
+   score, served as a server-composed line the card renders verbatim:
+   "A genuinely good solar day: score 68, 15.3 kWh expected"
    at or above GOOD_SOLAR_SCORE (default 60, EMS_GOOD_SOLAR_SCORE); a
    lower score reads honestly as "the week's best solar" without the
    good claim. Below LOW_SOLAR_SCORE (default 20, EMS_LOW_SOLAR_SCORE)
@@ -284,7 +294,9 @@ model copy to drift.
   exists, the advisory title then reads as planning.
 - Every rendered sentence has exactly one writer: the today imperative
   (action and guidance titles) comes from `todayImperative`, the
-  advisory sentence from `sentenceForAdvisory`. The only model-authored
+  advisory sentence from the server-composed narrative line
+  (`sentenceForAdvisory` remains only as the fallback for payloads
+  that carry no line). The only model-authored
   text on the card is the no-opportunity statement, the warning and
   the context note.
 - The action row may highlight its saving chip and carries the

@@ -262,3 +262,122 @@ describe("the row builder: the chronological timeline", () => {
     assert.equal(largest.valueChip, "\u20AC-0.05");
   });
 });
+
+describe("the row builder: the served narrative descriptions", () => {
+  it("renders the served narrative as the Tomorrow description, with the unchanged comparison beneath", () => {
+    const base = makeInsight();
+    const content = buildAdvisoryContent({
+      ...base,
+      advisory: {
+        ...base.advisory!,
+        line: "Grid power should cost you less than today, with more of your own solar.",
+      },
+    });
+    const tomorrow = content.cards.find((card) => card.chip === "Tomorrow");
+    assert.ok(tomorrow);
+    assert.equal(
+      tomorrow.items[0].sentence,
+      "Grid power should cost you less than today, with more of your own solar.",
+    );
+    // The subtext comparison line is unchanged and still carries the
+    // exact figures the narrative leaves out.
+    assert.deepEqual(tomorrow.items[0].supporting, [
+      {
+        text: "tomorrow \u20ac0.36 avg \u00b7 4 kWh solar vs today \u20ac0.36 avg \u00b7 14.4 kWh solar",
+        tabular: true,
+      },
+    ]);
+  });
+
+  it("keeps the delay imperative as the Tomorrow lead even when a narrative is served", () => {
+    const base = makeInsight();
+    const content = buildAdvisoryContent({
+      ...base,
+      no_opportunity: true,
+      guidance: {
+        ...base.guidance!,
+        practical: false,
+        delay: {
+          tomorrow_window: "02:00-05:00 tomorrow",
+          tomorrow_window_average_eur: 0.19,
+          today_window_average_eur: 0.25,
+        },
+      },
+      advisory: {
+        ...base.advisory!,
+        line: "Grid power should cost you less than today, with more of your own solar.",
+      },
+    });
+    const tomorrow = content.cards.find((card) => card.chip === "Tomorrow");
+    assert.ok(tomorrow);
+    assert.equal(
+      tomorrow.items[0].sentence,
+      "Delay your large appliances until tomorrow's cheaper hours, from \u20ac0.19 average",
+    );
+    assert.equal(tomorrow.items[0].valueChip, "prefer tomorrow");
+  });
+
+  it("renders the served outlook lines for the best and poor day cards", () => {
+    const base = makeInsight();
+    const content = buildAdvisoryContent({
+      ...base,
+      outlook: {
+        ...base.outlook!,
+        best_solar_day: {
+          ...base.outlook!.best_solar_day!,
+          line: "A genuinely good solar day: score 68, 12.55 kWh expected.",
+        },
+        poor_day: {
+          ...base.outlook!.poor_day!,
+          line: "Rain and almost no solar of your own: 0.8 kWh expected.",
+        },
+      },
+    });
+    const sunday = content.cards.find((card) => card.chip === "Sun");
+    assert.ok(sunday);
+    assert.equal(
+      sunday.items[0].sentence,
+      "A genuinely good solar day: score 68, 12.55 kWh expected.",
+    );
+    const friday = content.cards.find((card) => card.chip === "Fri");
+    assert.ok(friday);
+    assert.equal(
+      friday.items[0].sentence,
+      "Rain and almost no solar of your own: 0.8 kWh expected.",
+    );
+    // The poor day's supporting line is unchanged.
+    assert.deepEqual(friday.items[0].supporting, [
+      { text: "avoid planning large appliances then" },
+    ]);
+  });
+
+  it("carries the compact comparison on the solar-alone card", () => {
+    const base = makeInsight();
+    const content = buildAdvisoryContent({
+      ...base,
+      advisory: {
+        ...base.advisory!,
+        tomorrow_average_eur: null,
+        tomorrow_low_solar: false,
+        horizon_note:
+          "Grid prices for tomorrow are not yet published; a fuller comparison follows once they are available.",
+        line: "More of your own solar is expected than today.",
+      },
+    });
+    const tomorrow = content.cards.find((card) => card.chip === "Tomorrow");
+    assert.ok(tomorrow);
+    assert.equal(
+      tomorrow.items[0].sentence,
+      "More of your own solar is expected than today.",
+    );
+    // The narrative no longer restates the solar figures, so the
+    // numbers line carries the exact comparison on this card too.
+    assert.deepEqual(tomorrow.items[0].supporting, [
+      {
+        text: "tomorrow 4 kWh solar vs today \u20ac0.36 avg \u00b7 14.4 kWh solar",
+        tabular: true,
+      },
+    ]);
+    assert.equal(tomorrow.items[0].footer?.kind, "note");
+  });
+});

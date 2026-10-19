@@ -330,7 +330,10 @@ export interface SummaryInsight {
     compare_solar_kwh: number | null
     price_difference_per_kwh: number | null
     horizon_note: string
-    line: string
+    // The server-composed narrative description (what the figures
+    // mean - cheaper or pricier, more or less solar): the card's
+    // description writer. Null when no honest narrative exists.
+    line: string | null
   } | null
   // The grounding facts served next to the advisory: today's lowest
   // and peak price, each with its own timestamp, and the battery
@@ -733,6 +736,10 @@ export interface WeekOutlook {
     // "Looks good for solar" only when the score backs it
     // (GOOD_SOLAR_SCORE).
     good: boolean
+    // The server-composed narrative description for the card; the
+    // card renders it verbatim. Optional so payloads from before the
+    // line existed keep rendering through the local fallback.
+    line?: string | null
   } | null
   poor_day: {
     date: string
@@ -740,6 +747,9 @@ export interface WeekOutlook {
     weekday_short: string
     solar_kwh: number
     condition: string
+    // The server-composed narrative description for the card; the
+    // card renders it verbatim. Optional for pre-line payloads.
+    line?: string | null
   } | null
 }
 

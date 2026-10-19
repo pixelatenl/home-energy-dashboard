@@ -5,7 +5,7 @@
 // markers) is driven by this snapshot, so the kiosk can always compare
 // the served insight against the data shown next to it.
 
-import { buildSummaryContext, dayLabel, summarySignature } from "./ai.mjs";
+import { buildSummaryContext, capSentence, dayLabel, summarySignature } from "./ai.mjs";
 import {
   GUIDANCE_MIN_SPREAD_EUR,
   PRACTICAL_MIN_ADVANTAGE_EUR,
@@ -132,6 +132,27 @@ export function buildOutlook(weatherDaily, priceParts) {
           day.solar_kwh < low.solar_kwh ? day : low
         )
       : null;
+  // The sibling outlook cards' descriptions, composed server-side in
+  // household voice: meaning first, never opening with the weekday
+  // (the card's own chip already names the day), with the grounding
+  // figures kept - their subtexts carry no numbers, so nothing is
+  // duplicated. Deterministic single writer, derived from the
+  // computed figures; missing scores fall back to the plain solar
+  // fact rather than guessing a quality.
+  const bestLine = (day) =>
+    day.solar_score !== null
+      ? day.good
+        ? `A genuinely good solar day: score ${day.solar_score}, ${day.solar_kwh} kWh expected.`
+        : `The week's best solar day, though nothing special: score ${day.solar_score}, ${day.solar_kwh} kWh expected.`
+      : `The week's sunniest day: ${day.solar_kwh} kWh of your own solar expected.`;
+  const poorLine = (day) =>
+    best.solar_kwh > 0 && day.solar_kwh < best.solar_kwh * 0.35
+      ? `${day.condition === "rain" ? "Rain and " : ""}almost no solar of your own: ${day.solar_kwh} kWh expected.`
+      : `${capSentence(day.condition)} that day, with ${day.solar_kwh} kWh of your own solar.`;
+  // "Looks good for solar" only when the score backs it.
+  const bestGood =
+    best.solar_score !== null && best.solar_score >= GOOD_SOLAR_SCORE;
+  const bestDescribed = { ...best, good: bestGood };
   return {
     days: outlookDays,
     best_solar_day:
@@ -142,10 +163,8 @@ export function buildOutlook(weatherDaily, priceParts) {
             weekday_short: best.weekday_short,
             solar_kwh: best.solar_kwh,
             solar_score: best.solar_score,
-            // "Looks good for solar" only when the score backs it.
-            good:
-              best.solar_score !== null &&
-              best.solar_score >= GOOD_SOLAR_SCORE,
+            good: bestGood,
+            line: bestLine(bestDescribed),
           }
         : null,
     poor_day:
@@ -156,6 +175,7 @@ export function buildOutlook(weatherDaily, priceParts) {
             weekday_short: poor.weekday_short,
             solar_kwh: poor.solar_kwh,
             condition: poor.condition,
+            line: poorLine(poor),
           }
         : null,
   };

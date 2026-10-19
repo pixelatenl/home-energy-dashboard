@@ -297,6 +297,18 @@ export function buildAdvisoryContent(
           : `tomorrow ${advisoryNumbers(advisory.tomorrow_average_eur, advisory.tomorrow_solar_kwh)} vs today ${advisoryNumbers(advisory.compare_average_eur, advisory.compare_solar_kwh)}`,
       tabular: true,
     }
+    // The description line: the server-composed narrative is the
+    // single writer - one sentence about what the figures MEAN
+    // (cheaper or pricier, more or less solar), complementing the
+    // numbers line, which carries the exact comparison. The local
+    // composer is only the fallback for payloads that carry no
+    // narrative (never two writers for one sentence), and the delay
+    // advice keeps its imperative - it is the transferred command,
+    // not the description.
+    const narrative =
+      typeof advisory.line === "string" && advisory.line.trim() !== ""
+        ? advisory.line
+        : null
     const advisoryItem: AdvisoryItem = {
       valueChip: delayFires
         ? "prefer tomorrow"
@@ -310,20 +322,19 @@ export function buildAdvisoryContent(
               : "prefer tomorrow",
       sentence: delayFires
         ? delaySentence(delayData)
-        : sentenceForAdvisory(
+        : (narrative ??
+          sentenceForAdvisory(
             advisory,
             !actionCommand &&
               (!guidanceLine || guidanceLine.practical === false),
-          ),
-      // The numbers line is price-led; on the solar-alone card it
-      // would duplicate the sentence, so it renders only when the
-      // prices are published. The low-solar card carries the hedged
-      // market note plus the numbers grounding it.
+          )),
+      // The narrative never restates the figures, so the compact
+      // comparison always carries them - the exact numbers line,
+      // unchanged - with the hedged market note above it on the
+      // low-solar card.
       supporting: lowSolar
         ? [{ text: LOW_SOLAR_MARKET_NOTE }, numbersLine]
-        : informational && unpublished
-          ? []
-          : [numbersLine],
+        : [numbersLine],
       muted: true,
       footer:
         advisory.horizon_note && !lowSolar
@@ -360,15 +371,16 @@ export function buildAdvisoryContent(
       chip: bestDay.weekday_short,
       item: {
         valueChip: null,
-        // The qualitative solar language grounded in the score
-        // (Phase E): "looks good" only when the score backs it;
-        // otherwise the honest "week's best" without the overclaim.
+        // The server-composed narrative description, rendered
+        // verbatim - the single writer. The local composition is only
+        // the fallback for payloads that carry no line.
         sentence:
-          bestDay.solar_score !== null
+          bestDay.line ??
+          (bestDay.solar_score !== null
             ? bestDay.good
               ? `${bestDay.weekday} looks good for solar: score ${bestDay.solar_score}, ${humanNumber(bestDay.solar_kwh)} kWh expected`
               : `${bestDay.weekday} brings the week's best solar: score ${bestDay.solar_score}, ${humanNumber(bestDay.solar_kwh)} kWh expected`
-            : `${bestDay.weekday} looks even better: ${humanNumber(bestDay.solar_kwh)} kWh of your own solar expected`,
+            : `${bestDay.weekday} looks even better: ${humanNumber(bestDay.solar_kwh)} kWh of your own solar expected`),
         supporting: [],
         muted: true,
       },
@@ -380,13 +392,18 @@ export function buildAdvisoryContent(
       chip: poorDay.weekday_short,
       item: {
         valueChip: null,
-        sentence: `${poorDay.weekday} brings ${poorDay.condition} and ${
-          bestDay !== null &&
-          bestDay.solar_kwh > 0 &&
-          poorDay.solar_kwh < bestDay.solar_kwh * 0.35
-            ? `almost no solar of your own, ${humanNumber(poorDay.solar_kwh)} kWh`
-            : `${humanNumber(poorDay.solar_kwh)} kWh of your own solar`
-        }`,
+        // The server-composed narrative description, rendered
+        // verbatim - the single writer. The local composition is only
+        // the fallback for payloads that carry no line.
+        sentence:
+          poorDay.line ??
+          `${poorDay.weekday} brings ${poorDay.condition} and ${
+            bestDay !== null &&
+            bestDay.solar_kwh > 0 &&
+            poorDay.solar_kwh < bestDay.solar_kwh * 0.35
+              ? `almost no solar of your own, ${humanNumber(poorDay.solar_kwh)} kWh`
+              : `${humanNumber(poorDay.solar_kwh)} kWh of your own solar`
+          }`,
         supporting: [{ text: "avoid planning large appliances then" }],
         muted: true,
       },
