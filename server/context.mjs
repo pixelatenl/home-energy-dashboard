@@ -5,7 +5,13 @@
 // markers) is driven by this snapshot, so the kiosk can always compare
 // the served insight against the data shown next to it.
 
-import { buildSummaryContext, capSentence, dayLabel, summarySignature } from "./ai.mjs";
+import {
+  buildSummaryContext,
+  capSentence,
+  dayLabel,
+  eurFactText,
+  summarySignature,
+} from "./ai.mjs";
 import {
   GUIDANCE_MIN_SPREAD_EUR,
   PRACTICAL_MIN_ADVANTAGE_EUR,
@@ -146,9 +152,11 @@ export function buildOutlook(weatherDaily, priceParts) {
         : `The week's best solar day, though nothing special: score ${day.solar_score}, ${day.solar_kwh} kWh expected.`
       : `The week's sunniest day: ${day.solar_kwh} kWh of your own solar expected.`;
   const poorLine = (day) =>
-    best.solar_kwh > 0 && day.solar_kwh < best.solar_kwh * 0.35
-      ? `${day.condition === "rain" ? "Rain and " : ""}almost no solar of your own: ${day.solar_kwh} kWh expected.`
-      : `${capSentence(day.condition)} that day, with ${day.solar_kwh} kWh of your own solar.`;
+    capSentence(
+      best.solar_kwh > 0 && day.solar_kwh < best.solar_kwh * 0.35
+        ? `${day.condition === "rain" ? "Rain and " : ""}almost no solar of your own: ${day.solar_kwh} kWh expected.`
+        : `${capSentence(day.condition)} that day, with ${day.solar_kwh} kWh of your own solar.`
+    );
   // "Looks good for solar" only when the score backs it.
   const bestGood =
     best.solar_score !== null && best.solar_score >= GOOD_SOLAR_SCORE;
@@ -462,7 +470,7 @@ export function buildAdvisory(priceParts, weatherDaily) {
     compare.average_eur !== null &&
     !dayAfterKnown
   ) {
-    horizonNote = `Cheapest day known so far is ${compare.label} at ${round4(
+    horizonNote = `Cheapest day known so far is ${compare.label} at ${eurFactText(
       compare.average_eur
     )} average; the day after is not yet published`;
   } else if (!triggered && tomorrowAvg === null) {
@@ -540,11 +548,15 @@ export function buildCandidates(applianceRows, summary, priceParts, priceRows) {
       window: windowLabel,
       saving_eur: savingEur,
       below_threshold: savingEur < 0.05,
-      basis: `your ${householdApplianceName(row.appliance)} used ${round2(
+      // A sentence served beneath the card title: capitalized, and
+      // every amount carries the flush euro sign. Full precision
+      // stays in the payload; the display clamps to the served
+      // precision.
+      basis: `Your ${householdApplianceName(row.appliance)} used ${round2(
         kwh
-      )} kWh so far today at an average of EUR ${round4(
+      )} kWh so far today at an average of €${round4(
         avgPaid
-      )}/kWh versus EUR ${round4(cheapest.average_price)}/kWh in the cheapest remaining window`,
+      )}/kWh versus €${round4(cheapest.average_price)}/kWh in the cheapest remaining window`,
     });
   }
   const flow = summary?.battery_flow_hourly ?? [];
@@ -565,9 +577,9 @@ export function buildCandidates(applianceRows, summary, priceParts, priceRows) {
       window: windowLabel,
       saving_eur: savingEur,
       below_threshold: savingEur < 0.05,
-      basis: `your battery discharged ${round2(outTotal)} kWh today covering hours at EUR ${round4(
+      basis: `Your battery discharged ${round2(outTotal)} kWh today covering hours at €${round4(
         outTotal > 0 ? avoided / outTotal : 0
-      )}/kWh average versus EUR ${round4(
+      )}/kWh average versus €${round4(
         cheapest.average_price
       )}/kWh in the cheapest remaining window`,
     });

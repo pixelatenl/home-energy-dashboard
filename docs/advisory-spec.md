@@ -90,8 +90,8 @@ The card renders their rows from its own deterministic templates.
    with its own timestamp, and the battery state (SOC percentage and
    charging/discharging/idle) verbatim from the context values. The
    card renders their sentences from deterministic templates
-   ("Lowest price around 02:00 (EUR 0.19); peak around 08:00
-   (EUR 0.41)."; "The battery is at 72% and is idle."); the model
+   ("Lowest price around 02:00 (€0.19); peak around 08:00
+   (€0.41)."; "The battery is at 72% and is idle."); the model
    never writes them. When a fact is missing its sentence is omitted
    entirely - never approximated, never filled by the model. The
    model may reference the battery only abstractly; battery-state
@@ -115,7 +115,7 @@ planning register - never a command - and the Phase E today modes pick
 the honest statement:
 
 - **Peak avoidance** (while commanding): the supporting line "Avoid
-  the 08:00 peak at EUR 0.51" renders only while the day's peak hour
+  the 08:00 peak at €0.51" renders only while the day's peak hour
   is still ahead of the current hour (`peak_ahead`) - a live
   reference, gone once the peak has passed.
 - **Passed hours**: when the day's actual cheap hours are gone
@@ -125,7 +125,7 @@ the honest statement:
   but the pivot blocks the command, the row states the evening against
   live references - today's remaining-hours average until midnight
   (`remaining_average_eur`) against the day's average: "This evening's
-  prices stay high, EUR 0.41 average until midnight", or the neutral
+  prices stay high, €0.41 average until midnight", or the neutral
   average when the comparison does not back "stay high".
 - **Evening delay rule**: with tomorrow's prices published, the server
   compares tomorrow's cheapest window against the best window
@@ -133,7 +133,7 @@ the honest statement:
   DELAY_MIN_ADVANTAGE_EUR (default 0.05, EMS_DELAY_MIN_ADVANTAGE_EUR)
   cheaper, the tomorrow row carries the transferred imperative:
   "Delay your large appliances until tomorrow's cheaper hours, from
-  EUR 0.19 average". It never renders while today commands, and a
+  €0.19 average". It never renders while today commands, and a
   defer trigger (an even better later day) supersedes it.
 
 - **Evening-window gate (C17)**: an evening window (starting at or
@@ -142,7 +142,7 @@ the honest statement:
   window's average, an honest live reference, never a fabricated
   figure - sits below PRACTICAL_MIN_ADVANTAGE_EUR is stated in the
   served guidance line as a plain fact: "Prices are low between
-  21:00 and 00:00 (EUR 0.03 below average)." No imperative wording
+  21:00 and 00:00 (€0.03 below average)." No imperative wording
   below the threshold. Windows at or above the threshold keep the
   line's imperative advisory voice, and windows outside the evening
   range are untouched. The two thresholds live in
@@ -174,7 +174,7 @@ the honest statement:
   "Run your large appliances between ...", composed deterministically
   by the frontend. The specific appliance and its measured load
   appear only in the server-computed basis line ("your dishwasher used
-  0.59 kWh so far today at EUR 0.45/kWh average versus ...") — never
+  0.59 kWh so far today at €0.45/kWh average versus ...") — never
   a model duty, never a command implying a second run.
 - Future days (tomorrow and later) speak in planning voice — "If you
   can wait: ..." — and never command. The imperative may transfer to
@@ -218,11 +218,19 @@ the honest statement:
 
 ## Money format
 
-- Every monetary value carries the euro sign.
+- Every monetary value carries the euro sign, flush against the
+  amount (€0.36, never "EUR 0.36"), matching the subtext line's
+  spacing style - applied at server composition time, never by
+  frontend substitution. No served sentence uses the three-letter
+  code.
+- Every sentence served beneath a card title opens with a capital
+  letter, deterministically at server composition time (the model's
+  fields are normalized when the insight is validated); a figure or
+  currency symbol opening is legitimate and is never capitalized.
 - The pinned precision rule: two decimals whenever the value is
-  nonzero at two decimals (EUR 0.0629 renders as 0.06); more decimals
-  only when two would show 0.00 (EUR 0.0035 stays 0.0035). A nonzero
-  value never renders as EUR 0.00. Prices keep two decimals.
+  nonzero at two decimals (€0.0629 renders as €0.06); more decimals
+  only when two would show €0.00 (€0.0035 stays €0.0035). A nonzero
+  value never renders as €0.00. Prices keep two decimals.
 - Full precision lives only in the payload and the debug view.
 - The payload carries raw numbers; every display string (chip texts,
   sentences, fact lines) is composed at display time from the raw

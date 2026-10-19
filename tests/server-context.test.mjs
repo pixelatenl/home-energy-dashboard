@@ -192,9 +192,9 @@ describe("buildCandidates: the candidate arithmetic", () => {
       { appliance: "Washing machine energy", kwh: 0.9, cost_eur: 0.405 },
     ];
     const [candidate] = candidatesFixture(rows);
-    assert.match(candidate.basis, /^your washing machine used 0\.9 kWh/);
-    assert.match(candidate.basis, /at an average of EUR 0\.45\/kWh/);
-    assert.match(candidate.basis, /versus EUR 0\.2574\/kWh/);
+    assert.match(candidate.basis, /^Your washing machine used 0\.9 kWh/);
+    assert.match(candidate.basis, /at an average of €0\.45\/kWh/);
+    assert.match(candidate.basis, /versus €0\.2574\/kWh/);
   });
 
   it("adds no battery candidate without discharge today", () => {
@@ -221,7 +221,7 @@ describe("buildCandidates: the candidate arithmetic", () => {
     assert.equal(candidate.label, "Battery recharge");
     assert.equal(candidate.saving_eur, 0.3139);
     assert.equal(candidate.load_kwh, 1.5);
-    assert.match(candidate.basis, /^your battery discharged 1\.5 kWh today/);
+    assert.match(candidate.basis, /^Your battery discharged 1\.5 kWh today/);
   });
 });
 
@@ -319,7 +319,7 @@ describe("buildAdvisory: the tomorrow row", () => {
     assert.equal(a.compare_day, "today");
     assert.equal(
       a.horizon_note,
-      "Cheapest day known so far is today at 0.24 average; the day after is not yet published"
+      "Cheapest day known so far is today at €0.24 average; the day after is not yet published"
     );
   });
 

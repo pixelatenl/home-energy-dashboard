@@ -78,7 +78,7 @@ describe("composeGuidanceLine: the C17 evening-window gate", () => {
     const line = composeGuidanceLine(g);
     assert.equal(
       line,
-      "Prices are low between 21:00 and 00:00 (EUR 0.03 below average)."
+      "Prices are low between 21:00 and 00:00 (€0.03 below average)."
     );
     // No imperative wording below the threshold.
     assert.doesNotMatch(line, /running|run|shift|dishwasher/i);
@@ -105,7 +105,7 @@ describe("composeGuidanceLine: the C17 evening-window gate", () => {
     assert.equal(below.expected_benefit_eur, 0.04);
     assert.equal(
       composeGuidanceLine(below),
-      "Prices are low between 21:00 and 00:00 (EUR 0.04 below average)."
+      "Prices are low between 21:00 and 00:00 (€0.04 below average)."
     );
   });
 
@@ -114,7 +114,7 @@ describe("composeGuidanceLine: the C17 evening-window gate", () => {
     const line = composeGuidanceLine(g);
     assert.equal(
       line,
-      "The cheapest remaining window today is 21:00-00:00 today at EUR 0.28 average."
+      "The cheapest remaining window today is 21:00-00:00 today at €0.28 average."
     );
     assert.doesNotMatch(line, /running|run|shift|dishwasher/i);
   });
@@ -125,7 +125,7 @@ describe("composeGuidanceLine: the C17 evening-window gate", () => {
     const line = composeGuidanceLine(g);
     assert.equal(
       line,
-      "The cheapest remaining window today is 21:00-00:00 today at EUR 0.33 average."
+      "The cheapest remaining window today is 21:00-00:00 today at €0.33 average."
     );
   });
 
@@ -135,7 +135,7 @@ describe("composeGuidanceLine: the C17 evening-window gate", () => {
     assert.equal(g.evening_window, false);
     assert.equal(
       line,
-      "Cheapest remaining window today is 12:00-15:00 today at 0.28 average; running heavy appliances then instead of the 08:00 peak saves about 0.13 per kWh."
+      "Cheapest remaining window today is 12:00-15:00 today at €0.28 average; running heavy appliances then instead of the 08:00 peak saves about €0.13 per kWh."
     );
   });
 

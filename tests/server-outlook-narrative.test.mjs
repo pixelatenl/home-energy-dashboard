@@ -306,7 +306,7 @@ describe("buildOutlook: the sibling day cards' narrative lines", () => {
     assert.equal(outlook.poor_day.solar_kwh, 2);
     assert.equal(
       outlook.poor_day.line,
-      "almost no solar of your own: 2 kWh expected."
+      "Almost no solar of your own: 2 kWh expected."
     );
   });
 

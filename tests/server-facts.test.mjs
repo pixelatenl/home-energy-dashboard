@@ -98,7 +98,7 @@ describe("composePriceSentence: the low/peak pairing", () => {
     const sentence = composePriceSentence(buildFacts(pricedDay(), null));
     assert.equal(
       sentence,
-      "Lowest price around 02:00 (EUR 0.19); peak around 08:00 (EUR 0.41)."
+      "Lowest price around 02:00 (€0.19); peak around 08:00 (€0.41)."
     );
   });
 
@@ -116,7 +116,7 @@ describe("composePriceSentence: the low/peak pairing", () => {
     );
     assert.equal(
       sentence,
-      "Lowest price around 03:00 (EUR 0.11); peak around 21:00 (EUR 0.52)."
+      "Lowest price around 03:00 (€0.11); peak around 21:00 (€0.52)."
     );
   });
 
@@ -136,7 +136,7 @@ describe("composePriceSentence: the low/peak pairing", () => {
       lowPrice: { timestamp: "04:00", price: 0.0035 },
       peakPrice: { timestamp: "19:00", price: 0.28 },
     });
-    assert.equal(sentence, "Lowest price around 04:00 (EUR 0.0035); peak around 19:00 (EUR 0.28).");
+    assert.equal(sentence, "Lowest price around 04:00 (€0.0035); peak around 19:00 (€0.28).");
   });
 });
 

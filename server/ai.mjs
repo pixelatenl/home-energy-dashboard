@@ -277,7 +277,7 @@ export function priceFallbackText(priceParts) {
   const eur = (value) =>
     value === null || value === undefined
       ? null
-      : `EUR ${(Math.round(value * 1000) / 1000).toFixed(3)}/kWh`;
+      : `€${(Math.round(value * 1000) / 1000).toFixed(3)}/kWh`;
   const sentences = [];
   if (priceData.current_price != null) {
     sentences.push(`The current grid price is ${eur(priceData.current_price)}.`);
@@ -948,6 +948,19 @@ function asFiniteNumber(value) {
   return null;
 }
 
+// Deterministic capitalization, applied at server composition time
+// (never by the frontend): a sentence served beneath a card title
+// opens with a capital letter when it opens with a letter. A figure
+// or currency symbol opening is a legitimate opening and stays
+// untouched - the symbol is never capitalized.
+function capitalizeOpening(text) {
+  if (typeof text !== "string" || text.length === 0) {
+    return text;
+  }
+  const first = text.charAt(0);
+  return /[a-z]/.test(first) ? first.toUpperCase() + text.slice(1) : text;
+}
+
 // The deterministic lines served with the guidance and advisory
 // objects: the model never writes them, the card renders the rows
 // from the fields, and these lines ride the payload for consumers
@@ -976,7 +989,11 @@ export function composeGuidanceLine(g) {
           g.cheapest_window_average_eur
         )} average.`;
   }
-  return `Cheapest remaining window today is ${g.window} at ${g.cheapest_window_average_eur} average; running heavy appliances then instead of the ${g.peak_hour} peak saves about ${g.spread_per_kwh_eur} per kWh.`;
+  return `Cheapest remaining window today is ${g.window} at ${eurFactText(
+    g.cheapest_window_average_eur
+  )} average; running heavy appliances then instead of the ${
+    g.peak_hour
+  } peak saves about ${eurFactText(g.spread_per_kwh_eur)} per kWh.`;
 }
 
 // The solar narrative branches at a 20 percent swing either way:
@@ -1108,15 +1125,18 @@ export function composeBatterySentence(facts) {
   return `The battery is at ${battery.soc_pct}% and is ${battery.state}.`;
 }
 
-// Pinned money precision for the fact sentences: two decimals whenever
-// the value is nonzero at two decimals, more only when two would show
-// 0.00 - a nonzero price never renders as EUR 0.00.
-function eurFactText(value) {
+// The one money format for composed sentences: the euro sign flush
+// against the amount (the subtext line's spacing style - €0.36, never
+// "EUR 0.36"), with the pinned precision: two decimals whenever the
+// value is nonzero at two decimals, more only when two would show
+// 0.00 - a nonzero price never renders as €0.00. Shared with the
+// context builder's served sentences.
+export function eurFactText(value) {
   const two = value.toFixed(2);
   if (Number(two) !== 0) {
-    return `EUR ${two}`;
+    return `€${two}`;
   }
-  return `EUR ${value.toFixed(4).replace(/0+$/, "").replace(/\.$/, "")}`;
+  return `€${value.toFixed(4).replace(/0+$/, "").replace(/\.$/, "")}`;
 }
 
 // The saving guard: the claimed saving must match a candidate's exact
@@ -1153,7 +1173,11 @@ export function validateDecisionInsight(parsed) {
   if (!raw || typeof raw !== "object") {
     return null;
   }
-  const what = typeof raw.what === "string" ? raw.what.trim() : "";
+  // Capitalized deterministically at composition time: the sentence
+  // serves beneath a card title.
+  const what = capitalizeOpening(
+    typeof raw.what === "string" ? raw.what.trim() : ""
+  );
   // The window may be legitimately empty: with no candidate there is
   // no window to name, and the honest no-opportunity action carries
   // only the what.
@@ -1189,13 +1213,14 @@ export function validateDecisionInsight(parsed) {
   const supportingFacts = [];
   const warning =
     typeof parsed.warning === "string" && parsed.warning.trim()
-      ? parsed.warning.trim()
+      ? capitalizeOpening(parsed.warning.trim())
       : null;
   // Explanatory context (why no candidates exist) - a muted footnote,
-  // never a warning.
+  // never a warning. Capitalized like every sentence served beneath
+  // a card title.
   const contextNote =
     typeof parsed.contextNote === "string" && parsed.contextNote.trim()
-      ? parsed.contextNote.trim()
+      ? capitalizeOpening(parsed.contextNote.trim())
       : null;
   return {
     what,

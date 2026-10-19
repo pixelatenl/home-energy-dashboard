@@ -413,3 +413,56 @@ describe("getSummaryInsight: the checker guards the served advisory", () => {
     }
   });
 });
+
+describe("checkAdvisory: euro-sign figures are extracted and validated", () => {
+  it("catches a corrupted low hour written with the euro sign", () => {
+    const verdict = checkAdvisory(
+      {
+        what: "Lowest price around 03:00 (€0.20); peak around 08:00 (€0.41).",
+      },
+      FACTS
+    );
+    assert.equal(verdict.ok, false);
+    assert.match(verdict.reason, /lowest price named at 03:00/);
+  });
+
+  it("accepts the correct pairs written with the euro sign", () => {
+    const verdict = checkAdvisory(
+      {
+        contextNote:
+          "Lowest price around 02:00 (€0.19); peak around 08:00 (€0.41).",
+      },
+      FACTS
+    );
+    assert.equal(verdict.ok, true);
+    assert.equal(verdict.priceClaims, 4);
+  });
+
+  it("validates a euro-sign price figure against the curve", () => {
+    const ok = checkAdvisory({ contextNote: "€0.19 at 02:00" }, FACTS);
+    assert.equal(ok.ok, true);
+    const wrongPrice = checkAdvisory(
+      { contextNote: "€0.25 at 02:00" },
+      FACTS
+    );
+    assert.equal(wrongPrice.ok, false);
+    assert.match(wrongPrice.reason, /does not match the curve/);
+    const unknownHour = checkAdvisory(
+      { contextNote: "€0.30 at 05:00" },
+      FACTS
+    );
+    assert.equal(unknownHour.ok, false);
+    assert.match(unknownHour.reason, /matches no point on the day's curve/);
+  });
+
+  it("does not mistake a euro-sign saving for a price claim", () => {
+    const verdict = checkAdvisory(
+      {
+        what: "Run your large appliances between 12:00 and 15:00 to save €0.16",
+      },
+      FACTS
+    );
+    assert.equal(verdict.ok, true);
+    assert.deepEqual(verdict.problems, []);
+  });
+});
