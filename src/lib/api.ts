@@ -60,6 +60,15 @@ export interface LiveField {
   ageSeconds: number | null
 }
 
+// A server-computed state field (the single writer): the state itself,
+// its source and the age of the readings it derives from. "unavailable"
+// whenever the power readings are missing - never a guessed state.
+export interface LiveStateField {
+  state: BatteryState
+  source: LiveSource
+  ageSeconds: number | null
+}
+
 // The live power snapshot: the whitelisted power sensors (net grid
 // draw, battery flow, SOC, PV) with per-field source and age.
 export interface LiveSnapshot {
@@ -72,6 +81,9 @@ export interface LiveSnapshot {
     batteryChargeW: LiveField
     batteryDischargeW: LiveField
     batterySocPct: LiveField
+    // The server-computed battery state at the shared 25 W deadband,
+    // rendered verbatim by the compact BatteryStatusWidget.
+    batteryState: LiveStateField
     // The panels feeding the Anker directly (the solar split's input).
     batterySolarInW: LiveField
     pvPowerW: LiveField

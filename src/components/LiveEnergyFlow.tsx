@@ -22,14 +22,10 @@ import {
   type FlowEdge,
   type FlowNode,
 } from "@/lib/flowDiagram";
-import { GRID_PULSE_DEADBAND_W } from "@/lib/gridPulse";
 import SkeletonReveal from "@/components/SkeletonReveal";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  liveFieldAgeMs,
-  useLive,
-} from "@/lib/useLive";
-import type { BatteryState, LiveField } from "@/lib/api";
+import { liveFieldAgeMs, useLive } from "@/lib/useLive";
+import type { LiveField } from "@/lib/api";
 
 // --- Render pass over the diagram data (see src/lib/flowDiagram.ts) ---
 // The home node is the house illustration from src/house.png, embedded
@@ -360,17 +356,9 @@ function LiveEnergyFlow() {
     chargeW !== null || dischargeW !== null
       ? (chargeW ?? 0) - (dischargeW ?? 0)
       : null;
-  // The battery state from net power at the same shared deadband the
-  // server's summary applies; both power series missing reads
-  // unavailable.
-  const batteryState: BatteryState =
-    chargeW === null && dischargeW === null
-      ? "unavailable"
-      : batteryPowerW !== null && batteryPowerW > GRID_PULSE_DEADBAND_W
-        ? "charging"
-        : batteryPowerW !== null && batteryPowerW < -GRID_PULSE_DEADBAND_W
-          ? "discharging"
-          : "idle";
+  // The battery state as the server computed it at the shared deadband
+  // - the single writer; the diagram only renders it.
+  const batteryState = fields?.batteryState?.state ?? "unavailable";
   const exporting =
     typeof fields?.isExporting?.value === "boolean"
       ? fields.isExporting.value

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react"
-import { fetchLiveSnapshot, type LiveField, type LiveSnapshot } from "@/lib/api"
+import { fetchLiveSnapshot, type LiveSnapshot } from "@/lib/api"
 import { useRefetchOnWake } from "@/lib/useDataRefresh"
 
 // The live poll cadence, the one shared constant behind every
@@ -23,11 +23,12 @@ export interface LiveData {
 
 // The honest age of a live field: the reading age the server reported,
 // plus the time the snapshot has been sitting in the browser. Null
-// when the field carries no value to age. Pure apart from the default
-// clock, so staleness is testable.
+// when the field carries no value to age. Accepts any field shape with
+// an ageSeconds (value fields and state fields alike). Pure apart from
+// the default clock, so staleness is testable.
 export function liveFieldAgeMs(
   snapshot: LiveSnapshot,
-  field: LiveField,
+  field: { ageSeconds: number | null },
   nowMs: number = Date.now()
 ): number | null {
   if (field.ageSeconds === null) {

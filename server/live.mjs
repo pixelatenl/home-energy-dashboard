@@ -202,6 +202,33 @@ function deriveGridField(importEntry, exportEntry, value, unit) {
   };
 }
 
+// The battery state, single-writer on the server: net charge power at
+// the shared deadband, the same POWER_DEADBAND_W batteryStateFromPower
+// reads idle at. Both power readings must exist; with either missing
+// the state is honestly unavailable, never guessed from one side. A
+// stale zero stays idle - the age carries the honesty, not the label.
+// Pure, so the deadband boundary is testable without the network.
+export function deriveBatteryState(chargeEntry, dischargeEntry) {
+  if (chargeEntry === null || dischargeEntry === null) {
+    return null;
+  }
+  const netW = chargeEntry.value - dischargeEntry.value;
+  const state =
+    netW > POWER_DEADBAND_W
+      ? "charging"
+      : netW < -POWER_DEADBAND_W
+        ? "discharging"
+        : "idle";
+  return {
+    state,
+    source:
+      chargeEntry.source === "ha" && dischargeEntry.source === "ha"
+        ? "ha"
+        : "db",
+    at: Math.min(chargeEntry.at, dischargeEntry.at),
+  };
+}
+
 let snapshotCache = null; // { fetchedAt, entries }
 let inFlight = null; // Promise while a fetch is running
 
@@ -265,6 +292,10 @@ export async function getLiveSnapshot() {
   const entries = snapshotCache?.entries ?? new Map();
   const gridImport = entries.get("gridImportW") ?? null;
   const gridExport = entries.get("gridExportW") ?? null;
+  const batteryStateEntry = deriveBatteryState(
+    entries.get("batteryChargeW") ?? null,
+    entries.get("batteryDischargeW") ?? null
+  );
   const netGrid =
     gridImport !== null && gridExport !== null
       ? deriveGridField(
@@ -303,6 +334,14 @@ export async function getLiveSnapshot() {
         "batterySocPct",
         entries.get("batterySocPct") ?? null
       ),
+      // The server-computed battery state: the single writer the
+      // frontend renders verbatim.
+      batteryState: {
+        state: batteryStateEntry?.state ?? "unavailable",
+        source: batteryStateEntry?.source ?? "none",
+        ageSeconds:
+          batteryStateEntry === null ? null : ageSeconds(batteryStateEntry.at),
+      },
       batterySolarInW: fieldResponse(
         "batterySolarInW",
         entries.get("batterySolarInW") ?? null
