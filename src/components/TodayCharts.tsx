@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   Card,
-  CardAction,
   CardContent,
   CardHeader,
   CardTitle,
@@ -222,15 +221,18 @@ function TodaySolarChart({
           <InfoTooltip text={SOLAR_TODAY_TOOLTIP} />
         </div>
         {/* The Solar forecast's header structure: the title row with
-          the self-usage chip in its right column, the big value and
-          sub-line beneath. The chip keeps its right end clear of the
-          corner's info tooltip. */}
-        <CardHeader>
-          <CardTitle className="flex items-center gap-1.5 text-title-foreground">
-            <Sun className="size-5 shrink-0" aria-hidden="true" />
-            Solar today
-          </CardTitle>
-          <CardAction className="pr-5">
+          the self-usage chip, the big value and sub-line beneath. The
+          header reserves the corner's fixed clear zone (pr-9, the
+          tooltip icon plus its padding) at every width, so the chip
+          can never slide under the absolutely positioned icon: it
+          flows in the remaining space, and only when the cell is too
+          narrow to share the row does it wrap below the title. */}
+        <CardHeader className="pr-9">
+          <div className="flex flex-wrap items-center justify-between gap-1">
+            <CardTitle className="flex items-center gap-1.5 text-title-foreground">
+              <Sun className="size-5 shrink-0" aria-hidden="true" />
+              Solar today
+            </CardTitle>
             <Badge
               variant="outline"
               className="border-white/25 bg-white/15 text-chip-foreground tabular-nums"
@@ -240,7 +242,7 @@ function TodaySolarChart({
                 ? "\u2014"
                 : `${Math.round(selfConsumptionPct)}%`}
             </Badge>
-          </CardAction>
+          </div>
           <CardTitle
             className={`${STAT_HEADLINE} ${
               producedKwh === null ? "text-muted-foreground" : ""

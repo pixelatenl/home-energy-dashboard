@@ -7,7 +7,6 @@ import StatCardLink from "@/components/StatCardLink";
 import StatCardSkeleton from "@/components/StatCardSkeleton";
 import {
   Card,
-  CardAction,
   CardContent,
   CardHeader,
   CardTitle,
@@ -218,7 +217,10 @@ function SolarForecastWidget() {
           <div className="absolute right-3 top-3 z-20">
             <InfoTooltip text={FORECAST_TOOLTIP} />
           </div>
-          <CardHeader>
+          {/* The clear zone is unconditional: reserved in the no-data
+            state too, so the header geometry never changes when the
+            forecast chip appears. */}
+          <CardHeader className="pr-9">
             <CardTitle className="flex items-center gap-2 text-title-foreground">
               <Sun className="size-6" aria-hidden="true" />
               Solar forecast
@@ -267,14 +269,18 @@ function SolarForecastWidget() {
         <div className="absolute right-3 top-3 z-20">
           <InfoTooltip text={FORECAST_TOOLTIP} />
         </div>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-title-foreground">
-            <Sun className="size-6" aria-hidden="true" />
-            Solar forecast
-          </CardTitle>
-          {/* The chip keeps its right end clear of the corner's info
-            tooltip. */}
-          <CardAction className="pr-5">
+        <CardHeader className="pr-9">
+          {/* The title row: the header's pr-9 reserves the corner's
+            fixed clear zone (the tooltip icon plus its padding) at
+            every width, so the chip can never slide under the
+            absolutely positioned icon - it flows in the remaining
+            space, and only when the cell is too narrow to share the
+            row does it wrap below the title. */}
+          <div className="flex flex-wrap items-center justify-between gap-1">
+            <CardTitle className="flex items-center gap-2 text-title-foreground">
+              <Sun className="size-6" aria-hidden="true" />
+              Solar forecast
+            </CardTitle>
             {/* The same glass treatment as the On-track pill: a neutral
               translucent white chip rather than a colored callout. */}
             <Badge
@@ -283,7 +289,7 @@ function SolarForecastWidget() {
             >
               Solar score {daily.solar_score}/100
             </Badge>
-          </CardAction>
+          </div>
           <p className={`font-heading font-medium ${STAT_HEADLINE}`}>
             {daily.estimated_kwh.toFixed(1)} kWh
           </p>
