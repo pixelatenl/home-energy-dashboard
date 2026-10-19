@@ -296,17 +296,30 @@ function SummaryInsight({
             </p>
           )}
         </div>
-        {content.showOutlookNote && (
+        {(insight.priceSentence ||
+          insight.batterySentence ||
+          content.showOutlookNote) && (
           // The notes zone: the card's fine print below a hairline
           // separator between the day cards and the note - plain text,
           // no glass, no chips. The quiet-day context explaining lives
           // on the Today card instead, in the same register as the
-          // other advice.
+          // other advice. The price and battery fact sentences are
+          // consumed verbatim as the server composed them - the model
+          // never writes them - and each stays absent when its data
+          // is missing.
           <div className="mt-2 space-y-1.5 border-t border-white/15 pt-2">
-            <p className={NOTE_TEXT}>
-              Beyond tomorrow, grid prices are not yet published; there the
-              solar forecast is the deciding signal.
-            </p>
+            {insight.priceSentence ? (
+              <p className={NOTE_TEXT}>{insight.priceSentence}</p>
+            ) : null}
+            {insight.batterySentence ? (
+              <p className={NOTE_TEXT}>{insight.batterySentence}</p>
+            ) : null}
+            {content.showOutlookNote && (
+              <p className={NOTE_TEXT}>
+                Beyond tomorrow, grid prices are not yet published; there the
+                solar forecast is the deciding signal.
+              </p>
+            )}
           </div>
         )}
       </div>

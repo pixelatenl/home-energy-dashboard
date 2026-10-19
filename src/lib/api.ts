@@ -332,6 +332,21 @@ export interface SummaryInsight {
     horizon_note: string
     line: string
   } | null
+  // The grounding facts served next to the advisory: today's lowest
+  // and peak price, each with its own timestamp, and the battery
+  // state (SOC percentage and charging/discharging/idle) verbatim
+  // from the context values. Each is null when its data is missing,
+  // and the matching sentence is omitted with it - never guessed.
+  lowPrice?: { timestamp: string; price: number } | null
+  peakPrice?: { timestamp: string; price: number } | null
+  battery?: {
+    soc_pct: number
+    state: "charging" | "discharging" | "idle"
+  } | null
+  // The deterministic sentences the server composes from the fields
+  // above; the model never writes them. Rendered verbatim.
+  priceSentence?: string | null
+  batterySentence?: string | null
   generated_at: string | null
   // The data moment the cached insight text is based on; can trail the
   // top-level as_of while a regeneration is in flight.

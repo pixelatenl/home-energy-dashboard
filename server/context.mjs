@@ -528,6 +528,34 @@ export function buildCandidates(applianceRows, summary, priceParts, priceRows) {
   return candidates;
 }
 
+// The grounding facts for the advisory's price and battery sentences:
+// today's lowest and peak price, each with its own timestamp, and the
+// battery state (SOC percentage and charging/discharging/idle) verbatim
+// from the same summary values the model context line is built from.
+// Every fact is null when its data is missing, so the corresponding
+// sentence is omitted entirely - never approximated, never filled by
+// the model. Exported as a pure function so the pairing stays
+// verifiable.
+export function buildFacts(priceParts, summary) {
+  const today = priceParts?.priceData?.today ?? null;
+  const lowPrice =
+    today !== null && today.low_hour != null && today.min != null
+      ? { timestamp: today.low_hour, price: round4(today.min) }
+      : null;
+  const peakPrice =
+    today !== null && today.peak_hour != null && today.max != null
+      ? { timestamp: today.peak_hour, price: round4(today.max) }
+      : null;
+  const soc = summary?.battery_soc_pct ?? null;
+  const state = summary?.battery_state ?? null;
+  const battery =
+    soc !== null &&
+    (state === "charging" || state === "discharging" || state === "idle")
+      ? { soc_pct: soc, state }
+      : null;
+  return { lowPrice, peakPrice, battery };
+}
+
 // Decision-insight extras: today's top appliances (names and kWh, for
 // grounded recommendations), the live grid CO2 intensity and the
 // precomputed candidate actions. All fail soft: empty appliances, a
@@ -557,7 +585,16 @@ async function buildInsightExtras(summary, priceParts, weatherDaily) {
   const guidance = buildGuidance(priceParts);
   const advisory = buildAdvisory(priceParts, weatherDaily);
   const outlook = buildOutlook(weatherDaily, priceParts);
-  return { topAppliances, co2Intensity, candidates, guidance, advisory, outlook };
+  const facts = buildFacts(priceParts, summary);
+  return {
+    topAppliances,
+    co2Intensity,
+    candidates,
+    guidance,
+    advisory,
+    outlook,
+    facts,
+  };
 }
 
 // Builds the context snapshot. The summary statistics come from the

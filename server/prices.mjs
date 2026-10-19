@@ -282,9 +282,13 @@ export async function getPriceContextData() {
     (entry) => entry.key.slice(0, 10) === tomorrowKey
   );
   let peak = null;
+  let low = null;
   for (const entry of todayEntries) {
     if (!peak || entry.price > peak.price) {
       peak = { hour: Number(entry.key.slice(11, 13)), price: entry.price };
+    }
+    if (!low || entry.price < low.price) {
+      low = { hour: Number(entry.key.slice(11, 13)), price: entry.price };
     }
   }
   // Highest price among the remaining hours, for the AI context signature.
@@ -332,6 +336,10 @@ export async function getPriceContextData() {
         min: summary.today.min,
         max: summary.today.max,
         peak_hour: peak ? `${String(peak.hour).padStart(2, "0")}:00` : null,
+        // The hour of today's lowest price, next to the peak hour, so
+        // the advisory's price sentence can name the low with its own
+        // timestamp - a computed field, never a model guess.
+        low_hour: low ? `${String(low.hour).padStart(2, "0")}:00` : null,
       },
       tomorrow: {
         available: summary.tomorrow.available,

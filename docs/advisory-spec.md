@@ -75,6 +75,17 @@ The card renders their rows from its own deterministic templates.
    entirely. Rendered as a muted footnote, never amber.
 6. **Warning** — amber, and only for something that needs attention
    and implies what to check or do. Explanatory text never goes here.
+7. **Price and battery facts** — server-computed grounding fields
+   served next to the advisory: today's lowest and peak price, each
+   with its own timestamp, and the battery state (SOC percentage and
+   charging/discharging/idle) verbatim from the context values. The
+   card renders their sentences from deterministic templates
+   ("Lowest price around 02:00 (EUR 0.19); peak around 08:00
+   (EUR 0.41)."; "The battery is at 72% and is idle."); the model
+   never writes them. When a fact is missing its sentence is omitted
+   entirely - never approximated, never filled by the model. The
+   model may reference the battery only abstractly; battery-state
+   claims in its own words are rejected by the validator.
 
 ## Practicality gate (the today imperative)
 
@@ -197,7 +208,7 @@ The model output carries only the fields the model writes
 (primaryAction, supportingFacts, warning, contextNote); guidance,
 advisory and outlook never pass through it. A model response is
 rejected — one retry, then the previous insight is kept — when any of
-the five text guards fail:
+the six text guards fail:
 
 - Schema: primaryAction with non-empty what, a finite savingEur
   (number or numeric string) and a known confidence (missing
@@ -212,6 +223,10 @@ the five text guards fail:
 - No sentence naming a beyond-tomorrow weekday together with a price
   claim, and while tomorrow's prices are unpublished, no text may
   claim them.
+- No battery-state claim in the model's own words, in any field
+  including the context note: the model may reference the battery only
+  abstractly; the card states the exact charge and state from the
+  server-computed facts (content class 7).
 
 The served guidance and advisory objects always carry the context's
 computed fields with a deterministically composed line; there is no
@@ -248,7 +263,9 @@ model copy to drift.
   itself); the rain day renders whenever the forecast shows rain,
   phrased plainly as the day to avoid. No noteworthy days, no weekday
   rows.
-- The notes zone is the card's fine print: the horizon note, the
+- The notes zone is the card's fine print: the price and battery fact
+  sentences (content class 7, consumed verbatim as the server
+  composed them), the horizon note, the
   context note (quiet days only - never alongside a real action) and
   the stale note render below a hairline separator
   in the muted register (smaller text, more line spacing), as plain

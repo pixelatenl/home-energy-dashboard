@@ -6,7 +6,9 @@ import express from "express";
 import { shutdown } from "./db.mjs";
 import {
   composeAdvisoryLine,
+  composeBatterySentence,
   composeGuidanceLine,
+  composePriceSentence,
   getBatteryContext,
   getMistralBudget,
   getPriceContext,
@@ -83,18 +85,28 @@ try {
 }
 const SERVER_VERSION = `${gitHash} @ ${SERVER_START}`;
 
-// The guidance, advisory and outlook objects served with the insight:
-// sourced from the live snapshot extras at request time - never from
-// the cached insight - so the rows never go stale between generations
-// and the card always renders the current window. The line is
-// composed deterministically; the model never writes these objects.
+// The guidance, advisory and outlook objects served with the insight,
+// plus the grounding facts - today's lowest and peak price with their
+// own timestamps and the battery state - and their deterministic
+// sentences: all sourced from the live snapshot extras at request
+// time - never from the cached insight - so the rows never go stale
+// between generations and the card always renders the current
+// window. The lines are composed deterministically; the model never
+// writes these objects, and a missing fact omits its sentence
+// entirely.
 function liveAdvisoryObjects(extras) {
   const guidance = extras?.guidance ?? null;
   const advisory = extras?.advisory ?? null;
+  const facts = extras?.facts ?? null;
   return {
     guidance: guidance ? { ...guidance, line: composeGuidanceLine(guidance) } : null,
     advisory: advisory ? { ...advisory, line: composeAdvisoryLine(advisory) } : null,
     outlook: extras?.outlook ?? null,
+    lowPrice: facts?.lowPrice ?? null,
+    peakPrice: facts?.peakPrice ?? null,
+    battery: facts?.battery ?? null,
+    priceSentence: composePriceSentence(facts),
+    batterySentence: composeBatterySentence(facts),
   };
 }
 

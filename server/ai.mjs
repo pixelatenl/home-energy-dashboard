@@ -82,9 +82,9 @@ Action: you never compute; the server has done all arithmetic. Select the candid
 
 Voice: phrase "what" as a household instruction addressing the user directly, in appliance classes - for example "Run your large appliances between 12:00 and 15:00" - never a specific appliance name. Use exactly one "today" per sentence and state the benefit in it. Never use operator abstractions like "heavy loads", "plan usage", "defer consumption". Never duplicate timing guidance or day comparisons in your fields; the card renders those rows itself.
 
-Honesty: every number you state must appear in the context - never multiply, divide or derive. No raw formulas or arithmetic expressions anywhere in the output. Only recommend windows in the future relative to now_local. Distinguish actual production from forecast. Only tomorrow's grid price is published: never state a price for a day beyond tomorrow, and when a day's price is null, no number may stand in for it. When tomorrow_prices_available is false, do not mention tomorrow at all; base advice only on today's prices, remaining hours, solar and battery state. When data for a period is unavailable, make no claims about that period. Weigh cheap hours, green hours (co2_intensity_g_per_kwh) and own solar production.
+Honesty: every number you state must appear in the context - never multiply, divide or derive. No raw formulas or arithmetic expressions anywhere in the output. Only recommend windows in the future relative to now_local. Distinguish actual production from forecast. Only tomorrow's grid price is published: never state a price for a day beyond tomorrow, and when a day's price is null, no number may stand in for it. When tomorrow_prices_available is false, do not mention tomorrow at all; base advice only on today's prices, remaining hours, solar and battery state. When data for a period is unavailable, make no claims about that period. Weigh cheap hours, green hours (co2_intensity_g_per_kwh) and own solar production. Grounded facts: the card states today's lowest and peak price with their hours and the battery's exact charge and state itself, from server-computed fields. Never name today's lowest or peak price or their hours in your own words, and never state the battery's charge level or whether it is charging, discharging or idle - reference the battery only abstractly as "the battery", never with phrases like "fully charged", "empty", "idle" or a percentage.
 
-Warning and context: "warning" is only for something that needs attention and implies what to check or do, for example "Battery empty before tonight's peak; check why it has not charged". "contextNote" is written only on quiet days - one coherent sentence about the home explaining why no candidate exists, for example "No appliance used enough power today to make shifting worthwhile; the battery has stayed empty and idle" - or for a genuine insight the rows do not carry, such as the battery charging now reducing the value of shifting usage. When a real action is selected, contextNote is null: the action's basis line explains it, and the note never restates the action's numbers, appliance names or windows.
+Warning and context: "warning" is only for something that needs attention and implies what to check or do, for example "The battery needs attention before tonight's peak; check its settings". "contextNote" is written only on quiet days - one coherent sentence about the home explaining why no candidate exists, for example "No appliance used enough power today to make shifting worthwhile" - or for a genuine insight the rows do not carry, such as the battery's own evening hours reducing the value of shifting usage. When a real action is selected, contextNote is null: the action's basis line explains it, and the note never restates the action's numbers, appliance names or windows.
 
 Plain language: user-facing text never contains internal system vocabulary - candidates, threshold, belowThreshold, payload, context, insight, budget, signature, mechanism. If something cannot be expressed in home terms, omit it. supportingFacts is always an empty array. "confidence" is high when the selected candidate is above threshold, medium or low when below_threshold or the data is thin. Name appliances only with the labels in candidates and the names in top_appliances. The primaryAction (what plus when) stays under 25 words.`;
 
@@ -242,6 +242,25 @@ export function deniesCheapestWindow(text) {
 // state a value the context does not have.
 export function containsNonFiniteText(text) {
   return /\b(?:nan|infinity)\b/i.test(text ?? "");
+}
+
+// Detects battery-state claims the model must not make: the card
+// states the battery's exact charge and state from the server-computed
+// facts, so the model may reference the battery only abstractly. A
+// sentence that names the battery together with a state word (fully
+// charged, charging, discharging, idle, empty, full) or a percentage
+// claim is a state claim in the model's own words.
+export function claimsBatteryState(text) {
+  if (typeof text !== "string" || !/batter/i.test(text)) {
+    return false;
+  }
+  const stateClaim =
+    /\b(?:fully\s+)?(?:charg(?:e|ed|es|ing)|discharg\w+|idle|empty|full)\b/i;
+  const socClaim = /\b\d{1,3}(?:\.\d+)?\s?(?:%|percent\b|pct\b)/i;
+  return text
+    .split(/(?<=[.!?])\s+/)
+    .filter((sentence) => /batter/i.test(sentence))
+    .some((sentence) => stateClaim.test(sentence) || socClaim.test(sentence));
 }
 
 // Deterministic price insight from the merged data, served when the
@@ -952,6 +971,46 @@ export function composeAdvisoryLine(a) {
     : `${a.compare_day} averages ${a.compare_average_eur} EUR per kWh with ${a.compare_solar_kwh} kWh of solar expected; tomorrow averages ${a.tomorrow_average_eur} with ${a.tomorrow_solar_kwh} kWh: consider running heavy appliances on ${a.compare_day} instead of tomorrow.`;
 }
 
+// The deterministic price sentence over the grounding facts: the
+// template names today's lowest and peak price, each with its own
+// timestamp, composed straight from the served fields so the low can
+// never pair with the peak's hour or price. The model never writes
+// this sentence. Both halves must exist; when the price data is
+// missing the sentence is omitted entirely - never approximated.
+export function composePriceSentence(facts) {
+  const low = facts?.lowPrice ?? null;
+  const peak = facts?.peakPrice ?? null;
+  if (low === null || peak === null) {
+    return null;
+  }
+  return `Lowest price around ${low.timestamp} (${eurFactText(
+    low.price
+  )}); peak around ${peak.timestamp} (${eurFactText(peak.price)}).`;
+}
+
+// The deterministic battery sentence: the template states the SOC and
+// the state verbatim from the context values; the model may only
+// reference the battery abstractly. Null when the battery data is
+// missing, so the sentence is omitted entirely.
+export function composeBatterySentence(facts) {
+  const battery = facts?.battery ?? null;
+  if (battery === null) {
+    return null;
+  }
+  return `The battery is at ${battery.soc_pct}% and is ${battery.state}.`;
+}
+
+// Pinned money precision for the fact sentences: two decimals whenever
+// the value is nonzero at two decimals, more only when two would show
+// 0.00 - a nonzero price never renders as EUR 0.00.
+function eurFactText(value) {
+  const two = value.toFixed(2);
+  if (Number(two) !== 0) {
+    return `EUR ${two}`;
+  }
+  return `EUR ${value.toFixed(4).replace(/0+$/, "").replace(/\.$/, "")}`;
+}
+
 // The saving guard: the claimed saving must match a candidate's exact
 // value. Zero is legitimate in the two honest no-opportunity cases
 // (C3 rule a): no candidates at all, or every candidate below
@@ -1211,6 +1270,18 @@ export async function getSummaryInsight(snapshot, options = {}) {
           text ?? ""
         )
       );
+    // Battery grounding: the card states the battery's exact charge and
+    // state from the server-computed facts, so a battery-state claim in
+    // the model's own words - in any field, the context note included -
+    // invalidates the output.
+    const batteryStateFree = (validated) =>
+      ![
+        validated.what,
+        validated.when,
+        ...validated.supportingFacts,
+        validated.warning ?? "",
+        validated.contextNote ?? "",
+      ].some((text) => claimsBatteryState(text));
     // Price honesty: no user-facing text may state a grid price for a
     // day beyond tomorrow - those prices are unpublished. A sentence
     // naming such a weekday together with a price claim is invalid.
@@ -1247,6 +1318,7 @@ export async function getSummaryInsight(snapshot, options = {}) {
       [noFormulas(validated), "arithmetic expression in output"],
       [plainLanguageOk(validated), "internal vocabulary in output"],
       [priceHonestyOk(validated), "price claimed for an unpublished day"],
+      [batteryStateFree(validated), "battery state claim in output"],
       [
         !textsOf(validated).some((text) => containsNonFiniteText(text)),
         "NaN or Infinity in output",
