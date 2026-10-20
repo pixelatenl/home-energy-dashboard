@@ -1,6 +1,6 @@
 # home-energy-dashboard
 
-React frontend built with Vite, TypeScript, Tailwind CSS v4, and shadcn/ui, served together with a small Express data server that reads a TimescaleDB instance on the home network.
+Home Energy App. React frontend built with Vite, TypeScript, Tailwind CSS v4, and shadcn/ui, served together with a small Express data server that reads a TimescaleDB instance on the home network.
 
 <p align="center">
   <img src="https://pixelate.nl/home-energy-flow.jpg" alt="The home energy dashboard running on a tablet" width="820">
