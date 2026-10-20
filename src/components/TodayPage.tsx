@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react"
 import BatteryStatusWidget from "@/components/BatteryStatusWidget"
+import DataFreshnessLabel from "@/components/DataFreshnessLabel"
 import LiveUsageCard from "@/components/LiveUsageCard"
 import PageLayout from "@/components/PageLayout"
 import PricesWidget from "@/components/PricesWidget"
@@ -80,6 +81,7 @@ function TodayPage() {
     <PageLayout
       title={greetingFor(nowTick)}
       subtitle="Monitor your household energy use"
+      actions={<DataFreshnessLabel />}
     >
       {/* The stats grid spans the full page width: four cards per
           row, every cell the same height, two rows - Live power (the

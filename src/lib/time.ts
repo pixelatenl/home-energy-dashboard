@@ -119,6 +119,34 @@ export function greetingFor(nowTick: number): string {
   return "Good night"
 }
 
+// A snapshot older than this is flagged stale by the hub header label:
+// the 5-minute poll keeps data young under normal operation, so a stamp
+// past this means the refresh cycle has stopped (server down, network
+// gone) and the screen shows an old picture.
+export const DATA_STALE_AFTER_MS = 15 * 60_000
+
+// Age of a snapshot stamp in milliseconds against a given clock: null
+// when the stamp is missing or unparseable (never throws), clamped at
+// zero so a future-dated stamp can never read as negative age.
+export function snapshotAgeMs(
+  asOf: string | null | undefined,
+  now: number
+): number | null {
+  if (typeof asOf !== "string" || asOf === "") {
+    return null
+  }
+  const parsed = Date.parse(asOf)
+  if (!Number.isFinite(parsed)) {
+    return null
+  }
+  return Math.max(0, now - parsed)
+}
+
+// The stale boundary: inclusive at exactly DATA_STALE_AFTER_MS.
+export function isDataStale(ageMs: number): boolean {
+  return ageMs >= DATA_STALE_AFTER_MS
+}
+
 // Current local date plus the fractional local hour of the clock, used to
 // place "Now" markers in charts.
 export function amsterdamNow(nowTick: number): {
