@@ -16,6 +16,7 @@ import {
   type BatteryFlowInterval,
   type BatterySocPoint,
 } from "@/lib/api";
+import { batteryStateLabel } from "@/lib/batteryStateLabel";
 import { useAiContext } from "@/lib/useAiContext";
 import {
   BATTERY_IDLE_COLOR,
@@ -713,12 +714,15 @@ function BatteryPanel({
       : state === "discharging"
         ? DISCHARGING_COLOR
         : BATTERY_IDLE_COLOR;
+  // The flowing states carry their wattage; the rest reads through the
+  // shared display mapping, so idle gets the household message and an
+  // unavailable state stays an honest unknown.
   const statePowerText =
     state === "charging" && powerW !== null
       ? `Charging +${powerW} W`
       : state === "discharging" && powerW !== null
         ? `Discharging ${powerW} W`
-        : "Idle";
+        : batteryStateLabel(state);
   const caption = `Status: ${statePowerText}`;
   const estimateText =
     showCurrentState && summary.battery_full_in_min

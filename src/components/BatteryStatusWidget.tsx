@@ -5,7 +5,8 @@ import SkeletonReveal from "@/components/SkeletonReveal";
 import StatCardLink from "@/components/StatCardLink";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
-import type { BatteryState, LiveField } from "@/lib/api";
+import type { LiveField } from "@/lib/api";
+import { batteryStateLabel } from "@/lib/batteryStateLabel";
 import { formatGridWatts } from "@/lib/gridPulse";
 import { HUB_LINKS } from "@/lib/hubLinks";
 import {
@@ -22,16 +23,6 @@ import {
 // The card's tooltip: what the gauge reads and what its colors mean.
 const BATTERY_TOOLTIP =
   "The battery's current state of charge and state, live from the power sensors every 20 seconds. The state line reads the charging or discharging power while the battery flows. The gauge's color follows the battery's state: green while charging, amber while discharging, teal at rest. When the live sensors are unreachable the newest stored reading is used. A dimmed state with a dot is an honest reading more than a minute old.";
-
-// The state's wording, household register in the muted caption voice.
-// The server is the single writer of the state; this map only spells
-// it - no client-side logic ever decides a state.
-const STATE_LABELS: Record<BatteryState, string> = {
-  charging: "Charging",
-  discharging: "Discharging",
-  idle: "Idle",
-  unavailable: "Unknown",
-};
 
 // The hub's compact battery presence: current charge percentage with a
 // state-colored fill indicator, centered like the live usage circle,
@@ -55,9 +46,11 @@ function BatteryStatusWidget() {
   const stateField = live?.fields.batteryState ?? null;
   const soc = typeof socField?.value === "number" ? socField.value : null;
   // Rendered verbatim: the server computed it from the live charge and
-  // discharge power at the shared 25 W deadband.
+  // discharge power at the shared 25 W deadband; the label is the shared
+  // display mapping, so an unavailable state reads "unknown", never a
+  // fabricated one.
   const state = stateField?.state ?? "unavailable";
-  const label = STATE_LABELS[state];
+  const label = batteryStateLabel(state);
   // The power behind the state: net battery power (charging minus
   // discharging, the same figure the flow page's battery node carries -
   // during charging the discharge sensor rests at 0, so net is the
