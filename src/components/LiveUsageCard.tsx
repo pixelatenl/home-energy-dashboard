@@ -10,6 +10,7 @@ import {
   gridPulsePeriodS,
   gridPulseStep,
 } from "@/lib/gridPulse";
+import { HUB_LINKS } from "@/lib/hubLinks";
 import {
   LIVE_STALE_AFTER_MS,
   liveFieldAgeMs,
@@ -158,7 +159,7 @@ function LiveUsageCard() {
       <Card className="relative min-h-24 transition-[background-color,border-color,box-shadow] hover:bg-card-hover hover:border-white/30 hover:shadow-card-lift">
         {/* The whole card opens the live energy flow page. */}
         <StatCardLink
-          to="/live"
+          to={HUB_LINKS.live}
           label="Live power: open the live energy flow"
         />
         <div className="absolute right-3 top-3 z-20">

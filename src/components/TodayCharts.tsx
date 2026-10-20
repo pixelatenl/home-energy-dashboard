@@ -23,6 +23,7 @@ import {
   DISCHARGING_COLOR,
   SOLAR_COLOR,
 } from "@/lib/flowDiagram";
+import { HUB_LINKS } from "@/lib/hubLinks";
 import { STAT_HEADLINE } from "@/lib/statCard";
 import { useSummary } from "@/lib/useSummary";
 import { useDataRefreshListener } from "@/lib/useDataRefresh";
@@ -212,10 +213,10 @@ function TodaySolarChart({
   return (
     <SkeletonReveal loading={loading} skeleton={skeleton}>
       <Card className="relative min-h-24 transition-[background-color,border-color,box-shadow] hover:bg-card-hover hover:border-white/30 hover:shadow-card-lift">
-        {/* The whole card opens this week in the Solar tab. */}
+        {/* The whole card opens today in the Solar tab. */}
         <StatCardLink
-          to="/solar?period=week"
-          label="Solar today: open this week in the Solar tab"
+          to={HUB_LINKS.solarToday}
+          label="Solar today: open today in the Solar tab"
         />
         <div className="absolute right-3 top-3 z-20">
           <InfoTooltip text={SOLAR_TODAY_TOOLTIP} />
@@ -357,10 +358,10 @@ function TodayBatteryChart({
   return (
     <SkeletonReveal loading={loading} skeleton={skeleton}>
       <Card className="relative min-h-24 transition-[background-color,border-color,box-shadow] hover:bg-card-hover hover:border-white/30 hover:shadow-card-lift">
-        {/* The whole card opens this week in the Battery tab. */}
+        {/* The whole card opens today in the Battery tab. */}
         <StatCardLink
-          to="/battery?period=week"
-          label="Battery today: open this week in the Battery tab"
+          to={HUB_LINKS.batteryToday}
+          label="Battery today: open today in the Battery tab"
         />
         <div className="absolute right-3 top-3 z-20">
           <InfoTooltip text={BATTERY_TODAY_TOOLTIP} />

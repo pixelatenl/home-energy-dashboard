@@ -4,6 +4,7 @@ import SkeletonReveal from "@/components/SkeletonReveal";
 import StatCardLink from "@/components/StatCardLink";
 import StatCardSkeleton from "@/components/StatCardSkeleton";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
+import { HUB_LINKS } from "@/lib/hubLinks";
 import { STAT_HEADLINE } from "@/lib/statCard";
 import { useSummary } from "@/lib/useSummary";
 
@@ -68,10 +69,10 @@ function StatsHeader() {
       {/* From the grid: the household's grid figures. */}
       <SkeletonReveal loading={loading} skeleton={<StatCardSkeleton />}>
         <Card className="relative min-h-24 transition-[background-color,border-color,box-shadow] hover:bg-card-hover hover:border-white/30 hover:shadow-card-lift">
-          {/* The whole card opens this week in the Usage tab. */}
+          {/* The whole card opens today in the Usage tab. */}
           <StatCardLink
-            to="/usage?period=week"
-            label="From the grid: open this week in the Usage tab"
+            to={HUB_LINKS.fromGrid}
+            label="From the grid: open today in the Usage tab"
           />
           <div className="absolute right-3 top-3 z-20">
             <InfoTooltip text={GRID_TOOLTIP} />
@@ -115,10 +116,10 @@ function StatsHeader() {
       {/* Home usage: the household's consumption today. */}
       <SkeletonReveal loading={loading} skeleton={<StatCardSkeleton />}>
         <Card className="relative min-h-24 transition-[background-color,border-color,box-shadow] hover:bg-card-hover hover:border-white/30 hover:shadow-card-lift">
-          {/* The whole card opens this week in the Usage tab. */}
+          {/* The whole card opens today in the Usage tab. */}
           <StatCardLink
-            to="/usage?period=week"
-            label="Home usage: open this week in the Usage tab"
+            to={HUB_LINKS.homeUsage}
+            label="Home usage: open today in the Usage tab"
           />
           <div className="absolute right-3 top-3 z-20">
             <InfoTooltip text={USAGE_TOOLTIP} />

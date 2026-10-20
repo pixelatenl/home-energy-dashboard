@@ -7,6 +7,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import type { BatteryState, LiveField } from "@/lib/api";
 import { formatGridWatts } from "@/lib/gridPulse";
+import { HUB_LINKS } from "@/lib/hubLinks";
 import {
   BATTERY_IDLE_COLOR,
   CHARGING_COLOR,
@@ -116,10 +117,10 @@ function BatteryStatusWidget() {
       }
     >
       <Card className="relative transition-[background-color,border-color,box-shadow] hover:bg-card-hover hover:border-white/30 hover:shadow-card-lift">
-        {/* The whole card opens this week in the Battery tab. */}
+        {/* The whole card opens today in the Battery tab. */}
         <StatCardLink
-          to="/battery?period=week"
-          label="Battery status: open this week in the Battery tab"
+          to={HUB_LINKS.batteryStatus}
+          label="Battery status: open today in the Battery tab"
         />
         <div className="absolute right-3 top-3 z-20">
           <InfoTooltip text={BATTERY_TOOLTIP} />

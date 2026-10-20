@@ -13,7 +13,7 @@ import { useModeSearch } from "@/lib/mode"
 function StatCardLink({ to, label }: { to: string; label: string }) {
   const modeSearch = useModeSearch()
   // The mode param joins the target's query string: "&" when the
-  // target carries one already (the "?period=week" cards), "?" when
+  // target carries one already (the "?period=day" cards), "?" when
   // it does not (the live card's bare "/live") - a "&" there would
   // read as a path segment and match no route.
   const mode = modeSearch

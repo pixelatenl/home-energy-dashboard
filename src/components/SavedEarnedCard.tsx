@@ -5,6 +5,7 @@ import SkeletonReveal from "@/components/SkeletonReveal";
 import StatCardLink from "@/components/StatCardLink";
 import StatCardSkeleton from "@/components/StatCardSkeleton";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
+import { HUB_LINKS } from "@/lib/hubLinks";
 import { todayInAmsterdam } from "@/lib/time";
 import { useUsageBreakdown } from "@/lib/useUsageBreakdown";
 import { STAT_HEADLINE } from "@/lib/statCard";
@@ -57,10 +58,10 @@ function SavedEarnedCard() {
   return (
     <SkeletonReveal loading={loading} skeleton={<StatCardSkeleton />}>
       <Card className="relative min-h-24 transition-[background-color,border-color,box-shadow] hover:bg-card-hover hover:border-white/30 hover:shadow-card-lift">
-        {/* The whole card opens this week in the Usage tab. */}
+        {/* The whole card opens today in the Usage tab. */}
         <StatCardLink
-          to="/usage?period=week"
-          label="Saved and earned: open this week in the Usage tab"
+          to={HUB_LINKS.savedEarned}
+          label="Saved and earned: open today in the Usage tab"
         />
         <div className="absolute right-3 top-3 z-20">
           <InfoTooltip text={SAVED_TOOLTIP} />

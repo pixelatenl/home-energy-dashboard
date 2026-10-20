@@ -18,6 +18,7 @@ import {
   type WeatherDay,
   type WeatherHour,
 } from "@/lib/api";
+import { HUB_LINKS } from "@/lib/hubLinks";
 import { STAT_HEADLINE } from "@/lib/statCard";
 import { useSummary } from "@/lib/useSummary";
 import { amsterdamNow, todayInAmsterdam } from "@/lib/time";
@@ -209,10 +210,10 @@ function SolarForecastWidget() {
     return (
       <SkeletonReveal loading={loading} skeleton={skeleton}>
         <Card className="relative transition-[background-color,border-color,box-shadow] hover:bg-card-hover hover:border-white/30 hover:shadow-card-lift">
-          {/* The whole card opens this week in the Solar tab. */}
+          {/* The whole card opens today in the Solar tab. */}
           <StatCardLink
-            to="/solar?period=week"
-            label="Solar forecast: open this week in the Solar tab"
+            to={HUB_LINKS.solarForecast}
+            label="Solar forecast: open today in the Solar tab"
           />
           <div className="absolute right-3 top-3 z-20">
             <InfoTooltip text={FORECAST_TOOLTIP} />
@@ -261,10 +262,10 @@ function SolarForecastWidget() {
   return (
     <SkeletonReveal loading={loading} skeleton={skeleton}>
       <Card className="relative transition-[background-color,border-color,box-shadow] hover:bg-card-hover hover:border-white/30 hover:shadow-card-lift">
-        {/* The whole card opens this week in the Solar tab. */}
+        {/* The whole card opens today in the Solar tab. */}
         <StatCardLink
-          to="/solar?period=week"
-          label="Solar forecast: open this week in the Solar tab"
+          to={HUB_LINKS.solarForecast}
+          label="Solar forecast: open today in the Solar tab"
         />
         <div className="absolute right-3 top-3 z-20">
           <InfoTooltip text={FORECAST_TOOLTIP} />

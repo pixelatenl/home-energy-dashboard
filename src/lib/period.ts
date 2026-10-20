@@ -254,3 +254,17 @@ export function decodeParams(params: URLSearchParams, now: Date = new Date()): P
   const date = rawDate !== null && isValidDay(rawDate) ? rawDate : todayString(now)
   return { kind, date }
 }
+
+// The "today" period: the day period is the app's "today" view (the
+// navigator's Day segment, the goToday target). The hub's stat cards
+// preset it so a card always opens its tab on today, never the
+// pages' week default.
+export const TODAY_PERIOD: PeriodKind = "day"
+
+// The URL a hub stat card links to: the tab's path with the "today"
+// period preset. The date param is left out on purpose: decodeParams
+// falls back to the current day when it is missing, so a link clicked
+// after midnight still lands on today.
+export function todayTabUrl(path: string): string {
+  return `${path}?period=${TODAY_PERIOD}`
+}
