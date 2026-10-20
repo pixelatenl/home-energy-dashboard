@@ -21,7 +21,7 @@ const CHIP =
 const CHIP_STALE =
   "flex shrink-0 items-center whitespace-nowrap rounded-full border border-amber-400/30 bg-amber-400/10 px-2.5 py-1 text-xs font-medium tabular-nums backdrop-blur-sm text-amber-300 dark:text-amber-200";
 
-// The hub header's data-freshness chip: "Data from HH:MM" rendered
+// The hub header's data-freshness chip: "Updated HH:MM" rendered
 // verbatim from the summary snapshot's as_of stamp (the server is the
 // sole source of the time), in a muted register clearly subordinate to
 // the page title. When the snapshot has not loaded yet or carries no
@@ -56,7 +56,7 @@ function DataFreshnessLabel() {
   const stale = isDataStale(ageMs);
   return (
     <span className={stale ? CHIP_STALE : CHIP}>
-      {`Data from ${localTimeOf(asOf)}${stale ? ", stale" : ""}`}
+      {`Updated ${localTimeOf(asOf)}${stale ? ", stale" : ""}`}
     </span>
   );
 }
