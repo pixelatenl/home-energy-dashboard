@@ -28,7 +28,7 @@ const CHIP_STALE =
 // parseable stamp, nothing renders - an honest absence over a wrong
 // value; the invisible placeholder keeps the chip's height reserved so
 // its appearance never shifts the layout. Past DATA_STALE_AFTER_MS the
-// chip turns amber and gains the "stale" suffix.
+// chip turns amber and gains the "waiting for new data" suffix.
 function DataFreshnessLabel() {
   const { summary } = useSummary();
   // The clock the age is measured against, re-read on every tick so the
@@ -56,7 +56,7 @@ function DataFreshnessLabel() {
   const stale = isDataStale(ageMs);
   return (
     <span className={stale ? CHIP_STALE : CHIP}>
-      {`Updated ${localTimeOf(asOf)}${stale ? ", stale" : ""}`}
+      {`Updated ${localTimeOf(asOf)}${stale ? ", waiting for new data" : ""}`}
     </span>
   );
 }
