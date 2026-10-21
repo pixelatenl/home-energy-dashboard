@@ -350,6 +350,14 @@ export interface SummaryInsight {
   // above; the model never writes them. Rendered verbatim.
   priceSentence?: string | null
   batterySentence?: string | null
+  // The deterministic achievement sentences (contract section 4):
+  // recap mode only, at most one solar line and one battery line, in
+  // that order, rendered verbatim - the sentences carry their own
+  // periods. Always present from the advisory core, possibly empty -
+  // below the threshold or without the fact, the line is omitted
+  // entirely, never a vague substitute. Optional while the legacy
+  // path serves payloads without the field (Stage 3b).
+  achievements?: string[]
   generated_at: string | null
   // The data moment the cached insight text is based on; can trail the
   // top-level as_of while a regeneration is in flight.
