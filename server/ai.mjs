@@ -14,6 +14,10 @@ import {
 } from "./time.mjs";
 import { checkAdvisory, logCheckerVerdict } from "./checker.mjs";
 import { PRACTICAL_MIN_ADVANTAGE_EUR } from "./advisory-constants.mjs";
+import {
+  generateAdvisoryCard,
+  validateModelOutput,
+} from "./advisory/advisory-core.mjs";
 
 const MISTRAL_URL = "https://api.mistral.ai/v1/chat/completions";
 const MISTRAL_MODEL = "mistral-small-latest";
@@ -1289,6 +1293,10 @@ export function peekSummaryInsight(liveSignature = null) {
     return null;
   }
   const primaryAction = cached.result.primaryAction ?? null;
+  // The advisory core path caches the validated narrative
+  // ({ warning, contextNote }); it rides along for the debug endpoint,
+  // alongside the legacy camelCase fields the old path caches.
+  const narrative = cached.result.narrative ?? null;
   return {
     signature: cached.signature,
     as_of: cached.asOf,
@@ -1297,7 +1305,10 @@ export function peekSummaryInsight(liveSignature = null) {
         ? "fresh"
         : "reasoning",
     no_opportunity: cached.result.noOpportunity ?? false,
-    context_note: cached.result.contextNote ?? null,
+    warning: narrative?.warning ?? cached.result.warning ?? null,
+    context_note: narrative?.contextNote ?? cached.result.contextNote ?? null,
+    narrative,
+    generated_at: cached.result.generatedAt ?? null,
     candidates: cached.result.candidates ?? [],
     primary_action: primaryAction
       ? {
@@ -1318,6 +1329,12 @@ export async function getSummaryInsight(snapshot, options = {}) {
   // signature change regenerate in the background. Never combined with
   // force, which keeps its synchronous behavior.
   const background = options.background === true && !force;
+  // The advisory core request (Stage 3a): prepared by the adapter and
+  // passed in by the index layer when EMS_ADVISORY_CORE is on - this
+  // module never reads the environment. It carries the consolidated
+  // facts, the injected nowIso and the style brief. Null keeps the
+  // legacy generation path exactly as before.
+  const advisory = options.advisory ?? null;
   const cached = summaryInsightCache;
   const tomorrowAvailable = priceParts?.tomorrowPricesAvailable === true;
   const context = buildSummaryContext(
@@ -1345,19 +1362,29 @@ export async function getSummaryInsight(snapshot, options = {}) {
     stale: state === "reasoning",
     error,
   });
-  const empty = (error, state = "error") => ({
-    primaryAction: null,
-    supportingFacts: [],
-    warning: null,
-    contextNote: null,
-    noOpportunity: false,
-    candidates: [],
-    generatedAt: null,
-    asOf,
-    state,
-    stale: state === "reasoning",
-    error,
-  });
+  const empty = (error, state = "error") =>
+    advisory !== null
+      ? {
+          narrative: null,
+          generatedAt: null,
+          asOf,
+          state,
+          stale: state === "reasoning",
+          error,
+        }
+      : {
+          primaryAction: null,
+          supportingFacts: [],
+          warning: null,
+          contextNote: null,
+          noOpportunity: false,
+          candidates: [],
+          generatedAt: null,
+          asOf,
+          state,
+          stale: state === "reasoning",
+          error,
+        };
   const degrade = (error) =>
     cached ? serve(cached.result, "reasoning", error) : empty(error);
 
@@ -1376,6 +1403,106 @@ export async function getSummaryInsight(snapshot, options = {}) {
     if (!force && Date.now() - summaryLastCallAt < summaryMinIntervalMs()) {
       logMistral("summary", signature, reason, "skipped_throttle");
       return degrade("throttled");
+    }
+    // The advisory core path (Stage 3a): the summary insight is produced
+    // by the core's generateAdvisoryCard with the adapter's facts and
+    // style brief. Only the validated narrative is cached; the card is
+    // recomposed from the live facts on every serve by the adapter, so
+    // the same signature, budget, warm-up and in-flight machinery keeps
+    // driving regeneration exactly as before.
+    if (advisory !== null) {
+      // The modelStub wraps the existing callMistral: every call draws
+      // from the shared daily budget, respects the summary minimum
+      // interval and is logged through the same one-line accounting.
+      // A transport-level failure is recorded out of band - the core
+      // treats a failed stub as an empty narrative, which must never be
+      // cached as a fresh insight.
+      let stubFailure = null;
+      let stubCalls = 0;
+      const modelStub = async (modelContext) => {
+        stubCalls += 1;
+        if (dailyLimitReached()) {
+          logMistral("summary", signature, reason, "skipped_daily_limit");
+          stubFailure = "daily_limit_reached";
+          return { warning: null, contextNote: null };
+        }
+        summaryLastCallAt = Date.now();
+        recordApiCall();
+        let parsed = null;
+        try {
+          parsed = parseInsightJson(
+            await callMistral(advisory.styleBrief, modelContext)
+          );
+        } catch (err) {
+          logMistral("summary", signature, reason, `error:${shortError(err)}`);
+          stubFailure = "ai_unavailable";
+          return { warning: null, contextNote: null };
+        }
+        if (parsed === null || typeof parsed !== "object") {
+          logMistral(
+            "summary",
+            signature,
+            reason,
+            "error:model returned invalid JSON"
+          );
+          stubFailure = "model returned invalid JSON";
+          return { warning: null, contextNote: null };
+        }
+        // The core validates after the stub returns; running the same
+        // pure check here only logs the rejection reasons in the
+        // existing throttled logging style.
+        const candidate = {
+          warning:
+            typeof parsed.warning === "string" && parsed.warning.trim() !== ""
+              ? parsed.warning
+              : null,
+          contextNote:
+            typeof parsed.contextNote === "string" &&
+            parsed.contextNote.trim() !== ""
+              ? parsed.contextNote
+              : null,
+        };
+        const verdict = validateModelOutput(candidate, modelContext.sections);
+        if (!verdict.ok) {
+          logMistral(
+            "summary",
+            signature,
+            reason,
+            stubCalls === 1 ? "validation_failed_retry" : "validation_failed"
+          );
+          console.warn(
+            `Advisory core rejected the model output: ${verdict.reasons.join(
+              "; "
+            )}`
+          );
+        }
+        return parsed;
+      };
+      let card = null;
+      try {
+        card = await generateAdvisoryCard(
+          advisory.facts,
+          advisory.nowIso,
+          modelStub
+        );
+      } catch (err) {
+        logMistral("summary", signature, reason, `error:${shortError(err)}`);
+        return degrade("ai_unavailable");
+      }
+      // A transport-level failure is never served as an empty narrative:
+      // the previous insight stays in place, fail soft like the legacy
+      // path.
+      if (stubFailure !== null) {
+        return degrade(stubFailure);
+      }
+      logMistral("summary", signature, reason, "ok");
+      const result = {
+        narrative: { warning: card.warning, contextNote: card.context_note },
+        generatedAt: new Date().toISOString(),
+      };
+      summaryInsightCache = { signature, asOf, result };
+      summaryWarmupError = null;
+      return serve(result, "fresh");
     }
     // Context integrity: while tomorrow's prices are unpublished, the
     // output must not claim them. The saving must be copied verbatim
