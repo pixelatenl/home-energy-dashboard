@@ -31,6 +31,8 @@
 
 import { checkAdvisory } from "../checker.mjs";
 import {
+  ACHIEVEMENT_MIN_BATTERY_EARN_EUR,
+  ACHIEVEMENT_MIN_SOLAR_SHARE_PCT,
   GUIDANCE_MIN_SPREAD_EUR,
   PRACTICAL_MIN_ADVANTAGE_EUR,
 } from "../advisory-constants.mjs";
@@ -46,20 +48,17 @@ import {
   guardNoOpportunityPhrasing,
 } from "./narrative-guards.mjs";
 
-// Contract section 7 lists these constants; only the two spread/practicality
-// values live in advisory-constants.mjs (frozen for this pass), so the rest
-// are defined here once with their contract defaults. No ENV reads: the
-// purity contract of this pass forbids environment access.
+// Contract section 7 lists these constants; the two spread/practicality
+// values and the two achievement thresholds live in advisory-constants.mjs
+// (the latter ENV-overridable there), so the rest are defined here once
+// with their contract defaults. No ENV reads: the purity contract of
+// this pass forbids environment access.
 export const EVENING_PIVOT_HOUR = 18;
 export const PRACTICAL_MIN_HOURS = 2;
 export const DELAY_MIN_ADVANTAGE_EUR = 0.05;
 export const GOOD_SOLAR_SCORE = 60;
 export const LOW_SOLAR_SCORE = 20;
 export const SAVING_CHIP_MIN_EUR = 1.0;
-// The recap solar achievement line fires at or above this percent of today's usage.
-export const ACHIEVEMENT_MIN_SOLAR_SHARE_PCT = 40;
-// The recap battery achievement line fires at or above this euro amount.
-export const ACHIEVEMENT_MIN_BATTERY_EARN_EUR = 1.0;
 
 // The deterministic no-opportunity statement (contract section 4): the model
 // never writes it, and it is never phrased as deferral advice.
