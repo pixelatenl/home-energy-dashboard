@@ -1,23 +1,29 @@
 # The AI advisory card — specification
 
-This document is the source of truth for the advisory card (the
-SummaryInsight component on the hub and everything that feeds it).
-Every future prompt touching the advisory must respect this contract.
+This document keeps the advisory card's purpose statement, its content
+classes and its rendering and visual rules. The advisory pipeline
+itself - the facts layer, the model context, the model output, the
+served payload schema and the validation guard sets - is specified by
+`docs/advisory-contract.md`, which is the source of truth for
+everything it lists and supersedes the pipeline rules this spec once
+carried. (Stage 3b note: the legacy summary insight path is removed;
+the advisory core under `server/advisory/`, wrapped by
+`server/advisory-adapter.mjs`, is the only advisory pipeline.)
 
 ## Content classes
 
 The card advises; every number it shows is computed server-side. The
-model never does arithmetic — it selects, phrases and never invents.
+model writes prose only - the two narrative slots (`warning` and
+`contextNote`); the action, its candidate and saving, the guidance,
+the day-ahead advisory and the week outlook are server-computed and
+composed into the card by the advisory core, never through the model.
 
-One writer per sentence. The model writes only `primaryAction` (the
-selected candidate and its household phrasing), `warning` and
-`contextNote`; the guidance, day-ahead advisory and week outlook
-objects are server-computed and served from the live snapshot extras
-at request time — never from the cached insight, never through the
-model, which neither sees nor writes them. They are also absent from
-the context signature, so a reshaping forecast no longer triggers a
-regeneration; only the candidates (and the bucketed live values) do.
-The card renders their rows from its own deterministic templates.
+One writer per sentence. The guidance, day-ahead advisory and week
+outlook objects are server-computed and served from the live facts on
+every request - never from the cached insight. They are also absent
+from the context signature, so a reshaping forecast no longer triggers
+a regeneration; only the candidates (and the bucketed live values)
+do. The card renders their rows from its own deterministic templates.
 
 1. **Action** — a specific recommendation with an exact EUR saving.
    Server-computed candidates only: an appliance with at least
@@ -197,9 +203,9 @@ the honest statement:
 
 ## Honesty rules
 
-- Every number the model states is copied verbatim from the context;
-  it never multiplies, divides or derives. The saving in the returned
-  insight matches a candidate's exact value.
+- Every number on the card is copied verbatim from the facts layer;
+  the model states no figures at all (contract section 4), so nothing
+  is ever multiplied, derived or invented.
 - No grid price is ever stated for a day beyond tomorrow — those
   prices are unpublished; beyond tomorrow only solar kWh and weather
   condition are spoken of.
@@ -245,53 +251,16 @@ the honest statement:
   therefore apply on the next page refresh, never on insight
   regeneration.
 
-## Validator rules (server, in ai.mjs)
+## Validation
 
-The model output carries only the fields the model writes
-(primaryAction, supportingFacts, warning, contextNote); guidance,
-advisory and outlook never pass through it. A model response is
-rejected — one retry, then the previous insight is kept — when any of
-the six text guards fail:
-
-- Schema: primaryAction with non-empty what, a finite savingEur
-  (number or numeric string) and a known confidence (missing
-  confidence defaults to medium); supportingFacts must be empty.
-- The claimed saving matches a candidate exactly; zero is legitimate
-  in the two honest no-opportunity cases (C3 rule a): no candidates at
-  all, or every candidate below threshold with the plain no-action
-  statement. Zero while an above-threshold candidate exists is
-  invalid - the model missed a real saving.
-- No arithmetic expressions in any user-facing text.
-- No internal vocabulary in any user-facing text.
-- No sentence naming a beyond-tomorrow weekday together with a price
-  claim, and while tomorrow's prices are unpublished, no text may
-  claim them.
-- No battery-state claim in the model's own words, in any field
-  including the context note: the model may reference the battery only
-  abstractly; the card states the exact charge and state from the
-  server-computed facts (content class 7).
-
-The advisory integrity checker (server/checker.mjs) runs on every
-generated advisory before it is served, as a second layer over the
-guards: it extracts every price-plus-hour pair in the model's
-narrative and verifies it against the day's actual curve (the hour
-named as low must be the low, the hour named as peak must be the
-peak, and any stated price figure must match the curve within the
-checker's own rounding tolerance), and extracts every battery-state
-claim and verifies it against the context battery values (the stated
-SOC must match, and any charged/discharging/idle wording must match
-the context state). Window ranges and savings figures are never
-mistaken for price claims. On mismatch the advisory is rejected and
-regenerated once; a second failure serves the deterministic core
-facts alone (the templates' price and battery sentences) without the
-model's narrative - a mismatched advisory is never served. Verdicts
-are logged, rejects as throttled warnings in the live module's
-style; the checker's comparison constants live in the checker module
-only.
-
-The served guidance and advisory objects always carry the context's
-computed fields with a deterministically composed line; there is no
-model copy to drift.
+The validation pipeline is specified by `docs/advisory-contract.md`
+(section 6) and lives in the advisory core: `checker.mjs` verifies
+price-plus-hour pairs and battery claims against the section facts,
+`narrative-guards.mjs` carries the figure, register, vocabulary,
+arithmetic, tomorrow-price and no-opportunity guards, and a failing
+slot is regenerated once and then dropped - a mismatched narrative is
+never served. The deterministic card rows are composed by the core
+from the live facts; there is no model copy to drift.
 
 ## Rendering structure (SummaryInsight.tsx)
 
@@ -355,8 +324,7 @@ model copy to drift.
   passed-hours fact and the prices widget's "Cheapest today" line both
   read it, so the two surfaces can never disagree about the day's
   cheapest hours.
-- The debug endpoint (`/api/insight/debug`) exposes the exact model
-  context, the live extras (guidance, advisory, week outlook - merged
-  into both the context and insight sections so the consistency checks
-  keep working), the system prompt and the last insight; its
-  consistency checks are green when the rules hold.
+- The debug endpoint (`/api/insight/debug`) exposes the exact sections
+  context the model receives (contract section 3), the style brief and
+  the recomposed card for the cached narrative; it is the advisory
+  debug view, read-only and costing no model call.

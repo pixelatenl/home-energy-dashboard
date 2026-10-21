@@ -1,19 +1,17 @@
 // AI insights for the dashboard widgets: compact context builders for the
 // weather and prices widgets, a shared Mistral client with per-insight
 // response caching, a per-insight 30-minute upstream throttle and one shared
-// daily call cap. The API key is read from the environment and never
-// logged.
+// daily call cap. The summary insight is generated through the advisory core
+// (server/advisory/); the request is prepared by advisory-adapter.mjs. The
+// API key is read from the environment and never logged.
 
 import {
   localDateKey,
   localHourKey,
   localHourIndex,
   localHourLabel,
-  localIsoWithOffset,
-  nextDateKey,
 } from "./time.mjs";
-import { checkAdvisory, logCheckerVerdict } from "./checker.mjs";
-import { PRACTICAL_MIN_ADVANTAGE_EUR } from "./advisory-constants.mjs";
+import { guardNonFiniteText, guardTomorrowPrice } from "./advisory/narrative-guards.mjs";
 import {
   generateAdvisoryCard,
   validateModelOutput,
@@ -66,36 +64,6 @@ const PRICE_SYSTEM_PROMPT =
   "provided context. If data for a period is unavailable, do not " +
   "reference that period, do not estimate, and do not invent values. " +
   "Be concrete, no marketing tone, no emoji.";
-
-// Primary prompt: the model returns structured actions the frontend
-// renders as designed rows (day chip, window, icon, title, reason,
-// price). A window without a date is invalid.
-// Decision-focused daily insight: one primary action with an estimated
-// euro saving, at most three supporting facts and an optional warning.
-// The server computes the candidate actions with exact arithmetic; the
-// model only selects and phrases. The rules the model must enforce live
-// in the prompt itself: select from candidates, copy savings verbatim,
-// no arithmetic anywhere in the output, under 25 words, English, no
-// preamble.
-// Exported for the read-only insight debug endpoint: the exact prompt
-// the summary insight is generated with, so the model's input stays
-// traceable.
-export const SUMMARY_SYSTEM_PROMPT_STRUCTURED = `You are the decision assistant of a home energy dashboard in the Netherlands with solar panels, a home battery and a dynamic electricity contract. The context carries usage, solar, battery, appliance, price, CO2 and candidate_actions data. Reply with JSON only, no preamble, no markdown fences, in English, with exactly these keys.
-
-Schema: { "primaryAction": { "what": string (one concrete imperative recommendation), "when": string (the selected candidate's window), "savingEur": number (copied verbatim from the selected candidate; 0 only when candidates is empty), "confidence": "high" | "medium" | "low" }, "supportingFacts": [], "warning": string or null, "contextNote": string or null }. You write only these fields; the card renders every other row from server-computed data.
-
-Action: you never compute; the server has done all arithmetic. Select the candidate with the largest saving_eur among those whose below_threshold is false; copy its saving_eur verbatim and its window into "when". If every candidate is below_threshold, state honestly that no meaningful saving is available today and name the largest real opportunity with its true amount copied from that candidate. If candidates is empty, the action is the plain honest statement that nothing is worth taking today, for example "No action worth taking today" - set savingEur to 0. Never phrase the empty case as deferral advice such as "Wait for tomorrow". savingEur is only ever a candidate's saving.
-
-Voice: phrase "what" as a household instruction addressing the user directly, in appliance classes - for example "Run your large appliances between 12:00 and 15:00" - never a specific appliance name. Use exactly one "today" per sentence and state the benefit in it. Never use operator abstractions like "heavy loads", "plan usage", "defer consumption". Never duplicate timing guidance or day comparisons in your fields; the card renders those rows itself.
-
-Honesty: every number you state must appear in the context - never multiply, divide or derive. No raw formulas or arithmetic expressions anywhere in the output. Only recommend windows in the future relative to now_local. Distinguish actual production from forecast. Only tomorrow's grid price is published: never state a price for a day beyond tomorrow, and when a day's price is null, no number may stand in for it. When tomorrow_prices_available is false, do not mention tomorrow at all; base advice only on today's prices, remaining hours, solar and battery state. When data for a period is unavailable, make no claims about that period. Weigh cheap hours, green hours (co2_intensity_g_per_kwh) and own solar production. Grounded facts: the card states today's lowest and peak price with their hours and the battery's exact charge and state itself, from server-computed fields. Never name today's lowest or peak price or their hours in your own words, and never state the battery's charge level or whether it is charging, discharging or idle - reference the battery only abstractly as "the battery", never with phrases like "fully charged", "empty", "idle" or a percentage.
-
-Warning and context: "warning" is only for something that needs attention and implies what to check or do, for example "The battery needs attention before tonight's peak; check its settings". "contextNote" is written only on quiet days - one coherent sentence about the home explaining why no candidate exists, for example "No appliance used enough power today to make shifting worthwhile" - or for a genuine insight the rows do not carry, such as the battery's own evening hours reducing the value of shifting usage. When a real action is selected, contextNote is null: the action's basis line explains it, and the note never restates the action's numbers, appliance names or windows.
-
-Plain language: user-facing text never contains internal system vocabulary - candidates, threshold, belowThreshold, payload, context, insight, budget, signature, mechanism. If something cannot be expressed in home terms, omit it. supportingFacts is always an empty array. "confidence" is high when the selected candidate is above threshold, medium or low when below_threshold or the data is thin. Name appliances only with the labels in candidates and the names in top_appliances. The primaryAction (what plus when) stays under 25 words.`;
-
-// The decision prompt as one clean document with sections: schema,
-// action, voice, honesty, warning/context, plain language.
 
 const BATTERY_SYSTEM_PROMPT =
   "You are the assistant of a home energy dashboard in the Netherlands " +
@@ -203,33 +171,6 @@ export function buildPriceContext(priceParts, solarDaily) {
   return context;
 }
 
-// Detects claims about tomorrow that must not be made while tomorrow's
-// prices are unpublished: a sentence mentioning tomorrow that carries a
-// specific price figure (with or without a currency marker - models
-// drop the "EUR" often), claims a cheapest window for it, or names a
-// concrete time window on it. Sentences about tomorrow being not yet
-// published are the legitimate exception.
-export function claimsTomorrowPrices(text) {
-  const pending =
-    /not (yet )?(published|available)|pending|becomes? available|become available/i;
-  const price =
-    /(\beur\b\s?[\d.,]+|€\s?[\d.,]+|[\d.,]+\s?(?:eur|€|\/kwh)|\d+\.\d{2,})/i;
-  const windowClaim =
-    /cheapest|window|\b\d{1,2}:\d{2}\s*(?:-|to|and)\s*\d{1,2}:\d{2}\b/i;
-  const sentences = text.split(/(?<=[.!?])\s+/);
-  for (const sentence of sentences) {
-    if (!/tomorrow/i.test(sentence)) {
-      continue;
-    }
-    if (pending.test(sentence)) {
-      continue;
-    }
-    if (price.test(sentence) || windowClaim.test(sentence)) {
-      return true;
-    }
-  }
-  return false;
-}
 
 // Detects a false denial of today's cheapest window while it exists in
 // the context - the model sometimes claims the window is unavailable,
@@ -240,33 +181,6 @@ export function deniesCheapestWindow(text) {
       text
     ) || /no cheapest (window|hours?)/i.test(text)
   );
-}
-
-// A NaN or Infinity in an answer is always a model artifact: the
-// context never carries one (JSON renders missing numbers as null),
-// so an answer containing either is invalid - the model tried to
-// state a value the context does not have.
-export function containsNonFiniteText(text) {
-  return /\b(?:nan|infinity)\b/i.test(text ?? "");
-}
-
-// Detects battery-state claims the model must not make: the card
-// states the battery's exact charge and state from the server-computed
-// facts, so the model may reference the battery only abstractly. A
-// sentence that names the battery together with a state word (fully
-// charged, charging, discharging, idle, empty, full) or a percentage
-// claim is a state claim in the model's own words.
-export function claimsBatteryState(text) {
-  if (typeof text !== "string" || !/batter/i.test(text)) {
-    return false;
-  }
-  const stateClaim =
-    /\b(?:fully\s+)?(?:charg(?:e|ed|es|ing)|discharg\w+|idle|empty|full)\b/i;
-  const socClaim = /\b\d{1,3}(?:\.\d+)?\s?(?:%|percent\b|pct\b)/i;
-  return text
-    .split(/(?<=[.!?])\s+/)
-    .filter((sentence) => /batter/i.test(sentence))
-    .some((sentence) => stateClaim.test(sentence) || socClaim.test(sentence));
 }
 
 // Deterministic price insight from the merged data, served when the
@@ -323,163 +237,6 @@ export function dayLabel(dateKey) {
     day: "numeric",
     month: "short",
   });
-}
-
-// Compact decision context for the model. weatherDaily and priceParts
-// are optional; extras carries today's top appliances and the live CO2
-// intensity; parts whose source is unavailable are omitted. priceParts
-// has the shape returned by getPriceContextData() in prices.mjs.
-export function buildSummaryContext(summary, weatherDaily, priceParts, extras) {
-  const extrasSafe = extras ?? {};
-  // Self-sufficiency: the share of today's household usage covered by
-  // own production (the complement of grid dependence), (usage -
-  // import) / usage. Null without usage.
-  const usageKwh = summary?.today?.total_usage_kwh ?? null;
-  const importKwh = summary?.today?.import_kwh ?? null;
-  const selfSufficiencyPct =
-    usageKwh !== null && usageKwh > 0 && importKwh !== null
-      ? Math.round((Math.max(0, usageKwh - importKwh) / usageKwh) * 1000) / 10
-      : null;
-  const context = {
-    // The wall clock the model must treat as "now": only windows after
-    // this moment may be recommended.
-    now_local: localIsoWithOffset(new Date()),
-    today: {
-      net_usage_kwh: importKwh,
-      total_usage_kwh: usageKwh,
-      back_delivery_kwh: summary?.today?.export_kwh ?? null,
-      // Bottom-up: the sum of hourly import kWh times the hourly price
-      // (computed in getRangeMetrics). Export revenue is omitted: no
-      // hourly feed-in tariff exists in the data.
-      import_cost_eur: summary?.today?.cost_eur ?? null,
-      // Share of today's solar used on site; null while production is
-      // zero (before sunrise).
-      self_consumption_pct: summary?.today?.self_consumption_pct ?? null,
-      self_sufficiency_pct: selfSufficiencyPct,
-    },
-    week_cost_eur: summary?.week?.cost_eur ?? null,
-    month_cost_eur: summary?.month?.cost_eur ?? null,
-  };
-  // Today's top appliances by kWh, for grounded recommendations.
-  if (extrasSafe.topAppliances?.length > 0) {
-    context.top_appliances = extrasSafe.topAppliances.map((row) => ({
-      name: row.appliance,
-      kwh: row.kwh,
-    }));
-  }
-  if (Array.isArray(weatherDaily)) {
-    // Strictly separated, explicitly dated solar facts. Today never
-    // appears in a future series; the multi-day line starts at tomorrow.
-    const todayKey = localDateKey(new Date());
-    const tomorrowKey = nextDateKey(todayKey, 1);
-    // Machine-readable dates for the structured action date fields.
-    context.today_date = todayKey;
-    context.tomorrow_date = tomorrowKey;
-    const todayEntry =
-      weatherDaily.find((day) => day.date === todayKey) ?? null;
-    const actual = summary?.today?.pv_kwh ?? null;
-    const forecast = todayEntry?.estimated_kwh ?? null;
-    if (actual !== null && forecast !== null) {
-      context.solar_today = `today ${dayLabel(todayKey)}: actual ${actual} kWh, forecast ${forecast} kWh`;
-    } else if (forecast !== null) {
-      context.solar_today = `today ${dayLabel(todayKey)}: forecast ${forecast} kWh`;
-    } else if (actual !== null) {
-      context.solar_today = `today ${dayLabel(todayKey)}: actual ${actual} kWh`;
-    }
-    const tomorrowEntry =
-      weatherDaily.find((day) => day.date === tomorrowKey) ?? null;
-    if (tomorrowEntry) {
-      context.solar_tomorrow = `tomorrow ${dayLabel(tomorrowKey)}: forecast ${tomorrowEntry.estimated_kwh} kWh`;
-    }
-    const following = weatherDaily.filter((day) => day.date > tomorrowKey);
-    if (following.length > 0) {
-      context.solar_following_days =
-        "following days " +
-        following
-          .map((day) => `${dayLabel(day.date)} ${day.estimated_kwh} kWh`)
-          .join(", ");
-    }
-  }
-  // Whether price rows for tomorrow actually exist (computed by
-  // getPriceContextData from the merged curve, local midnight tomorrow
-  // onwards). Always a definite boolean: when false, the model must not
-  // make any claims about tomorrow's prices, so the tomorrow price
-  // section is omitted entirely rather than offered as nulls.
-  context.tomorrow_prices_available =
-    priceParts?.tomorrowPricesAvailable === true;
-  if (priceParts?.priceData) {
-    context.current_price = priceParts.priceData.current_price ?? null;
-    context.cheapest_window = priceParts.cheapestBlock
-      ? {
-          day: localDateKey(new Date(priceParts.cheapestBlock.start)),
-          start_hour: localHourLabel(priceParts.cheapestBlock.start),
-          end_hour: localHourLabel(priceParts.cheapestBlock.end),
-          average_price: priceParts.cheapestBlock.average_price,
-        }
-      : null;
-    // Today's price statistics with the hours above the peak threshold.
-    context.today_prices = {
-      min: priceParts.priceData.today?.min ?? null,
-      average: priceParts.priceData.today?.average ?? null,
-      max: priceParts.priceData.today?.max ?? null,
-      peak_hours: priceParts.peakHours?.today ?? [],
-    };
-    context.price_peak_threshold_eur = priceParts.peakThresholdEur ?? null;
-    if (context.tomorrow_prices_available) {
-      // Tomorrow's published rows exist; the model may use them.
-      context.tomorrow_prices = {
-        available: true,
-        average: priceParts.priceData.tomorrow?.average ?? null,
-        min: priceParts.priceData.tomorrow?.min ?? null,
-        max: priceParts.priceData.tomorrow?.max ?? null,
-        peak_hours: priceParts.peakHours?.tomorrow ?? [],
-      };
-    }
-  }
-  // One compact battery line, or "no data" when unavailable.
-  if (summary?.battery_available) {
-    const parts = [];
-    if (summary.battery_soc_pct !== null) {
-      parts.push(`soc ${summary.battery_soc_pct} pct`);
-    }
-    if (
-      (summary.battery_state === "charging" ||
-        summary.battery_state === "discharging") &&
-      summary.battery_power_w !== null
-    ) {
-      parts.push(`${summary.battery_state} ${Math.abs(summary.battery_power_w)} W`);
-    } else {
-      parts.push("idle");
-    }
-    parts.push(
-      `today ${summary.today?.battery_charged_kwh} kWh in, ` +
-        `${summary.today?.battery_discharged_kwh} kWh out`
-    );
-    context.battery = parts.join(", ");
-  } else {
-    context.battery = "no data";
-  }
-  // Live grid CO2 intensity, so the model can weigh green hours
-  // alongside cheap hours. Omitted entirely when unreachable.
-  if (
-    extrasSafe.co2Intensity !== null &&
-    extrasSafe.co2Intensity !== undefined
-  ) {
-    context.co2_intensity_g_per_kwh = extrasSafe.co2Intensity;
-  }
-  // Precomputed candidate actions with exact arithmetic: the model
-  // selects and phrases, it never computes. Always an array, possibly
-  // empty, so the model knows when no opportunity exists.
-  context.candidates = Array.isArray(extrasSafe.candidates)
-    ? extrasSafe.candidates
-    : [];
-  // The guidance, advisory and week outlook objects never reach the
-  // model: the payload serves them from the live snapshot extras at
-  // request time, and the card renders their rows from its own
-  // templates. Only the summary-level solar and price facts above stay
-  // in the model context, because the context note and the warning
-  // reference them.
-  return context;
 }
 
 async function callMistral(systemPrompt, context) {
@@ -699,7 +456,7 @@ export async function getWeatherContext(daily, todayHourly, options = {}) {
     buildWeatherContext(daily, todayHourly),
     {
       ...options,
-      validate: (text) => !containsNonFiniteText(text),
+      validate: (text) => guardNonFiniteText(text).ok,
     }
   );
 }
@@ -719,13 +476,13 @@ export async function getPriceContext(priceParts, solarDaily, options = {}) {
   // exists, denials of it are rejected. A failure is re-asked once
   // with the corrective instruction; a second failure degrades to the
   // deterministic fallback below, never contradicting the widget.
-  const validators = [(text) => !containsNonFiniteText(text)];
+  const validators = [(text) => guardNonFiniteText(text).ok];
   const correctionNotes = [
     "Never print NaN or Infinity; omit any value that is missing " +
       "from the context instead of inventing it.",
   ];
   if (!tomorrowAvailable) {
-    validators.push((text) => !claimsTomorrowPrices(text));
+    validators.push((text) => guardTomorrowPrice(text).ok);
     correctionNotes.push(
       "Tomorrow's prices are not published and must never be mentioned " +
         "or estimated; you may note that tomorrow's prices are not " +
@@ -804,7 +561,7 @@ export async function getBatteryContext(summary, weatherDaily, priceParts, optio
   const cacheKey = hashString(JSON.stringify(context));
   return getInsight("battery", BATTERY_SYSTEM_PROMPT, cacheKey, context, {
     ...options,
-    validate: (text) => !containsNonFiniteText(text),
+    validate: (text) => guardNonFiniteText(text).ok,
   });
 }
 
@@ -925,208 +682,10 @@ function recordApiCall() {
   callsPerUtcDay.set(utcDay, (callsPerUtcDay.get(utcDay) ?? 0) + 1);
 }
 
-// --- Decision insight (primaryAction + supporting facts + warning) ---
-
-const CONFIDENCE_LEVELS = ["high", "medium", "low"];
-
-// Arithmetic expressions must never appear in user-facing text: digit
-// times digit (also "x" and "×"), or a parenthesised subtraction or
-// addition of two numbers - the shapes the model used to leak raw
-// formulas like "0.01 kWh x (0.279678 - 0.267126)".
-const ARITHMETIC_PATTERN =
-  /\d\s*[x\u00d7*]\s*[\d.(]|\(\s*[\d.]+\s*[-+]\s*[\d.]+\s*\)/;
-
-// Number or numeric string ("0.42") - models drift between the two;
-// both normalize to a number, anything else is null.
-function asFiniteNumber(value) {
-  if (typeof value === "number" && Number.isFinite(value)) {
-    return value;
-  }
-  if (
-    typeof value === "string" &&
-    value.trim() !== "" &&
-    Number.isFinite(Number(value))
-  ) {
-    return Number(value);
-  }
-  return null;
-}
-
-// Deterministic capitalization, applied at server composition time
-// (never by the frontend): a sentence served beneath a card title
-// opens with a capital letter when it opens with a letter. A figure
-// or currency symbol opening is a legitimate opening and stays
-// untouched - the symbol is never capitalized.
-function capitalizeOpening(text) {
-  if (typeof text !== "string" || text.length === 0) {
-    return text;
-  }
-  const first = text.charAt(0);
-  return /[a-z]/.test(first) ? first.toUpperCase() + text.slice(1) : text;
-}
-
-// The deterministic lines served with the guidance and advisory
-// objects: the model never writes them, the card renders the rows
-// from the fields, and these lines ride the payload for consumers
-// that want a sentence (the debug view). The routes call them with
-// the live snapshot extras at request time.
-export function composeGuidanceLine(g) {
-  // The C17 evening-window gate: an evening window (at or after the
-  // evening pivot, e.g. 21:00-00:00) whose expected benefit against
-  // the day's average sits below the practicality threshold is
-  // demoted to plain-fact voice - no imperative wording below the
-  // minimum benefit worth acting on, and never the 0.03 minimum
-  // detectable spread. The benefit is the honest live reference
-  // computed in buildGuidance from the actual curve; an evening
-  // window without a computable benefit never commands either.
-  if (
-    g.evening_window &&
-    (g.expected_benefit_eur === null ||
-      g.expected_benefit_eur < PRACTICAL_MIN_ADVANTAGE_EUR)
-  ) {
-    const hours = g.window.replace(" today", "").replace("-", " and ");
-    return g.expected_benefit_eur !== null && g.expected_benefit_eur > 0
-      ? `Prices are low between ${hours} (${eurFactText(
-          g.expected_benefit_eur
-        )} below average).`
-      : `The cheapest remaining window today is ${g.window} at ${eurFactText(
-          g.cheapest_window_average_eur
-        )} average.`;
-  }
-  return `Cheapest remaining window today is ${g.window} at ${eurFactText(
-    g.cheapest_window_average_eur
-  )} average; running heavy appliances then instead of the ${
-    g.peak_hour
-  } peak saves about ${eurFactText(g.spread_per_kwh_eur)} per kWh.`;
-}
-
-// The solar narrative branches at a 20 percent swing either way:
-// within it the expected solar reads as "about the same" - a smaller
-// difference is noise in the forecast, not a meaning worth stating.
-const NARRATIVE_SOLAR_FACTOR = 0.2;
-
 // Capitalizes the first letter of a composed sentence; shared with
 // the context builder's outlook lines.
 export function capSentence(text) {
   return text.charAt(0).toUpperCase() + text.slice(1);
-}
-
-// The price half of the Tomorrow narrative: cheaper, pricier or
-// similar against the compare day, derived from the computed figures
-// and stated at the minimum benefit worth acting on - never the
-// minimum detectable spread. Null when either average is missing
-// (the clause is then omitted entirely, never guessed).
-function advisoryPriceClause(a) {
-  if (a.tomorrow_average_eur === null || a.compare_average_eur === null) {
-    return null;
-  }
-  const diff =
-    Math.round((a.tomorrow_average_eur - a.compare_average_eur) * 10_000) /
-    10_000;
-  const referent = a.compare_day === "today" ? "today" : `on ${a.compare_day}`;
-  if (diff <= -PRACTICAL_MIN_ADVANTAGE_EUR) {
-    return `grid power should cost you less than ${referent}`;
-  }
-  if (diff >= PRACTICAL_MIN_ADVANTAGE_EUR) {
-    return `grid power will cost you more than ${referent}`;
-  }
-  return `grid power should cost about the same as ${referent}`;
-}
-
-// The solar half of the Tomorrow narrative: more, less or similar
-// solar against the compare day, or the low-solar meaning (grid
-// reliance) when the score flags it. The trailing form joins a price
-// clause; the lead form stands alone when prices are unavailable.
-// Null when no honest comparison exists.
-function advisorySolarClause(a) {
-  if (a.tomorrow_solar_kwh === null) {
-    return null;
-  }
-  if (a.tomorrow_low_solar === true) {
-    return {
-      trailing: "with little sun expected",
-      lead: "Little sun is expected - you'll lean mostly on grid power",
-    };
-  }
-  const compare = a.compare_solar_kwh;
-  if (compare === null || compare <= 0) {
-    return null;
-  }
-  const referent = a.compare_day === "today" ? "today" : `on ${a.compare_day}`;
-  // The trailing form rides a price clause that already names the
-  // compare day, so the "today" referent is left implicit.
-  const trailingReferent = a.compare_day === "today" ? "" : ` than ${referent}`;
-  if (a.tomorrow_solar_kwh >= compare * (1 + NARRATIVE_SOLAR_FACTOR)) {
-    return {
-      trailing: `with more of your own solar${trailingReferent}`,
-      lead: `More of your own solar is expected than ${referent}`,
-    };
-  }
-  if (a.tomorrow_solar_kwh <= compare * (1 - NARRATIVE_SOLAR_FACTOR)) {
-    return {
-      trailing: `with less of your own solar${trailingReferent}`,
-      lead: `Less of your own solar is expected than ${referent}`,
-    };
-  }
-  return {
-    trailing: `with about as much of your own solar${trailingReferent}`,
-    lead: `Your own solar should come in about the same as ${referent}`,
-  };
-}
-
-// The Tomorrow description: one short narrative sentence about what
-// the figures MEAN - cheaper or pricier, more or less solar - in
-// household voice. It complements the card's subtext, which carries
-// the exact comparison, so it never restates the figures; and it never
-// opens by restating the card title ("Tomorrow"). Deterministically
-// composed from the computed figures, one writer on the server; were
-// it ever model-generated it would have to pass the advisory
-// integrity checker and state only figures matching the computed
-// values. A missing figure omits its clause, and with nothing to say
-// the line is null - the card then falls back to its own composer,
-// never a guess.
-export function composeAdvisoryLine(a) {
-  const price = advisoryPriceClause(a);
-  const solar = advisorySolarClause(a);
-  if (price !== null && solar !== null) {
-    return `${capSentence(price)}, ${solar.trailing}.`;
-  }
-  if (price !== null) {
-    return `${capSentence(price)}.`;
-  }
-  if (solar !== null) {
-    return `${capSentence(solar.lead)}.`;
-  }
-  return null;
-}
-
-// The deterministic price sentence over the grounding facts: the
-// template names today's lowest and peak price, each with its own
-// timestamp, composed straight from the served fields so the low can
-// never pair with the peak's hour or price. The model never writes
-// this sentence. Both halves must exist; when the price data is
-// missing the sentence is omitted entirely - never approximated.
-export function composePriceSentence(facts) {
-  const low = facts?.lowPrice ?? null;
-  const peak = facts?.peakPrice ?? null;
-  if (low === null || peak === null) {
-    return null;
-  }
-  return `Lowest price around ${low.timestamp} (${eurFactText(
-    low.price
-  )}); peak around ${peak.timestamp} (${eurFactText(peak.price)}).`;
-}
-
-// The deterministic battery sentence: the template states the SOC and
-// the state verbatim from the context values; the model may only
-// reference the battery abstractly. Null when the battery data is
-// missing, so the sentence is omitted entirely.
-export function composeBatterySentence(facts) {
-  const battery = facts?.battery ?? null;
-  if (battery === null) {
-    return null;
-  }
-  return `The battery is at ${battery.soc_pct}% and is ${battery.state}.`;
 }
 
 // The one money format for composed sentences: the euro sign flush
@@ -1141,119 +700,6 @@ export function eurFactText(value) {
     return `€${two}`;
   }
   return `€${value.toFixed(4).replace(/0+$/, "").replace(/\.$/, "")}`;
-}
-
-// The saving guard: the claimed saving must match a candidate's exact
-// value. Zero is legitimate in the two honest no-opportunity cases
-// (C3 rule a): no candidates at all, or every candidate below
-// threshold with the plain no-action statement. A zero claim with an
-// above-threshold candidate present is invalid - the model missed a
-// real saving. Exported as a pure function so the test suite pins the
-// boundaries.
-export function savingMatchesCandidate(savingEur, candidates) {
-  if (candidates.length === 0) {
-    return savingEur === 0;
-  }
-  if (savingEur === 0 && candidates.every((c) => c.below_threshold === true)) {
-    return true;
-  }
-  return candidates.some(
-    (candidate) => Math.abs(candidate.saving_eur - savingEur) < 0.005
-  );
-}
-
-// Validates the decision insight: a primary action with non-empty
-// what and when, a finite saving and a known confidence level, an
-// empty supporting facts array, an optional warning and an optional
-// context note. The guidance, advisory and outlook objects never pass
-// through the model: the server serves them from its own context, so
-// the model output carries only the fields it actually writes.
-// Returns null when the payload does not fit the schema.
-export function validateDecisionInsight(parsed) {
-  if (!parsed || typeof parsed !== "object") {
-    return null;
-  }
-  const raw = parsed.primaryAction;
-  if (!raw || typeof raw !== "object") {
-    return null;
-  }
-  // Capitalized deterministically at composition time: the sentence
-  // serves beneath a card title.
-  const what = capitalizeOpening(
-    typeof raw.what === "string" ? raw.what.trim() : ""
-  );
-  // The window may be legitimately empty: with no candidate there is
-  // no window to name, and the honest no-opportunity action carries
-  // only the what.
-  const when = typeof raw.when === "string" ? raw.when.trim() : "";
-  // The saving may arrive as a number or a numeric string ("0",
-  // "0.42") - models drift between the two; both are accepted and
-  // normalized so the verbatim check works either way.
-  const savingRaw = raw.savingEur;
-  const savingEur = asFiniteNumber(savingRaw);
-  const confidence =
-    typeof raw.confidence === "string"
-      ? raw.confidence.trim().toLowerCase()
-      : "";
-  if (!what || savingEur === null) {
-    return null;
-  }
-  // The model occasionally drops the confidence field on the trivial
-  // no-opportunity answer; defaulting to the conservative "medium"
-  // keeps that payload valid instead of paying a second call for a
-  // missing style label.
-  const confidenceSafe = CONFIDENCE_LEVELS.includes(confidence)
-    ? confidence
-    : "medium";
-  // The card renders rows and the single context note; any additional
-  // fact would duplicate them and reopen the fabrication surface, so
-  // a non-empty facts array is invalid.
-  if (
-    Array.isArray(parsed.supportingFacts) &&
-    parsed.supportingFacts.length > 0
-  ) {
-    return null;
-  }
-  const supportingFacts = [];
-  const warning =
-    typeof parsed.warning === "string" && parsed.warning.trim()
-      ? capitalizeOpening(parsed.warning.trim())
-      : null;
-  // Explanatory context (why no candidates exist) - a muted footnote,
-  // never a warning. Capitalized like every sentence served beneath
-  // a card title.
-  const contextNote =
-    typeof parsed.contextNote === "string" && parsed.contextNote.trim()
-      ? capitalizeOpening(parsed.contextNote.trim())
-      : null;
-  return {
-    what,
-    when,
-    savingEur,
-    confidence: confidenceSafe,
-    supportingFacts,
-    warning,
-    contextNote,
-  };
-}
-
-// The insight must not reference tomorrow's prices while they are
-// unpublished (the publication status entity has not confirmed them):
-// any price claim about tomorrow in the decision text invalidates the
-// model output.
-function insightClaimsUnpublishedTomorrow(validated, priceParts) {
-  if (priceParts?.tomorrowPricesAvailable === true) {
-    return false;
-  }
-  const texts = [
-    validated.primaryAction?.what,
-    validated.primaryAction?.when,
-    ...(validated.supportingFacts ?? []),
-    validated.warning,
-  ];
-  return texts.some(
-    (text) => typeof text === "string" && claimsTomorrowPrices(text)
-  );
 }
 
 // Daily summary insight: gated by the context signature. The signature is
@@ -1279,23 +725,17 @@ let summaryInFlight = null; // { signature, promise }
 let summaryWarmupError = null;
 
 // The last generated summary insight, read-only: no generation, throttle
-// or budget logic runs. Serves the insight debug endpoint's verbatim
-// saving comparison against the current context's candidates. The
-// guidance, advisory and outlook objects are not part of the cached
-// insight - the debug route serves them from the live snapshot extras,
-// exactly as the summary route does. The regeneration state is
-// computed against the live signature passed in: "fresh" when the
-// cached insight matches it, otherwise "reasoning" (the next request
-// warms the new signature up).
+// or budget logic runs. Serves the insight debug endpoint's view of the
+// cached narrative and its regeneration state, computed against the live
+// signature passed in: "fresh" when the cached insight matches it,
+// otherwise "reasoning" (the next request warms the new signature up).
+// The card itself is never cached: the debug route recomposes it from
+// the live facts through the adapter, exactly as the summary route does.
 export function peekSummaryInsight(liveSignature = null) {
   const cached = summaryInsightCache;
   if (!cached) {
     return null;
   }
-  const primaryAction = cached.result.primaryAction ?? null;
-  // The advisory core path caches the validated narrative
-  // ({ warning, contextNote }); it rides along for the debug endpoint,
-  // alongside the legacy camelCase fields the old path caches.
   const narrative = cached.result.narrative ?? null;
   return {
     signature: cached.signature,
@@ -1304,45 +744,24 @@ export function peekSummaryInsight(liveSignature = null) {
       liveSignature !== null && cached.signature === liveSignature
         ? "fresh"
         : "reasoning",
-    no_opportunity: cached.result.noOpportunity ?? false,
-    warning: narrative?.warning ?? cached.result.warning ?? null,
-    context_note: narrative?.contextNote ?? cached.result.contextNote ?? null,
     narrative,
     generated_at: cached.result.generatedAt ?? null,
-    candidates: cached.result.candidates ?? [],
-    primary_action: primaryAction
-      ? {
-          what: primaryAction.what,
-          when: primaryAction.when,
-          saving_eur: primaryAction.savingEur,
-          confidence: primaryAction.confidence,
-        }
-      : null,
   };
 }
 
 export async function getSummaryInsight(snapshot, options = {}) {
-  const { summary, weatherDaily, priceParts, extras, signature, asOf } =
-    snapshot;
+  const { signature, asOf } = snapshot;
   const force = options.force === true;
   // Request-driven warm-up: answer from the cache immediately and let a
   // signature change regenerate in the background. Never combined with
   // force, which keeps its synchronous behavior.
   const background = options.background === true && !force;
-  // The advisory core request (Stage 3a): prepared by the adapter and
-  // passed in by the index layer when EMS_ADVISORY_CORE is on - this
-  // module never reads the environment. It carries the consolidated
-  // facts, the injected nowIso and the style brief. Null keeps the
-  // legacy generation path exactly as before.
+  // The advisory core request, prepared by the adapter and passed in by
+  // the index layer - this module never reads the environment. It
+  // carries the consolidated facts, the injected nowIso and the style
+  // brief; the core is the only pipeline, so it is required.
   const advisory = options.advisory ?? null;
   const cached = summaryInsightCache;
-  const tomorrowAvailable = priceParts?.tomorrowPricesAvailable === true;
-  const context = buildSummaryContext(
-    summary,
-    weatherDaily,
-    priceParts,
-    extras
-  );
   const reason = force
     ? "force"
     : background
@@ -1362,29 +781,14 @@ export async function getSummaryInsight(snapshot, options = {}) {
     stale: state === "reasoning",
     error,
   });
-  const empty = (error, state = "error") =>
-    advisory !== null
-      ? {
-          narrative: null,
-          generatedAt: null,
-          asOf,
-          state,
-          stale: state === "reasoning",
-          error,
-        }
-      : {
-          primaryAction: null,
-          supportingFacts: [],
-          warning: null,
-          contextNote: null,
-          noOpportunity: false,
-          candidates: [],
-          generatedAt: null,
-          asOf,
-          state,
-          stale: state === "reasoning",
-          error,
-        };
+  const empty = (error, state = "error") => ({
+    narrative: null,
+    generatedAt: null,
+    asOf,
+    state,
+    stale: state === "reasoning",
+    error,
+  });
   const degrade = (error) =>
     cached ? serve(cached.result, "reasoning", error) : empty(error);
 
@@ -1404,298 +808,111 @@ export async function getSummaryInsight(snapshot, options = {}) {
       logMistral("summary", signature, reason, "skipped_throttle");
       return degrade("throttled");
     }
-    // The advisory core path (Stage 3a): the summary insight is produced
-    // by the core's generateAdvisoryCard with the adapter's facts and
-    // style brief. Only the validated narrative is cached; the card is
-    // recomposed from the live facts on every serve by the adapter, so
-    // the same signature, budget, warm-up and in-flight machinery keeps
-    // driving regeneration exactly as before.
-    if (advisory !== null) {
-      // The modelStub wraps the existing callMistral: every call draws
-      // from the shared daily budget, respects the summary minimum
-      // interval and is logged through the same one-line accounting.
-      // A transport-level failure is recorded out of band - the core
-      // treats a failed stub as an empty narrative, which must never be
-      // cached as a fresh insight.
-      let stubFailure = null;
-      let stubCalls = 0;
-      const modelStub = async (modelContext) => {
-        stubCalls += 1;
-        if (dailyLimitReached()) {
-          logMistral("summary", signature, reason, "skipped_daily_limit");
-          stubFailure = "daily_limit_reached";
-          return { warning: null, contextNote: null };
-        }
-        summaryLastCallAt = Date.now();
-        recordApiCall();
-        let parsed = null;
-        try {
-          parsed = parseInsightJson(
-            await callMistral(advisory.styleBrief, modelContext)
-          );
-        } catch (err) {
-          logMistral("summary", signature, reason, `error:${shortError(err)}`);
-          stubFailure = "ai_unavailable";
-          return { warning: null, contextNote: null };
-        }
-        if (parsed === null || typeof parsed !== "object") {
-          logMistral(
-            "summary",
-            signature,
-            reason,
-            "error:model returned invalid JSON"
-          );
-          stubFailure = "model returned invalid JSON";
-          return { warning: null, contextNote: null };
-        }
-        // The core validates after the stub returns; running the same
-        // pure check here only logs the rejection reasons in the
-        // existing throttled logging style.
-        const candidate = {
-          warning:
-            typeof parsed.warning === "string" && parsed.warning.trim() !== ""
-              ? parsed.warning
-              : null,
-          contextNote:
-            typeof parsed.contextNote === "string" &&
-            parsed.contextNote.trim() !== ""
-              ? parsed.contextNote
-              : null,
-        };
-        const verdict = validateModelOutput(candidate, modelContext.sections);
-        if (!verdict.ok) {
-          logMistral(
-            "summary",
-            signature,
-            reason,
-            stubCalls === 1 ? "validation_failed_retry" : "validation_failed"
-          );
-          console.warn(
-            `Advisory core rejected the model output: ${verdict.reasons.join(
-              "; "
-            )}`
-          );
-        }
-        return parsed;
-      };
-      let card = null;
-      try {
-        card = await generateAdvisoryCard(
-          advisory.facts,
-          advisory.nowIso,
-          modelStub
-        );
-      } catch (err) {
-        logMistral("summary", signature, reason, `error:${shortError(err)}`);
-        return degrade("ai_unavailable");
-      }
-      // A transport-level failure is never served as an empty narrative:
-      // the previous insight stays in place, fail soft like the legacy
-      // path.
-      if (stubFailure !== null) {
-        return degrade(stubFailure);
-      }
-      logMistral("summary", signature, reason, "ok");
-      const result = {
-        narrative: { warning: card.warning, contextNote: card.context_note },
-        generatedAt: new Date().toISOString(),
-      };
-      summaryInsightCache = { signature, asOf, result };
-      summaryWarmupError = null;
-      return serve(result, "fresh");
-    }
-    // Context integrity: while tomorrow's prices are unpublished, the
-    // output must not claim them. The saving must be copied verbatim
-    // from a candidate (0 only when no candidate exists), and the
-    // user-facing text must carry no arithmetic expressions - both
-    // enforced server-side so the model can never pass off its own
-    // arithmetic as data.
-    const savingsOk = (validated) =>
-      savingMatchesCandidate(validated.savingEur, context.candidates ?? []);
-    const textsOf = (validated) => [
-      validated.what,
-      validated.when,
-      ...validated.supportingFacts,
-      validated.warning ?? "",
-    ];
-    const noFormulas = (validated) =>
-      !textsOf(validated).some((text) => ARITHMETIC_PATTERN.test(text ?? ""));
-
-    // Plain language: user-facing text never contains internal
-    // system vocabulary; anything that cannot be said in home terms
-    // is omitted, so a leak invalidates the output.
-    const plainLanguageOk = (validated) =>
-      !textsOf(validated).some((text) =>
-        /candidates|belowThreshold|threshold|payload|\bbudget\b|signature|mechanism/i.test(
-          text ?? ""
-        )
+    // The advisory core path: the summary insight is produced by the
+    // core's generateAdvisoryCard with the adapter's facts and style
+    // brief - the core is the only pipeline. Only the validated
+    // narrative is cached; the card is recomposed from the live facts
+    // on every serve by the adapter, so the same signature, budget,
+    // warm-up and in-flight machinery keeps driving regeneration.
+    if (advisory === null) {
+      // Every caller routes through the adapter; a missing request is
+      // a wiring fault, served fail-soft like a generation failure.
+      logMistral(
+        "summary",
+        signature,
+        reason,
+        "error:missing advisory request"
       );
-    // Battery grounding: the card states the battery's exact charge and
-    // state from the server-computed facts, so a battery-state claim in
-    // the model's own words - in any field, the context note included -
-    // invalidates the output.
-    const batteryStateFree = (validated) =>
-      ![
-        validated.what,
-        validated.when,
-        ...validated.supportingFacts,
-        validated.warning ?? "",
-        validated.contextNote ?? "",
-      ].some((text) => claimsBatteryState(text));
-    // Price honesty: no user-facing text may state a grid price for a
-    // day beyond tomorrow - those prices are unpublished. A sentence
-    // naming such a weekday together with a price claim is invalid.
-    // The weekday names come from the live outlook extras: the model
-    // context carries the solar forecast labels, and the check guards
-    // the text the model writes against them.
-    const beyondTomorrowWeekdays = (extras?.outlook?.days ?? [])
-      .slice(1)
-      .map((day) => day.weekday);
-    const priceHonestyOk = (validated) =>
-      !textsOf(validated).some((text) => {
-        if (typeof text !== "string") {
-          return false;
-        }
-        return text.split(/(?<=[.!?])\s+/).some((sentence) => {
-          const namesDay = beyondTomorrowWeekdays.some((weekday) =>
-            sentence.includes(weekday)
-          );
-          const claimsPrice =
-            /averag|\bEUR\b|\u20ac/.test(sentence) && /\d\.\d/.test(sentence);
-          return namesDay && claimsPrice;
-        });
-      });
-
-    // Every integrity check with its failure reason, so the log names
-    // the actual failure instead of a generic guess.
-    const integrityChecks = (validated) => [
-      [
-        tomorrowAvailable ||
-          !insightClaimsUnpublishedTomorrow(validated, priceParts),
-        "model referenced tomorrow's unpublished prices",
-      ],
-      [savingsOk(validated), "saving does not match a candidate"],
-      [noFormulas(validated), "arithmetic expression in output"],
-      [plainLanguageOk(validated), "internal vocabulary in output"],
-      [priceHonestyOk(validated), "price claimed for an unpublished day"],
-      [batteryStateFree(validated), "battery state claim in output"],
-      [
-        !textsOf(validated).some((text) => containsNonFiniteText(text)),
-        "NaN or Infinity in output",
-      ],
-    ];
-    const integrityFailure = (validated) =>
-      integrityChecks(validated).find(([ok]) => !ok)?.[1] ?? null;
-
-    // Strict decision JSON; one retry on invalid JSON or an integrity
-    // failure, then the previous insight stays in place (fail soft).
-    // Every attempt counts against the shared daily cap.
-    let validated = null;
-    let lastFailureWasChecker = false;
-    for (let attempt = 0; attempt < 2 && !validated; attempt++) {
+      return degrade("ai_unavailable");
+    }
+    // The modelStub wraps the existing callMistral: every call draws
+    // from the shared daily budget, respects the summary minimum
+    // interval and is logged through the same one-line accounting.
+    // A transport-level failure is recorded out of band - the core
+    // treats a failed stub as an empty narrative, which must never be
+    // cached as a fresh insight.
+    let stubFailure = null;
+    let stubCalls = 0;
+    const modelStub = async (modelContext) => {
+      stubCalls += 1;
       if (dailyLimitReached()) {
         logMistral("summary", signature, reason, "skipped_daily_limit");
-        return degrade("daily_limit_reached");
+        stubFailure = "daily_limit_reached";
+        return { warning: null, contextNote: null };
       }
       summaryLastCallAt = Date.now();
       recordApiCall();
-      // The raw text stays in scope so a validation failure can log a
-      // short excerpt - the fastest way to see what shape the model
-      // drifted to. The prompt, context and API key are never logged.
-      let text = "";
+      let parsed = null;
       try {
-        text = await callMistral(
-          SUMMARY_SYSTEM_PROMPT_STRUCTURED,
-          context
+        parsed = parseInsightJson(
+          await callMistral(advisory.styleBrief, modelContext)
         );
-        const candidate = validateDecisionInsight(parseInsightJson(text));
-        if (!candidate) {
-          throw new Error("model returned invalid decision JSON");
-        }
-        const failure = integrityFailure(candidate);
-        if (failure !== null) {
-          throw new Error(failure);
-        }
-        // The advisory integrity checker: the generated narrative is
-        // verified against the grounding facts before it is served -
-        // every price-plus-hour pair against the day's curve, every
-        // battery-state claim against the context battery values. A
-        // rejection regenerates once; a second failure serves the
-        // deterministic core facts alone. Never a mismatched advisory.
-        const verdict = checkAdvisory(
-          {
-            what: candidate.what,
-            when: candidate.when,
-            warning: candidate.warning,
-            contextNote: candidate.contextNote,
-          },
-          extras?.facts ?? null
-        );
-        logCheckerVerdict(verdict);
-        if (!verdict.ok) {
-          throw new Error(`advisory checker: ${verdict.reason}`);
-        }
-        validated = candidate;
-        logMistral("summary", signature, reason, "ok");
       } catch (err) {
-        lastFailureWasChecker = String(err?.message ?? "").startsWith(
-          "advisory checker:"
-        );
         logMistral("summary", signature, reason, `error:${shortError(err)}`);
-        // Retried on the next loop iteration; after it the previous
-        // insight stays. The reason is logged so schema misses stay
-        // diagnosable.
+        stubFailure = "ai_unavailable";
+        return { warning: null, contextNote: null };
+      }
+      if (parsed === null || typeof parsed !== "object") {
+        logMistral(
+          "summary",
+          signature,
+          reason,
+          "error:model returned invalid JSON"
+        );
+        stubFailure = "model returned invalid JSON";
+        return { warning: null, contextNote: null };
+      }
+      // The core validates after the stub returns; running the same
+      // pure check here only logs the rejection reasons in the
+      // existing throttled logging style.
+      const candidate = {
+        warning:
+          typeof parsed.warning === "string" && parsed.warning.trim() !== ""
+            ? parsed.warning
+            : null,
+        contextNote:
+          typeof parsed.contextNote === "string" &&
+          parsed.contextNote.trim() !== ""
+            ? parsed.contextNote
+            : null,
+      };
+      const verdict = validateModelOutput(candidate, modelContext.sections);
+      if (!verdict.ok) {
+        logMistral(
+          "summary",
+          signature,
+          reason,
+          stubCalls === 1 ? "validation_failed_retry" : "validation_failed"
+        );
         console.warn(
-          `Decision insight validation failed: ${err?.message ?? err}; raw: ${text.slice(0, 200)}`
+          `Advisory core rejected the model output: ${verdict.reasons.join(
+            "; "
+          )}`
         );
       }
-    }
-    if (!validated) {
-      // Both generations failed the integrity checker: the
-      // deterministic core facts alone are served - the price and
-      // battery sentences composed by the templates, which ride the
-      // payload from the live snapshot extras - without the model's
-      // narrative. Cached for this signature so the polls do not
-      // hammer the model; the next signature change retries.
-      if (lastFailureWasChecker) {
-        logMistral("summary", signature, reason, "checker_core_only");
-        const coreResult = {
-          primaryAction: null,
-          supportingFacts: [],
-          warning: null,
-          contextNote: null,
-          noOpportunity: false,
-          candidates: context.candidates ?? [],
-          generatedAt: null,
-        };
-        summaryInsightCache = { signature, asOf, result: coreResult };
-        summaryWarmupError = null;
-        return serve(coreResult, "fresh");
-      }
+      return parsed;
+    };
+    let card = null;
+    try {
+      card = await generateAdvisoryCard(
+        advisory.facts,
+        advisory.nowIso,
+        modelStub
+      );
+    } catch (err) {
+      logMistral("summary", signature, reason, `error:${shortError(err)}`);
       return degrade("ai_unavailable");
     }
-
+    // A transport-level failure is never served as an empty narrative:
+    // the previous insight stays in place, fail soft.
+    if (stubFailure !== null) {
+      return degrade(stubFailure);
+    }
+    logMistral("summary", signature, reason, "ok");
     const result = {
-      primaryAction: {
-        what: validated.what,
-        when: validated.when,
-        savingEur: validated.savingEur,
-        confidence: validated.confidence,
-      },
-      supportingFacts: validated.supportingFacts,
-      warning: validated.warning,
-      contextNote: validated.contextNote,
-      // The honest no-opportunity signal, derived from the candidates
-      // rather than the model's phrasing: true when every candidate is
-      // belowThreshold or none exists. The card then omits the
-      // highlighted saving and names the largest real opportunity.
-      noOpportunity: (context.candidates ?? []).every(
-        (candidate) => candidate.below_threshold === true
-      ),
-      candidates: context.candidates ?? [],
+      narrative: { warning: card.warning, contextNote: card.context_note },
       generatedAt: new Date().toISOString(),
     };
-
     summaryInsightCache = { signature, asOf, result };
     summaryWarmupError = null;
     return serve(result, "fresh");
@@ -1732,7 +949,7 @@ export async function getSummaryInsight(snapshot, options = {}) {
       : empty(null, "reasoning");
   }
 
-  // Synchronous callers (force, or the legacy insight routes) join a
+  // Synchronous callers (force, or the insight routes) join a
   // generation already in flight for the same signature instead of
   // starting a second one.
   if (summaryInFlight && summaryInFlight.signature === signature) {

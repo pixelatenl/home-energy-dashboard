@@ -6,7 +6,6 @@
 // the served insight against the data shown next to it.
 
 import {
-  buildSummaryContext,
   capSentence,
   dayLabel,
   eurFactText,
@@ -696,8 +695,6 @@ export async function buildContextSnapshot() {
     weatherDaily,
     priceParts,
     extras,
-    // The materialized context the model receives.
-    context: buildSummaryContext(summary, weatherDaily, priceParts, extras),
     // Stable hash over the materialized context fields.
     signature: summarySignature(summary, weatherDaily, priceParts, extras),
     // The moment the underlying summary data was built (the 5-minute

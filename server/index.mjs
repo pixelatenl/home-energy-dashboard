@@ -5,23 +5,17 @@ import { fileURLToPath } from "node:url";
 import express from "express";
 import { shutdown } from "./db.mjs";
 import {
-  composeAdvisoryLine,
-  composeBatterySentence,
-  composeGuidanceLine,
-  composePriceSentence,
   getBatteryContext,
   getMistralBudget,
   getPriceContext,
   getSummaryInsight,
   getWeatherContext,
   peekSummaryInsight,
-  SUMMARY_SYSTEM_PROMPT_STRUCTURED,
   topProductionHours,
 } from "./ai.mjs";
 import { buildContextSnapshot } from "./context.mjs";
 import {
   ADVISORY_CARD_STYLE_BRIEF,
-  advisoryCoreEnabled,
   advisorySectionsContext,
   prepareAdvisoryRequest,
   serveAdvisoryCard,
@@ -91,31 +85,6 @@ try {
   gitHash = "unknown";
 }
 const SERVER_VERSION = `${gitHash} @ ${SERVER_START}`;
-
-// The guidance, advisory and outlook objects served with the insight,
-// plus the grounding facts - today's lowest and peak price with their
-// own timestamps and the battery state - and their deterministic
-// sentences: all sourced from the live snapshot extras at request
-// time - never from the cached insight - so the rows never go stale
-// between generations and the card always renders the current
-// window. The lines are composed deterministically; the model never
-// writes these objects, and a missing fact omits its sentence
-// entirely.
-function liveAdvisoryObjects(extras) {
-  const guidance = extras?.guidance ?? null;
-  const advisory = extras?.advisory ?? null;
-  const facts = extras?.facts ?? null;
-  return {
-    guidance: guidance ? { ...guidance, line: composeGuidanceLine(guidance) } : null,
-    advisory: advisory ? { ...advisory, line: composeAdvisoryLine(advisory) } : null,
-    outlook: extras?.outlook ?? null,
-    lowPrice: facts?.lowPrice ?? null,
-    peakPrice: facts?.peakPrice ?? null,
-    battery: facts?.battery ?? null,
-    priceSentence: composePriceSentence(facts),
-    batterySentence: composeBatterySentence(facts),
-  };
-}
 
 // One line at startup so a stale or misaligned clock is visible
 // immediately: the UTC time, the TZ variable and the timezone the
@@ -338,15 +307,11 @@ app.get(
     // already carries the advisory and its skeleton covers the wait.
     const force = req.query.force === "1" || req.query.force === "true";
     const snapshot = await buildContextSnapshot();
-    // The advisory core switch (Stage 3a), default off: the request
-    // below is exactly the legacy path. When on, the adapter prepares
-    // the core's facts from this snapshot and the served insight is the
-    // core's composed card merged with the transport fields - composed
-    // from the live facts on every serve, so the rows never go stale
-    // between generations.
-    const advisoryRequest = advisoryCoreEnabled()
-      ? await prepareAdvisoryRequest(snapshot)
-      : null;
+    // The adapter prepares the advisory core's facts from this
+    // snapshot and the served insight is the core's composed card
+    // merged with the transport fields - composed from the live facts
+    // on every serve, so the rows never go stale between generations.
+    const advisoryRequest = await prepareAdvisoryRequest(snapshot);
     const insight = await getSummaryInsight(snapshot, {
       force,
       background: !force && peekSummaryInsight() !== null,
@@ -360,45 +325,7 @@ app.get(
       // for the debug panel (the insight state folds the signature
       // comparison in server-side).
       signature: snapshot.signature,
-      insight: advisoryRequest
-        ? serveAdvisoryCard(advisoryRequest, insight)
-        : {
-        // The decision structure: the primary action with its estimated
-        // saving and confidence, its warning and context note. The
-        // guidance, advisory and outlook objects join from the live
-        // snapshot extras; there is no legacy prose format.
-        primary_action: insight.primaryAction
-          ? {
-              what: insight.primaryAction.what,
-              when: insight.primaryAction.when,
-              saving_eur: insight.primaryAction.savingEur,
-              confidence: insight.primaryAction.confidence,
-            }
-          : null,
-        supporting_facts: insight.supportingFacts ?? [],
-        warning: insight.warning ?? null,
-        context_note: insight.contextNote ?? null,
-        // True when no meaningful saving was available; the
-        // belowThreshold candidates let the card name the largest
-        // real opportunity with its true amount.
-        no_opportunity: insight.noOpportunity ?? false,
-        candidates: insight.candidates ?? [],
-        ...liveAdvisoryObjects(snapshot.extras),
-        generated_at: insight.generatedAt,
-        // The data moment the cached insight text is based on (its own
-        // as_of, which can trail the top-level as_of).
-        insight_as_of: insight.asOf,
-        // The regeneration state: "fresh" (the cached insight matches
-        // the live signature), "reasoning" (the signatures differ and
-        // a regeneration is in flight) or "error" (no cached insight
-        // at all; the card stays empty rather than unverified).
-        state: insight.state,
-        // Deprecated mirror of state === "reasoning", kept one release
-        // for the debug panel and old payload comparisons; remove with
-        // the C25 cleanup.
-        stale: insight.stale,
-        error: insight.error,
-        },
+      insight: serveAdvisoryCard(advisoryRequest, insight),
       // Remaining calls in the shared daily Mistral budget.
       remaining_calls: getMistralBudget().remaining_calls,
       server_version: SERVER_VERSION,
@@ -817,67 +744,41 @@ app.get(
 app.get(
   "/api/insight/debug",
   asyncHandler(async (_req, res) => {
-    // Read-only traceability: the exact context payload the summary
-    // insight is built from - the candidates with their exact savings
-    // and belowThreshold marks, the price statistics, the appliance,
-    // battery and solar facts - plus the composed system prompt and the
-    // last generated insight for the verbatim saving comparison.
+    // Read-only traceability: the sections context the summary insight
+    // model receives (contract section 3) - now_local, today_date and
+    // the sections with their facts and guidance notes - plus the
+    // style brief and the recomposed card for the cached narrative.
     // Composing the context never calls the model: every source is a
     // cache or a cheap query, and peekSummaryInsight only reads the
-    // in-memory insight. The guidance, advisory and week outlook ride
-    // the payload from the live extras, not the model context; they
-    // are merged into both sections so the debug view keeps showing
-    // them next to the price data its consistency checks compare
-    // against.
+    // in-memory insight.
     const snapshot = await buildContextSnapshot();
-    // The advisory core switch: when on, the debug payload exposes the
-    // sections context - the exact model input, read-only, costing no
-    // model call - and the recomposed card for the cached narrative.
-    const advisoryRequest = advisoryCoreEnabled()
-      ? await prepareAdvisoryRequest(snapshot)
-      : null;
+    const advisoryRequest = await prepareAdvisoryRequest(snapshot);
     // The peeked insight carries its regeneration state, computed
     // against the live signature, so the debug panel shows whether the
     // insight tracks the current context.
     const peeked = peekSummaryInsight(snapshot.signature);
-    const live = liveAdvisoryObjects(snapshot.extras);
     res.json({
       as_of: snapshot.asOf,
       signature: snapshot.signature,
-      system_prompt:
-        advisoryRequest !== null
-          ? ADVISORY_CARD_STYLE_BRIEF
-          : SUMMARY_SYSTEM_PROMPT_STRUCTURED,
-      // The sections context the advisory core model receives when the
-      // switch is on (contract section 3): now_local, today_date and
-      // the sections with their facts and guidance notes.
-      ...(advisoryRequest !== null
-        ? { sections_context: advisorySectionsContext(advisoryRequest) }
-        : {}),
+      system_prompt: ADVISORY_CARD_STYLE_BRIEF,
+      // The sections context the advisory core model receives
+      // (contract section 3): now_local, today_date and the sections
+      // with their facts and guidance notes.
+      sections_context: advisorySectionsContext(advisoryRequest),
       // The shared Mistral budget: limit, calls today, remaining -
       // the same fields the debug time route reports.
       mistral: getMistralBudget(),
-      context: {
-        ...snapshot.context,
-        guidance: live.guidance,
-        advisory: live.advisory,
-        week_outlook: live.outlook,
-      },
       insight:
-        advisoryRequest !== null
-          ? peeked === null
-            ? null
-            : serveAdvisoryCard(advisoryRequest, {
-                narrative: peeked.narrative ?? null,
-                generatedAt: peeked.generated_at ?? null,
-                asOf: peeked.as_of,
-                state: peeked.state,
-                stale: peeked.state === "reasoning",
-                error: null,
-              })
-          : peeked
-            ? { ...peeked, ...live }
-            : null,
+        peeked === null
+          ? null
+          : serveAdvisoryCard(advisoryRequest, {
+              narrative: peeked.narrative ?? null,
+              generatedAt: peeked.generated_at ?? null,
+              asOf: peeked.as_of,
+              state: peeked.state,
+              stale: peeked.state === "reasoning",
+              error: null,
+            }),
     });
   })
 );
@@ -888,41 +789,16 @@ app.get(
     // force regenerates once regardless of the context signature.
     const force = req.query.force === "1" || req.query.force === "true";
     const snapshot = await buildContextSnapshot();
-    // The advisory core switch: when on, the same generated insight is
-    // served as the core's composed card merged with the transport
-    // fields - the payload shape the summary route serves.
-    const advisoryRequest = advisoryCoreEnabled()
-      ? await prepareAdvisoryRequest(snapshot)
-      : null;
+    // The same generated insight as the summary route serves: the
+    // core's composed card merged with the transport fields.
+    const advisoryRequest = await prepareAdvisoryRequest(snapshot);
     const result = await getSummaryInsight(snapshot, {
       force,
       advisory: advisoryRequest,
     });
-    if (advisoryRequest !== null) {
-      return res.json({
-        ...serveAdvisoryCard(advisoryRequest, result),
-        as_of: result.asOf,
-      });
-    }
     res.json({
-      primary_action: result.primaryAction
-        ? {
-            what: result.primaryAction.what,
-            when: result.primaryAction.when,
-            saving_eur: result.primaryAction.savingEur,
-            confidence: result.primaryAction.confidence,
-          }
-        : null,
-      supporting_facts: result.supportingFacts ?? [],
-      warning: result.warning ?? null,
-      context_note: result.contextNote ?? null,
-      no_opportunity: result.noOpportunity ?? false,
-      candidates: result.candidates ?? [],
-      ...liveAdvisoryObjects(snapshot.extras),
-      generated_at: result.generatedAt,
+      ...serveAdvisoryCard(advisoryRequest, result),
       as_of: result.asOf,
-      stale: result.stale,
-      error: result.error,
     });
   })
 );

@@ -1,10 +1,10 @@
-// The advisory core adapter (Stage 3a): the seam between the existing
-// summary insight path and the copied advisory core in server/advisory/.
-// The switch, the style brief, the facts preparation and the transport
-// merge live here; the core files stay pure (no environment access, no
-// clock reads) and the legacy path stays byte-for-byte in place for the
-// switch-off state. Contract sections 3 to 5 are the wording source for
-// the brief and the merge rules.
+// The advisory core adapter: the seam between the summary insight path
+// and the advisory core in server/advisory/. The style brief, the facts
+// preparation and the transport merge live here; the core files stay pure
+// (no environment access, no clock reads). The core is the only advisory
+// pipeline; every insight endpoint serves through this module. Contract
+// sections 3 to 5 are the wording source for the brief and the merge
+// rules.
 
 import {
   buildAdvisoryModelContext,
@@ -13,15 +13,6 @@ import {
 } from "./advisory/advisory-core.mjs";
 import { buildAdvisoryFacts } from "./facts.mjs";
 import { localIsoWithOffset } from "./time.mjs";
-
-// The Stage 3a switch, default off: with EMS_ADVISORY_CORE unset the
-// summary insight path behaves exactly as today. This module and the
-// index layer are the only places the advisory core's environment is
-// read.
-export function advisoryCoreEnabled() {
-  const raw = (process.env.EMS_ADVISORY_CORE ?? "").trim().toLowerCase();
-  return raw === "1" || raw === "true" || raw === "on";
-}
 
 // The style brief for the modelStub, from contract sections 3 and 4: the
 // sections model is the input, the output carries exactly the two
@@ -48,7 +39,7 @@ export async function prepareAdvisoryRequest(snapshot, loaders = {}) {
 // The exact sections context the model receives (contract section 3):
 // now_local, today_date and the sections with their facts and guidance
 // notes. Read-only, no model call - the debug endpoint's traceability
-// view while the switch is on.
+// view.
 export function advisorySectionsContext(request) {
   const sections = buildSections(request.facts, request.nowIso);
   return buildAdvisoryModelContext({
@@ -62,11 +53,10 @@ export function advisorySectionsContext(request) {
 // insight path owns (contract section 5: generated_at, insight_as_of,
 // state, stale and error are never touched by the composer). The card is
 // composed from the request's live facts on every serve, so its rows
-// never go stale between generations - the same liveness the legacy
-// path's live extras provide - and the composer re-validates the cached
-// narrative against the current sections, dropping any slot that no
-// longer holds. Absent object keys from the core stay absent (they read
-// as null); corrupt lowPrice, peakPrice and battery objects were
+// never go stale between generations - and the composer re-validates the
+// cached narrative against the current sections, dropping any slot that
+// no longer holds. Absent object keys from the core stay absent (they
+// read as null); corrupt lowPrice, peakPrice and battery objects were
 // dropped by the core's own sanitization, never re-added here.
 export function serveAdvisoryCard(request, insight) {
   const sections = buildSections(request.facts, request.nowIso);
@@ -81,7 +71,7 @@ export function serveAdvisoryCard(request, insight) {
   // this pass): the core's template predates the field and serves null;
   // the facts layer owns the computed value, so the merge completes the
   // served guidance from it - the card's window phrasing and value chip
-  // then match the guidance the legacy path serves.
+  // then match the guidance object's own fields.
   if (payload.guidance != null) {
     payload.guidance = {
       ...payload.guidance,

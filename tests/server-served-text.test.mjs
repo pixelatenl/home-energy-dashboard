@@ -1,18 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import {
-  composeAdvisoryLine,
-  composeBatterySentence,
-  composeGuidanceLine,
-  composePriceSentence,
-  eurFactText,
-  priceFallbackText,
-  validateDecisionInsight,
-} from "../server/ai.mjs";
+import { eurFactText, priceFallbackText } from "../server/ai.mjs";
 import {
   buildAdvisory,
   buildCandidates,
-  buildGuidance,
   buildOutlook,
 } from "../server/context.mjs";
 
@@ -20,13 +11,9 @@ import {
 // the card opens with a capital letter (or a legitimate figure or
 // currency symbol) and states amounts with the flush euro sign,
 // never the three-letter code - both applied at server composition
-// time, never by frontend substitution.
-
-const FACTS = {
-  lowPrice: { timestamp: "02:00", price: 0.19 },
-  peakPrice: { timestamp: "08:00", price: 0.41 },
-  battery: { soc_pct: 72, state: "idle" },
-};
+// time, never by frontend substitution. The advisory card's own
+// sentences are audited by the core (server/advisory/); this file
+// covers the sentences the facts layer and the price box compose.
 
 function partsFixture({
   windowStart = "2027-06-15T12:00:00+02:00",
@@ -48,16 +35,6 @@ function partsFixture({
 
 // Every served sentence type, composed once for the audit.
 function servedSentences() {
-  const guidance = buildGuidance(partsFixture());
-  const evening = buildGuidance(
-    partsFixture({
-      windowStart: "2027-06-15T21:00:00+02:00",
-      windowEnd: "2027-06-16T00:00:00+02:00",
-      windowAvg: 0.28,
-      dayAverage: 0.31,
-      dayMax: 0.41,
-    })
-  );
   const outlook = buildOutlook(
     [
       { date: "2027-06-16", estimated_kwh: 15.3, solar_score: 68, weather_code: 0 },
@@ -81,29 +58,6 @@ function servedSentences() {
     []
   );
   return [
-    composeGuidanceLine(guidance),
-    composeGuidanceLine(evening),
-    composePriceSentence(FACTS),
-    composeBatterySentence(FACTS),
-    composeAdvisoryLine({
-      type: "advance",
-      triggered: true,
-      tomorrow_average_eur: 0.2,
-      compare_average_eur: 0.36,
-      tomorrow_solar_kwh: 15,
-      compare_solar_kwh: 10,
-      tomorrow_low_solar: false,
-      compare_day: "today",
-    }),
-    composeAdvisoryLine({
-      type: "advance",
-      triggered: false,
-      tomorrow_average_eur: null,
-      tomorrow_solar_kwh: 2,
-      compare_solar_kwh: 10,
-      tomorrow_low_solar: true,
-      compare_day: "today",
-    }),
     priceFallbackText({
       priceData: {
         current_price: 0.123,
@@ -121,12 +75,11 @@ function servedSentences() {
 
 describe("the served-sentence audit", () => {
   it("covers every served sentence type", () => {
-    // Twelve sentence types: the guidance line (imperative and
-    // evening-demoted), the price and battery fact sentences, the
-    // Tomorrow narrative (priced and low-solar), the price fallback,
-    // the best and poor outlook lines, the poor day's advice, the
-    // candidate basis and the defer horizon note.
-    assert.equal(servedSentences().length, 12);
+    // Six sentence types: the price fallback, the best and poor
+    // outlook lines, the poor day's advice, the candidate basis and
+    // the defer horizon note. The advisory card's own sentences are
+    // audited by the core's served-text audit.
+    assert.equal(servedSentences().length, 6);
   });
 
   it("opens every served sentence with a capital letter, or a figure or symbol", () => {
@@ -172,59 +125,4 @@ describe("eurFactText: the one money format for composed sentences", () => {
 
   it("keeps a sub-cent value nonzero", () => {
     assert.equal(eurFactText(0.0035), "€0.0035");
-  });
-});
-
-describe("validateDecisionInsight: capitalization at composition time", () => {
-  const parsedInsight = (overrides) =>
-    validateDecisionInsight({
-      primaryAction: {
-        what: "No action worth taking today",
-        when: "",
-        savingEur: 0,
-        confidence: "medium",
-      },
-      supportingFacts: [],
-      warning: null,
-      contextNote: null,
-      ...overrides,
-    });
-
-  it("capitalizes a lowercase opening on the model's served sentences", () => {
-    const parsed = parsedInsight({
-      primaryAction: {
-        what: "no action worth taking today",
-        when: "",
-        savingEur: 0,
-        confidence: "medium",
-      },
-      warning: "the battery needs attention before tonight's peak",
-      contextNote: "no appliance used enough power today to make shifting worthwhile",
-    });
-    assert.ok(parsed);
-    assert.equal(parsed.what, "No action worth taking today");
-    assert.equal(
-      parsed.warning,
-      "The battery needs attention before tonight's peak"
-    );
-    assert.equal(
-      parsed.contextNote,
-      "No appliance used enough power today to make shifting worthwhile"
-    );
-  });
-
-  it("leaves a figure or currency symbol opening untouched", () => {
-    const parsed = parsedInsight({
-      primaryAction: {
-        what: "€0.16 of saving sits in the cheap hours",
-        when: "",
-        savingEur: 0,
-        confidence: "medium",
-      },
-      contextNote: "9.45 kWh of solar came from the roof today",
-    });
-    assert.ok(parsed);
-    assert.equal(parsed.what, "€0.16 of saving sits in the cheap hours");
-    assert.equal(parsed.contextNote, "9.45 kWh of solar came from the roof today");
-  });
-});
+  });});
