@@ -22,14 +22,14 @@ import {
 
 // The card's tooltip: what the gauge reads and what its colors mean.
 const BATTERY_TOOLTIP =
-  "The battery's current state of charge and state, live from the power sensors every 20 seconds. The state line reads the charging or discharging power while the battery flows. The gauge's color follows the battery's state: green while charging, amber while discharging, teal at rest. When the live sensors are unreachable the newest stored reading is used. A dimmed state with a dot is an honest reading more than a minute old.";
+  "The battery's current state of charge and state, live from the power sensors every 20 seconds. The state line reads the charging or discharging power while the battery flows. The gauge's color follows the battery's state: amber while charging, green while discharging, teal at rest. When the live sensors are unreachable the newest stored reading is used. A dimmed state with a dot is an honest reading more than a minute old.";
 
 // The hub's compact battery presence: current charge percentage with a
 // state-colored fill indicator, centered like the live usage circle,
 // with the live state centered directly beneath the visual. The full
 // battery panel moves to the Battery tab in a later phase. The state
-// colors are the flow diagram's shared battery palette: muted green
-// charging, muted amber discharging, muted teal idle.
+// colors are the flow diagram's shared battery palette: muted amber
+// charging, muted green discharging, muted teal idle.
 
 function BatteryStatusWidget() {
   const { snapshot: live, status: liveStatus } = useLive();

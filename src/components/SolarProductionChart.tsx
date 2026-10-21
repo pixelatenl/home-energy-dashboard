@@ -23,6 +23,7 @@ import {
   type SolarSlot,
 } from "@/lib/solarChart";
 import { niceStep } from "@/lib/chartScale";
+import { barPath } from "@/lib/barPath";
 import { dateKeyPlus, localHourOf } from "@/lib/time";
 
 // The chart's geometry, the per-slot chart's idiom: the viewBox height
@@ -35,18 +36,6 @@ const TOP = 10;
 const BASE = HEIGHT - 6;
 const GRID_LINES = 3;
 const UNKNOWN_HEIGHT = 12;
-
-// A bar with rounded top corners only (the per-slot chart's path).
-function barPath(
-  x: number,
-  width: number,
-  top: number,
-  base: number,
-  radius: number,
-): string {
-  const r = Math.min(radius, width / 2, base - top);
-  return `M ${x} ${base} V ${top + r} A ${r} ${r} 0 0 1 ${x + r} ${top} H ${x + width - r} A ${r} ${r} 0 0 1 ${x + width} ${top + r} V ${base} Z`;
-}
 
 function formatKwh(value: number): string {
   return `${value.toFixed(value < 10 ? 2 : 1)} kWh`;

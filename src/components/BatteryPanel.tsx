@@ -28,6 +28,7 @@ import { localDateOf, localHourFractionOf, localHourOf } from "@/lib/time";
 import { useMode } from "@/lib/mode";
 import { periodEnd, periodLabel, periodStart, type Period } from "@/lib/period";
 import { niceStep } from "@/lib/chartScale";
+import { barPath } from "@/lib/barPath";
 
 // The flow charts' y-axis grid: a nice step per half band (charge up,
 // discharge down), with only the lines that fall inside the plot
@@ -185,8 +186,8 @@ function FlowLegend() {
   );
 }
 
-// Combined chart for one day: charging kWh as green bars upward from the
-// zero line, discharge kWh as amber bars downward, and the SOC series as a
+// Combined chart for one day: charging kWh as amber bars upward from the
+// zero line, discharge kWh as green bars downward, and the SOC series as a
 // line on a secondary 0-100 percent axis. Hovering a slot shows a tooltip
 // with that hour's flow, its money figures and the SOC. Rendered in the
 // same muted strip background and height as the 5 day forecast's hourly
@@ -304,23 +305,28 @@ function FlowChart({
               return (
                 <g key={hour.ts}>
                   {hour.in_kwh > 0 && (
-                    <rect
-                      x={hourSlot * slot + slot * 0.15}
-                      y={zeroY - hour.in_kwh * flowScale}
-                      width={slot * 0.7}
-                      height={hour.in_kwh * flowScale}
-                      rx={2}
+                    <path
+                      d={barPath(
+                        hourSlot * slot + slot * 0.15,
+                        slot * 0.7,
+                        zeroY - hour.in_kwh * flowScale,
+                        zeroY,
+                        5,
+                      )}
                       fill={CHARGING_COLOR}
                       opacity={0.8}
                     />
                   )}
                   {hour.out_kwh > 0 && (
-                    <rect
-                      x={hourSlot * slot + slot * 0.15}
-                      y={zeroY}
-                      width={slot * 0.7}
-                      height={hour.out_kwh * flowScale}
-                      rx={2}
+                    <path
+                      d={barPath(
+                        hourSlot * slot + slot * 0.15,
+                        slot * 0.7,
+                        zeroY,
+                        zeroY + hour.out_kwh * flowScale,
+                        5,
+                        "bottom",
+                      )}
                       fill={DISCHARGING_COLOR}
                       opacity={0.8}
                     />
@@ -541,23 +547,28 @@ function PeriodFlowChart({
             {[...bySlot.entries()].map(([index, interval]) => (
               <g key={interval.ts}>
                 {interval.in_kwh > 0 && (
-                  <rect
-                    x={index * slot + slot * 0.2}
-                    y={zeroY - interval.in_kwh * flowScale}
-                    width={slot * 0.6}
-                    height={interval.in_kwh * flowScale}
-                    rx={2}
+                  <path
+                    d={barPath(
+                      index * slot + slot * 0.2,
+                      slot * 0.6,
+                      zeroY - interval.in_kwh * flowScale,
+                      zeroY,
+                      5,
+                    )}
                     fill={CHARGING_COLOR}
                     opacity={0.8}
                   />
                 )}
                 {interval.out_kwh > 0 && (
-                  <rect
-                    x={index * slot + slot * 0.2}
-                    y={zeroY}
-                    width={slot * 0.6}
-                    height={interval.out_kwh * flowScale}
-                    rx={2}
+                  <path
+                    d={barPath(
+                      index * slot + slot * 0.2,
+                      slot * 0.6,
+                      zeroY,
+                      zeroY + interval.out_kwh * flowScale,
+                      5,
+                      "bottom",
+                    )}
                     fill={DISCHARGING_COLOR}
                     opacity={0.8}
                   />

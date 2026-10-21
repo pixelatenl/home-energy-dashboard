@@ -51,10 +51,10 @@ const TODAY_CHART_H = 48;
 const SOLAR_TODAY_TOOLTIP =
   "Actual solar production today: the headline is the day total so far, the curve the hourly output, with the dashed line the hourly forecast. Self usage is the share of today's solar the home consumed on site instead of feeding it into the grid.";
 const BATTERY_TODAY_TOOLTIP =
-  "Energy moved through the battery today: charged in green above the zero line, discharged in amber below, per hour. The headline is the day's charged total.";
+  "Energy moved through the battery today: charged in amber above the zero line, discharged in green below, per hour. The headline is the day's charged total.";
 
 // Palette: the flow's solar yellow for actual production; the
-// battery's muted green/amber pair for charge and discharge (the
+// battery's muted amber/green pair for charge and discharge (the
 // flow diagram's shared battery palette).
 
 // The now marker's x position for the full-day 0-24h axis.
@@ -121,7 +121,7 @@ function TodaySolarLegend() {
   );
 }
 
-// The battery chart's legend: the bar pair's green and amber.
+// The battery chart's legend: the bar pair's amber and green.
 function TodayBatteryLegend() {
   return (
     <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-subtle-foreground">
@@ -311,8 +311,8 @@ function TodaySolarChart({
 }
 
 // "Battery today": the day's charged and discharged totals as the
-// headline figure, then the hourly charge as green bars up from the
-// zero line and discharge as amber bars down, in the battery panel's
+// headline figure, then the hourly charge as amber bars up from the
+// zero line and discharge as green bars down, in the battery panel's
 // colors, on the same full-day axis.
 function TodayBatteryChart({
   flow,

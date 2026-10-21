@@ -5,7 +5,7 @@ import type { BatteryState, FlowSnapshot } from "@/lib/api"
 // Flow palette - the colors of the flows' traveling pulses, the only
 // per-flow difference in the diagram: solar warm orange, grid deep
 // indigo for both directions (the pulse's direction of travel carries
-// the flow direction), battery green for both directions (the
+// the flow direction), battery amber for both directions (the
 // widget's charging accent). The base lines under the pulses are one
 // shared style in the render pass; the battery node keeps its
 // state-dependent accent.
@@ -16,13 +16,14 @@ export const SOLAR_COLOR = "#f8ae17"
 export const SOLAR_FLOW_COLOR = "#e58806"
 // The battery state colors: the same muted, mid-dark depth as the
 // usage treemap's palette (see applianceColors.ts), so the state
-// identity reads without bright signal colors - green charging,
-// muted amber discharging, teal idle.
-export const CHARGING_COLOR = "hsl(140 40% 38%)"
-export const DISCHARGING_COLOR = "hsl(38 45% 42%)"
+// identity reads without bright signal colors - amber charging
+// (active, working), green discharging (releasing energy to the
+// home), teal idle.
+export const CHARGING_COLOR = "hsl(38 45% 42%)"
+export const DISCHARGING_COLOR = "hsl(140 40% 38%)"
 export const GRID_IMPORT_COLOR = "#3b3fbf"
 export const GRID_EXPORT_COLOR = GRID_IMPORT_COLOR
-// The battery's idle accent: teal, between the charging green and the
+// The battery's idle accent: teal, between the charging amber and the
 // grid indigo, so a resting battery reads as "standing by" rather
 // than disabled grey.
 export const BATTERY_IDLE_COLOR = "hsl(185 40% 38%)"
@@ -37,8 +38,8 @@ const SOLAR_TILE_GRADIENT =
 const GRID_TILE_GRADIENT =
   "linear-gradient(135deg, hsl(238 53% 28%), hsl(238 53% 50%))"
 const BATTERY_TILE_GRADIENTS: Record<BatteryState, string> = {
-  charging: "linear-gradient(135deg, hsl(140 40% 20%), hsl(140 40% 38%))",
-  discharging: "linear-gradient(135deg, hsl(38 45% 24%), hsl(38 45% 42%))",
+  charging: "linear-gradient(135deg, hsl(38 45% 24%), hsl(38 45% 42%))",
+  discharging: "linear-gradient(135deg, hsl(140 40% 20%), hsl(140 40% 38%))",
   idle: "linear-gradient(135deg, hsl(185 40% 20%), hsl(185 40% 38%))",
   unavailable: "linear-gradient(135deg, hsl(185 40% 20%), hsl(185 40% 38%))",
 }
@@ -374,7 +375,7 @@ export function buildFlowDiagram(input: FlowDiagramInput | null): FlowData {
     CHARGING_COLOR
   )
   // The battery feeds the house from the lower left; both battery flows
-  // share the one green battery accent.
+  // share the one amber battery accent.
   addFlow(
     "battery_to_home",
     ROUTES.battery_to_home,

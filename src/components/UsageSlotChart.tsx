@@ -8,6 +8,7 @@ import { Switch } from "@/components/ui/switch";
 import type { UsageBreakdown, UsageSlot, UsageSlotUnit } from "@/lib/api";
 import type { Mode } from "@/lib/mode";
 import { periodLabel, type Period } from "@/lib/period";
+import { barPath } from "@/lib/barPath";
 import { localHourOf } from "@/lib/time";
 
 // The chart's geometry: the viewBox height equals the rendered
@@ -77,21 +78,6 @@ function axisLabel(
     month: "short",
     timeZone: "Europe/Amsterdam",
   }).format(new Date(slot.ts));
-}
-
-// A bar with rounded top corners only, so the bars sit flat on the
-// axis: a path with two true circular quarter-arc corners at the top
-// (arc commands, not quadratics - a degenerate quadratic control
-// point renders as a chamfer, which reads as a jagged corner).
-function barPath(
-  x: number,
-  width: number,
-  top: number,
-  base: number,
-  radius: number,
-): string {
-  const r = Math.min(radius, width / 2, base - top);
-  return `M ${x} ${base} V ${top + r} A ${r} ${r} 0 0 1 ${x + r} ${top} H ${x + width - r} A ${r} ${r} 0 0 1 ${x + width} ${top + r} V ${base} Z`;
 }
 
 // A nice step for the y axis: 1, 2, 2.5 or 5 times a power of ten,
