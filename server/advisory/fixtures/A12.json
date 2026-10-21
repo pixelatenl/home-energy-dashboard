@@ -1,0 +1,31 @@
+{
+  "name": "A12 thin data",
+  "now": "2026-10-20T15:30:00+02:00",
+  "facts": {
+    "lowPrice": { "timestamp": "12:00", "price": 0.25 },
+    "peakPrice": { "timestamp": "19:00", "price": 0.47 },
+    "dayAverageEur": 0.38,
+    "cheapestWindow": { "start": "14:00", "end": "17:00", "averageEur": 0.26 },
+    "spreadPerKwhEur": 0.12,
+    "practicalBenefitEur": 0.12,
+    "candidates": [],
+    "dayCheapestWindow": "12:00-15:00",
+    "dayCheapestPassed": false,
+    "tomorrow": {
+      "pricesPublished": false,
+      "prices": null,
+      "solarKwh": 11.99,
+      "solarScore": 28,
+      "lowSolar": false,
+      "compareSolarKwh": 14.4
+    },
+    "comingDays": [
+      { "weekday": "Wednesday", "date": "2026-10-21", "solarKwh": 8.4, "solarScore": 20, "condition": "cloudy" },
+      { "weekday": "Friday", "date": "2026-10-23", "solarKwh": 1.2, "solarScore": 5, "condition": "rain" }
+    ]
+  },
+  "stub": {
+    "warning": null,
+    "contextNote": "No appliance runs are waiting today, so the afternoon window is free for whatever the household needs."
+  }
+}

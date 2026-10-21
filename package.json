@@ -9,7 +9,7 @@
     "server": "node server/index.mjs",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
-    "test": "node --test tests/*.test.mjs tests/*.test.ts",
+    "test": "node --test tests/*.test.mjs tests/*.test.ts server/advisory/*.test.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

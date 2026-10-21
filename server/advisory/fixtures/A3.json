@@ -1,0 +1,38 @@
+{
+  "name": "A3 evening after pivot",
+  "now": "2026-10-20T21:15:00+02:00",
+  "facts": {
+    "lowPrice": { "timestamp": "12:00", "price": 0.25 },
+    "peakPrice": { "timestamp": "19:00", "price": 0.47 },
+    "dayAverageEur": 0.38,
+    "cheapestWindow": { "start": "21:00", "end": "00:00", "averageEur": 0.33 },
+    "spreadPerKwhEur": 0.12,
+    "practicalBenefitEur": 0.03,
+    "co2IntensityGPerKwh": 133,
+    "solarToday": { "actualKwh": 8.6, "forecastKwh": 14.4 },
+    "battery": { "socPct": 72, "state": "charging", "todayInKwh": 4.3, "todayOutKwh": 2.4 },
+    "candidates": [],
+    "dayCheapestWindow": "12:00-15:00",
+    "dayCheapestPassed": true,
+    "remainingWindow": { "start": "21:00", "end": "00:00", "averageEur": 0.33, "practicalBenefitEur": 0.03 },
+    "remainingAverageEur": 0.35,
+    "dayUsageKwh": 18.2,
+    "dayCostEur": 2.4,
+    "tomorrow": {
+      "pricesPublished": false,
+      "prices": null,
+      "solarKwh": 11.99,
+      "solarScore": 28,
+      "lowSolar": false,
+      "compareSolarKwh": 14.4
+    },
+    "comingDays": [
+      { "weekday": "Wednesday", "date": "2026-10-21", "solarKwh": 8.4, "solarScore": 20, "condition": "cloudy" },
+      { "weekday": "Friday", "date": "2026-10-23", "solarKwh": 1.2, "solarScore": 5, "condition": "rain" }
+    ]
+  },
+  "stub": {
+    "warning": null,
+    "contextNote": "The cheap hours have passed and the rest of the evening sits close to the day average."
+  }
+}
