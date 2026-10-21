@@ -89,6 +89,8 @@ The model receives `now_local`, `today_date` and a `sections` array. The server 
 
 **Mode rules.** Before `EVENING_PIVOT_HOUR` the today section is in mode `plan`; from the pivot to midnight it is in mode `recap` and a `today_evening` section carries the remaining-window advice per the practicality gate. The today imperative renders only when the window starts before the pivot, at least `PRACTICAL_MIN_HOURS` remain, and the window average is at least `PRACTICAL_MIN_ADVANTAGE_EUR` below the day average. Below that, the window is stated as a plain fact, never as an instruction.
 
+**Recap facts (added this pass).** In recap mode the today section may carry two optional facts: `solar_share_pct`, the integer percent of today's home usage covered by the household's own solar (null when unknown), and `battery_earned_eur`, today's battery result in euros (null when unknown). Plan-mode sections never carry them. The recap guidance note states that the achievement lines are server-written, and that the model may acknowledge them qualitatively but must never restate their figures.
+
 **Null encoding.** Unpublished or unavailable prices are null with the reason in the guidance note. The model is never offered a slot to fill.
 
 ## 4. Model output
@@ -104,10 +106,21 @@ The payload shape (section 5) carries exactly two model-authored slots, `warning
 
 - `warning` only for something that needs attention and implies what to check.
 - `contextNote` only on quiet days (no candidate), explaining why no candidate exists, or for a genuine insight the rows do not carry, grounded in any section's facts. Null when an action exists. It never restates the action's numbers, appliance names or windows, and it carries meaning rather than figures.
-- The no-opportunity statement is the deterministic constant "No action worth taking today"; the model never writes it, and it is never phrased as deferral advice.
+- The no-opportunity statement is the deterministic constant "No action worth taking today"; the model never writes it in any slot, and deferral advice is banned wherever the model writes (`guardNoOpportunityPhrasing`, applied to every model-authored slot).
 - If a future pass wants per-section narratives on the card, it requires an explicit payload extension plus rendering; nothing in this contract provides for it silently.
 
-**Server-injected fields (never model-written):** `primary_action` (title, window, saving from the selected candidate), `no_opportunity`, `candidates`, `guidance`, `advisory`, `outlook`, `priceSentence`. Confidence mapping: high with a worthwhile candidate, medium when all candidates are below the action threshold, low when data is thin.
+**Voice register.** Model sentences (`warning`, `contextNote`) speak to the household in the second person, in plain household words, warm but factual. They contain no figures at all - no digit, no currency marker (€ or EUR), no percent marker - because the card renders every number from the facts and a meaning-only sentence can never restate or fabricate one (`guardNoFigures`). No motivational filler, no exclamation marks, no flattery (`guardRegister`, applied to every model-authored slot). The deterministic achievement lines carry the positives.
+
+**Achievement lines (server-written, recap mode only).**
+
+- They render only in today recap mode, never in plan mode.
+- Solar line: "Your own solar covered {n}% of today's usage." Fires only when `solar_share_pct` is at least `ACHIEVEMENT_MIN_SOLAR_SHARE_PCT` (default 40).
+- Battery line: "Your battery earned {amount} today." in the existing € money style (€ flush, two decimals). Fires only when `battery_earned_eur` is at least `ACHIEVEMENT_MIN_BATTERY_EARN_EUR` (default €1.00).
+- Honest absence: below the threshold, or when the fact is null or missing, the line is omitted entirely. Never a vague substitute, never a fabricated number.
+- The existing vocabulary ban, including "genuinely good", remains in force for these lines.
+- At most one solar line and one battery line, in that order.
+
+**Server-injected fields (never model-written):** `primary_action` (title, window, saving from the selected candidate), `no_opportunity`, `candidates`, `guidance`, `advisory`, `outlook`, `priceSentence`, `achievements`. Confidence mapping: high with a worthwhile candidate, medium when all candidates are below the action threshold, low when data is thin.
 
 ## 5. Served payload schema
 
@@ -218,6 +231,12 @@ export interface SummaryInsight {
   // above; the model never writes them. Rendered verbatim.
   priceSentence?: string | null
   batterySentence?: string | null
+  // The deterministic achievement sentences (contract section 4):
+  // recap mode only, at most one solar line and one battery line, in
+  // that order, rendered verbatim. Always present, possibly empty -
+  // below the threshold or without the fact, the line is omitted
+  // entirely, never a vague substitute.
+  achievements: string[]
   generated_at: string | null
   // The data moment the cached insight text is based on; can trail the
   // top-level as_of while a regeneration is in flight.
@@ -288,15 +307,19 @@ export interface InsightCandidate {
 }
 ```
 
-**Field ownership.** `composeAdvisoryCard` fills the content fields (`primary_action`, `supporting_facts`, `warning`, `context_note`, `no_opportunity`, `candidates`, `guidance`, `outlook`, `advisory`, `lowPrice`, `peakPrice`, `battery`, `priceSentence`, `batterySentence`). The transport layer in the summary insight path (`getSummaryInsight` and its cache) fills `generated_at`, `insight_as_of`, `state`, `stale` and `error`; the composer never touches them.
+**Field ownership.** `composeAdvisoryCard` fills the content fields (`primary_action`, `supporting_facts`, `warning`, `context_note`, `no_opportunity`, `candidates`, `guidance`, `outlook`, `advisory`, `lowPrice`, `peakPrice`, `battery`, `priceSentence`, `batterySentence`, `achievements`). The transport layer in the summary insight path (`getSummaryInsight` and its cache) fills `generated_at`, `insight_as_of`, `state`, `stale` and `error`; the composer never touches them.
+
+**Non-finite facts are missing facts.** A numeric fact that is not a finite number is null before the core uses it: facts are normalized once at entry (`buildSections`, `composeAdvisoryCard`), so sections, the model context and every composed sentence see null, and the existing null handling omits the sentence or clause. A price point, battery or window whose core number is missing drops entirely, and so does a candidate without finite figures. A literal `NaN`, `null`, `undefined` or `Infinity` token never reaches served text; the served-text audit rejects any sentence carrying one.
+
+**Achievements rendering (Stage 3a).** Frontend rendering of the `achievements` field is a named Stage 3a addition - the single deliberate exception to this pass's zero-frontend rule. Until then the field is served, audited and pinned by tests, but no frontend file renders it.
 
 ## 6. Validation: one guard set, per narrative
 
 Each returned sentence (`warning`, `contextNote`) is validated against the facts of the sections the model received:
 
 - `checker.mjs` guards: price-plus-hour pairs against the day curve, battery SOC and state claims against the section battery values.
-- `narrative-guards.mjs` guards: tomorrow-price claims while unpublished, prices for days beyond tomorrow, arithmetic expressions, internal system vocabulary, NaN or Infinity.
-- On failure: regenerate once; on second failure serve the card without the failing sentence. Never serve a mismatched narrative.
+- `narrative-guards.mjs` guards: tomorrow-price claims while unpublished (including the "day after" and "next day" paraphrases), prices for days beyond tomorrow, arithmetic expressions, internal system vocabulary, NaN or Infinity, figures of any kind (`guardNoFigures`), and register violations - exclamation marks and flattery (`guardRegister`). The action-restatement ban (`guardActionRestatement`) keeps its contextNote scope, its figure class now covered globally by `guardNoFigures`; the no-opportunity and deferral ban (`guardNoOpportunityPhrasing`) applies to every model-authored slot.
+- On failure: the server regenerates once and validates the second output in full. Slots failing in the second attempt are dropped; sentences that passed only in the first attempt are not carried over - the second output replaces the first wholesale. This is a deliberate simplicity decision. The card is then served without the failing sentence; a mismatched narrative is never served.
 
 ## 7. Constants (ENV-overridable, one definition each, in advisory-constants.mjs)
 
@@ -313,6 +336,8 @@ Each returned sentence (`warning`, `contextNote`) is validated against the facts
 
 Checker comparison constants stay in `checker.mjs` only.
 
+**Stage note (this pass).** The two new achievement constants, `ACHIEVEMENT_MIN_SOLAR_SHARE_PCT` (default 40) and `ACHIEVEMENT_MIN_BATTERY_EARN_EUR` (default €1.00), live in `advisory-core.mjs` for now; `checker.mjs` and `advisory-constants.mjs` stay byte identical to the repo copies. The constants fold into `advisory-constants.mjs` at Stage 3a, ENV-overridable there as `EMS_ACHIEVEMENT_MIN_SOLAR_SHARE_PCT` and `EMS_ACHIEVEMENT_MIN_BATTERY_EARN_EUR`.
+
 ## 8. Pinned acceptance fixtures (sentences that must survive)
 
 - **F1 poor day:** a coming_days rain day must yield the served poor-day advice line ("With rain expected, it is not a good day to run your large appliances."), with kWh verbatim from the facts.
@@ -327,3 +352,9 @@ Checker comparison constants stay in `checker.mjs` only.
 - Money: euro sign flush against the amount (€0.36), two decimals when nonzero at two decimals, more only when two would show €0.00. Raw numbers travel in the payload; display strings compose at display time.
 - Titles never end in a period; descriptions always do; every sentence opens with a capital letter or a legitimate figure or currency symbol.
 - English only; household register; no operator abstractions; no internal vocabulary in user-facing text.
+
+## 10. Known limitations
+
+- **Qualitative duplication (C21 class).** A model slot that restates served row content without figures ("Your own solar carried the house for much of the day") is not machine-guarded: no guard detects duplication or paraphrase of served sentences. This relies on the production style brief and fixture stub discipline.
+- **`guidance.day_cheapest_average_eur`.** Served null until the facts layer supplies the day-cheapest window's average; folding it in is a Stage 3a task.
+- **`composeAdvisoryCard` requires `facts.nowIso`.** The request's local moment travels as pure data in the facts layer, injected by `generateAdvisoryCard`; a direct call without it throws a clear error naming the missing fact.
