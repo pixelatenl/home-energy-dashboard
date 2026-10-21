@@ -228,10 +228,19 @@ function SummaryInsight({
   );
 
   // The structured decision payload is the only insight format; no
-  // primary action means no advice rows, but the panel keeps its
-  // header with the provenance chip and refresh control so the
-  // regenerate path stays reachable.
-  if (!insight?.primary_action) {
+  // primary action and no composed rows means no advice rows, but the
+  // panel keeps its header with the provenance chip and refresh control
+  // so the regenerate path stays reachable. The advisory core serves
+  // no primary action on quiet days while its rows are real, so the
+  // card renders from the rows alone; the error state keeps its honest
+  // empty panel - the insight itself is missing there.
+  const content = insight === null ? null : buildAdvisoryContent(insight);
+  if (
+    insight === null ||
+    content === null ||
+    (!insight.primary_action &&
+      (content.cards.length === 0 || insight.state === "error"))
+  ) {
     return (
       <SkeletonReveal loading={loading} skeleton={skeleton}>
         <div className="glass-card glass-inset h-full min-h-36 rounded-lg bg-gradient-to-bl from-[#0d0805] via-[#241610] to-[#4a2c14] p-4 text-card-foreground shadow-card">
@@ -251,8 +260,6 @@ function SummaryInsight({
       </SkeletonReveal>
     );
   }
-
-  const content = buildAdvisoryContent(insight);
 
   return (
     <SkeletonReveal loading={loading} skeleton={skeleton}>

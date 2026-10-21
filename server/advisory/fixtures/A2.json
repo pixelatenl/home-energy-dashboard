@@ -1,0 +1,38 @@
+{
+  "name": "A2 action day",
+  "now": "2026-10-20T13:00:00+02:00",
+  "facts": {
+    "lowPrice": { "timestamp": "12:00", "price": 0.25 },
+    "peakPrice": { "timestamp": "19:00", "price": 0.47 },
+    "dayAverageEur": 0.38,
+    "cheapestWindow": { "start": "14:00", "end": "17:00", "averageEur": 0.26 },
+    "spreadPerKwhEur": 0.12,
+    "practicalBenefitEur": 0.12,
+    "co2IntensityGPerKwh": 133,
+    "solarToday": { "actualKwh": 8.6, "forecastKwh": 14.4 },
+    "battery": { "socPct": 72, "state": "charging", "todayInKwh": 4.3, "todayOutKwh": 2.4 },
+    "candidates": [
+      { "label": "dishwasher", "kwh": 1.07, "savingEur": 0.12, "window": "14:00-17:00", "worthwhile": true }
+    ],
+    "dayCheapestWindow": "12:00-15:00",
+    "dayCheapestPassed": false,
+    "tomorrow": {
+      "pricesPublished": true,
+      "prices": [0.34, 0.33, 0.32, 0.31, 0.30, 0.29, 0.28, 0.27, 0.26, 0.25, 0.24, 0.24, 0.25, 0.26, 0.27, 0.28, 0.29, 0.30, 0.31, 0.32, 0.33, 0.34, 0.35, 0.34],
+      "averageEur": 0.29,
+      "window": "13:00-16:00",
+      "solarKwh": 12.5,
+      "solarScore": 45,
+      "lowSolar": false,
+      "compareSolarKwh": 14.4
+    },
+    "comingDays": [
+      { "weekday": "Wednesday", "date": "2026-10-21", "solarKwh": 8.4, "solarScore": 20, "condition": "cloudy" },
+      { "weekday": "Friday", "date": "2026-10-23", "solarKwh": 1.2, "solarScore": 5, "condition": "rain" }
+    ]
+  },
+  "stub": {
+    "warning": null,
+    "contextNote": null
+  }
+}

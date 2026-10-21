@@ -95,8 +95,12 @@ export function buildAdvisoryContent(
   insight: SummaryInsight,
 ): AdvisoryContent {
   const primary = insight.primary_action ?? null
+  // The honest no-opportunity signal comes from the payload flag, also
+  // when the advisory core serves no primary action at all (a quiet day
+  // carries no action to render, but the quiet-day rows still do).
   const noOpportunity =
-    primary !== null && (insight.no_opportunity ?? primary.saving_eur === 0)
+    insight.no_opportunity === true ||
+    (primary !== null && (insight.no_opportunity ?? primary.saving_eur === 0))
   const belowThreshold = (insight.candidates ?? []).filter(
     (candidate) => candidate.below_threshold,
   )
@@ -249,6 +253,20 @@ export function buildAdvisoryContent(
         muted: true,
       })
     }
+  }
+
+  // The deterministic achievement sentences (contract section 4):
+  // recap mode only, served verbatim - the sentences carry their own
+  // periods. Muted recap rows in the Today block, in the existing
+  // glass row language: no chip, no icons, no punctuation changes. An
+  // empty or absent array renders nothing, with no layout shift.
+  for (const sentence of insight.achievements ?? []) {
+    todayItems.push({
+      valueChip: null,
+      sentence,
+      supporting: [],
+      muted: true,
+    })
   }
 
   // The quiet-day summary as full items on the Today card, in the

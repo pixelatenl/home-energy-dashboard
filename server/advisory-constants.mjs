@@ -16,3 +16,18 @@ export const GUIDANCE_MIN_SPREAD_EUR = 0.03;
 // evening-window gate. Never compare a window's benefit against the
 // detectable spread to decide whether to command.
 export const PRACTICAL_MIN_ADVANTAGE_EUR = 0.05;
+
+// The recap solar achievement line fires at or above this percent of today's usage.
+export const ACHIEVEMENT_MIN_SOLAR_SHARE_PCT =
+  Number.parseInt(process.env.EMS_ACHIEVEMENT_MIN_SOLAR_SHARE_PCT ?? "", 10) ||
+  40;
+
+// The recap battery achievement line fires at or above this euro amount.
+const ACHIEVEMENT_MIN_BATTERY_EARN_EUR_RAW = Number.parseFloat(
+  process.env.EMS_ACHIEVEMENT_MIN_BATTERY_EARN_EUR ?? ""
+);
+export const ACHIEVEMENT_MIN_BATTERY_EARN_EUR =
+  Number.isFinite(ACHIEVEMENT_MIN_BATTERY_EARN_EUR_RAW) &&
+  ACHIEVEMENT_MIN_BATTERY_EARN_EUR_RAW > 0
+    ? ACHIEVEMENT_MIN_BATTERY_EARN_EUR_RAW
+    : 1.0;

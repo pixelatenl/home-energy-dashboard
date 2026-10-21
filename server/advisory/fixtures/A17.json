@@ -1,0 +1,40 @@
+{
+  "name": "A17 ordinary day recap",
+  "now": "2026-10-20T19:00:00+02:00",
+  "facts": {
+    "lowPrice": { "timestamp": "13:00", "price": 0.31 },
+    "peakPrice": { "timestamp": "08:00", "price": 0.44 },
+    "dayAverageEur": 0.36,
+    "cheapestWindow": { "start": "21:00", "end": "00:00", "averageEur": 0.3 },
+    "spreadPerKwhEur": 0.14,
+    "practicalBenefitEur": 0.02,
+    "co2IntensityGPerKwh": 210,
+    "solarToday": { "actualKwh": 3.1, "forecastKwh": 4.0 },
+    "battery": { "socPct": 55, "state": "idle", "todayInKwh": 1.1, "todayOutKwh": 0.9 },
+    "candidates": [],
+    "dayCheapestWindow": "13:00-16:00",
+    "dayCheapestPassed": true,
+    "solar_share_pct": 18,
+    "battery_earned_eur": null,
+    "remainingWindow": { "start": "21:00", "end": "00:00", "averageEur": 0.3, "practicalBenefitEur": 0.02 },
+    "remainingAverageEur": 0.33,
+    "dayUsageKwh": 17.5,
+    "dayCostEur": 2.9,
+    "tomorrow": {
+      "pricesPublished": false,
+      "prices": null,
+      "solarKwh": 9.0,
+      "solarScore": 30,
+      "lowSolar": false,
+      "compareSolarKwh": 4.0
+    },
+    "comingDays": [
+      { "weekday": "Wednesday", "date": "2026-10-21", "solarKwh": 6.4, "solarScore": 25, "condition": "cloudy" },
+      { "weekday": "Friday", "date": "2026-10-23", "solarKwh": 1.2, "solarScore": 5, "condition": "rain" }
+    ]
+  },
+  "stub": {
+    "warning": null,
+    "contextNote": "An ordinary day: the house drew steadily from the grid through the afternoon."
+  }
+}
