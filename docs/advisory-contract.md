@@ -2,6 +2,8 @@
 
 Version 2.0, 20 October 2026. This document is the source of truth for the AI Advisory card, its model context, its model output and the separation of the four AI consumers. It supersedes the advisory sections of `docs/advisory-spec.md` for everything listed here; the spec keeps its purpose statement, the rendering structure and the visual rules. Every prompt that touches the advisory must respect this contract.
 
+**Stage 3b note.** The legacy summary insight path is removed. The advisory core under `server/advisory/`, wrapped by `server/advisory-adapter.mjs`, is the only advisory pipeline; every insight endpoint serves the composed card through the adapter, and the model-authored slots are exactly `warning` and `contextNote`.
+
 ## 1. Purpose
 
 The AI Advisory card helps the household interpret the energy data on screen and act on it: what is happening today, what happened today after the evening pivot, what might happen tomorrow, and what the rest of the five-day forecast holds. It states when to run large appliances, when prices are cheapest, whether off-peak prices are low or high, and how to avoid cost by shifting usage. It is honest by construction: every number is server-computed, and the model writes prose only.

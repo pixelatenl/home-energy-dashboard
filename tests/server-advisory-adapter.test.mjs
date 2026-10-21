@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   ADVISORY_CARD_STYLE_BRIEF,
-  advisoryCoreEnabled,
   advisorySectionsContext,
   prepareAdvisoryRequest,
   serveAdvisoryCard,
@@ -10,11 +9,11 @@ import {
 import { getSummaryInsight } from "../server/ai.mjs";
 import { localIsoWithOffset } from "../server/time.mjs";
 
-// The advisory core adapter (Stage 3a): the switch, the style brief,
-// the sections context projection and the transport merge. The switch
-// defaults off; the merge serves the core's composed card content with
-// the transport fields the summary insight path owns, composing from
-// the live facts so the rows never go stale between generations.
+// The advisory adapter: the style brief, the sections context
+// projection and the transport merge. The merge serves the core's
+// composed card content with the transport fields the summary insight
+// path owns, composing from the live facts so the rows never go stale
+// between generations.
 
 // A plan-mode request fixture: the A1-shaped facts with the day-cheapest
 // average the facts layer supplies, and a quiet-day narrative.
@@ -88,31 +87,6 @@ function insightFixture(narrative) {
     error: null,
   };
 }
-
-describe("advisoryCoreEnabled: the switch, default off", () => {
-  it("is off without the environment variable", () => {
-    delete process.env.EMS_ADVISORY_CORE;
-    assert.equal(advisoryCoreEnabled(), false);
-  });
-
-  it("is on for 1, true and on, any case", () => {
-    process.env.EMS_ADVISORY_CORE = "1";
-    assert.equal(advisoryCoreEnabled(), true);
-    process.env.EMS_ADVISORY_CORE = "TRUE";
-    assert.equal(advisoryCoreEnabled(), true);
-    process.env.EMS_ADVISORY_CORE = "on";
-    assert.equal(advisoryCoreEnabled(), true);
-    delete process.env.EMS_ADVISORY_CORE;
-  });
-
-  it("is off for any other value", () => {
-    process.env.EMS_ADVISORY_CORE = "0";
-    assert.equal(advisoryCoreEnabled(), false);
-    process.env.EMS_ADVISORY_CORE = "yes please";
-    assert.equal(advisoryCoreEnabled(), false);
-    delete process.env.EMS_ADVISORY_CORE;
-  });
-});
 
 describe("the style brief", () => {
   it("states the two model-authored slots and the register rules", () => {
@@ -268,26 +242,20 @@ describe("getSummaryInsight with the advisory request", () => {
     }
   });
 
-  it("keeps the legacy camelCase shape without an advisory request", async () => {
-    process.env.MISTRAL_DAILY_CALL_LIMIT = "0";
-    try {
-      const result = await getSummaryInsight(
-        {
-          summary: null,
-          weatherDaily: null,
-          priceParts: null,
-          extras: {},
-          signature: "test-signature",
-          asOf: "2026-10-20T15:28:00.000Z",
-        },
-        {}
-      );
-      assert.equal(result.primaryAction, null);
-      assert.equal(result.warning, null);
-      assert.equal(result.state, "error");
-      assert.equal(result.error, "daily_limit_reached");
-    } finally {
-      delete process.env.MISTRAL_DAILY_CALL_LIMIT;
-    }
+  it("fails soft without an advisory request", async () => {
+    const result = await getSummaryInsight(
+      {
+        summary: null,
+        weatherDaily: null,
+        priceParts: null,
+        extras: {},
+        signature: "test-signature",
+        asOf: "2026-10-20T15:28:00.000Z",
+      },
+      { force: true }
+    );
+    assert.equal(result.narrative, null);
+    assert.equal(result.state, "error");
+    assert.equal(result.error, "ai_unavailable");
   });
 });
