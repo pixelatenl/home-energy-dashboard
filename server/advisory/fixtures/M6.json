@@ -36,7 +36,7 @@
       "today": "The battery option comes out at -€0.0036 today, so nothing is worth shifting a run for. The cheapest window is 11:00-14:00, averaging €0.23 against a day average of €0.31. Your battery is charging at 72% and today's solar is on track for about 9.5 kWh, so the afternoon is largely covered.",
       "tomorrow": "Tomorrow brings much less sun than today: 2.2 kWh against 8.18 kWh.",
       "fri": "Friday looks like the week's weakest solar day at 2.29 kWh. With rain expected, it is not a good day to run your large appliances.",
-      "sun": "Sunday looks the best for solar: score 26 and 10.87 kWh expected."
+      "sun": "Sunday looks the best for solar: score 26 and 10.87 kWh expected. With 10.87 kWh expected, it is a good day to run your large appliances on solar."
     }
   },
   "expected_narrative_verdicts": {

@@ -34,7 +34,7 @@
       "today": "You could save €0.51 by shifting your laundry to the afternoon.",
       "tomorrow": "Tomorrow brings much less sun than today: 2.2 kWh against 8.18 kWh.",
       "fri": "Friday looks like the week's weakest solar day at 2.29 kWh. With rain expected, it is not a good day to run your large appliances.",
-      "sun": "Sunday looks the best for solar: score 26 and 10.87 kWh expected."
+      "sun": "Sunday looks the best for solar: score 26 and 10.87 kWh expected. With 10.87 kWh expected, it is a good day to run your large appliances on solar."
     }
   },
   "expected_narrative_verdicts": {

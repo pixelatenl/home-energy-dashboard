@@ -238,8 +238,9 @@ test("monologue sections are labeled TODAY, TOMORROW and the weekday short names
   assert.equal(sections[0].budget, 3); // quiet plan day
   assert.equal(sections[1].budget, 3);
   // The rain-poorest day carries the weakest-day line plus the pinned
-  // rain-day advice (budget guidance 2); the best day keeps the forecast
-  // framing (budget 1).
+  // rain-day advice; the strong best day carries the forecast framing
+  // plus the pinned positive advice (budget guidance 2 for both
+  // advice-carrying days).
   assert.deepEqual(sections[2].fallback_sentences, [
     "Friday looks like the week's weakest solar day at 2.29 kWh.",
     RAIN_DAY_ADVICE,
@@ -248,8 +249,154 @@ test("monologue sections are labeled TODAY, TOMORROW and the weekday short names
   assert.equal(sections[2].budget, 2);
   assert.deepEqual(sections[3].fallback_sentences, [
     "Sunday looks the best for solar: score 26 and 10.87 kWh expected.",
+    "With 10.87 kWh expected, it is a good day to run your large appliances on solar.",
   ]);
-  assert.equal(sections[3].budget, 1);
+  assert.equal(
+    sections[3].facts.advice,
+    "With 10.87 kWh expected, it is a good day to run your large appliances on solar."
+  );
+  assert.equal(sections[3].budget, 2);
+});
+
+test("weekday sections at or above a solar score of 20 serve the positive advice, below it none", async () => {
+  // The owner decision of 22 October: the threshold itself (20) and a
+  // strong day (24) serve the advice; a day below it (14) serves none.
+  // Sunday is rain but not the week's poorest - the exact shape of the
+  // live finding - so the positive advice serves, never the negative.
+  const facts = baseFacts({
+    comingDays: [
+      { weekday: "Saturday", date: "2026-10-24", solarKwh: 6.0, solarScore: 20, condition: "cloudy" },
+      { weekday: "Sunday", date: "2026-10-25", solarKwh: 10.05, solarScore: 24, condition: "rain" },
+      { weekday: "Monday", date: "2026-10-26", solarKwh: 3.0, solarScore: 14, condition: "sunny" },
+    ],
+  });
+  const sat = section("sat", facts);
+  assert.equal(
+    sat.facts.advice,
+    "With 6 kWh expected, it is a good day to run your large appliances on solar."
+  );
+  assert.ok(sat.fallback_sentences.includes(sat.facts.advice));
+  assert.deepEqual(sat.notes, [
+    { required: sat.facts.advice, append: sat.facts.advice },
+  ]);
+  assert.equal(sat.budget, 2);
+  const sun = section("sun", facts);
+  assert.equal(
+    sun.facts.advice,
+    "With 10.05 kWh expected, it is a good day to run your large appliances on solar."
+  );
+  const mon = section("mon", facts);
+  assert.equal(mon.facts.advice, undefined);
+  assert.ok(mon.fallback_sentences.every((s) => !s.includes("good day to run")));
+  assert.equal(mon.budget, 1);
+  // The woven advice passes parity: accepted, served exactly once.
+  const stub = async () => ({
+    narratives: {
+      sat: `Saturday brings 6 kWh of sun. With 6 kWh expected, it is a good day to run your large appliances on solar.`,
+      sun: `Sunday looks the best for solar: score 24 and 10.05 kWh expected. With 10.05 kWh expected, it is a good day to run your large appliances on solar.`,
+    },
+  });
+  const { payload, sections: report } = await generateMonologue(
+    buildSections(facts, NOW),
+    facts,
+    NOW,
+    stub
+  );
+  for (const key of ["sat", "sun"]) {
+    const entry = report.find((s) => s.key === key);
+    assert.equal(entry.offered, true, key);
+    assert.equal(entry.ok, true, JSON.stringify(entry.reasons));
+  }
+  const satPayload = payload.find((s) => s.label === "SAT");
+  assert.equal(
+    satPayload.narrative.split(sat.facts.advice).length - 1,
+    1,
+    "the woven advice is not appended a second time"
+  );
+  const sunPayload = payload.find((s) => s.label === "SUN");
+  assert.equal(
+    sunPayload.narrative.split(sun.facts.advice).length - 1,
+    1,
+    "the woven advice is not appended a second time"
+  );
+  const audit = auditMonologueText(payload);
+  assert.equal(audit.ok, true, JSON.stringify(audit.failures));
+});
+
+test("the negative rain advice keeps precedence over the positive advice", () => {
+  // A rain-poorest day at or above the score threshold serves only the
+  // negative advice - never both.
+  const facts = baseFacts({
+    comingDays: [
+      { weekday: "Friday", date: "2026-10-23", solarKwh: 2.29, solarScore: 28, condition: "rain" },
+      { weekday: "Sunday", date: "2026-10-25", solarKwh: 10.87, solarScore: 26, condition: "sunny" },
+    ],
+  });
+  const fri = section("fri", facts);
+  assert.equal(fri.facts.advice, RAIN_DAY_ADVICE);
+  assert.ok(fri.fallback_sentences.includes(RAIN_DAY_ADVICE));
+  assert.ok(
+    fri.fallback_sentences.every(
+      (s) => !s.includes("good day to run your large appliances on solar")
+    ),
+    "the positive advice never serves beside the negative advice"
+  );
+  assert.deepEqual(fri.notes, [
+    { required: RAIN_DAY_ADVICE, append: RAIN_DAY_ADVICE },
+  ]);
+  assert.equal(fri.budget, 2);
+});
+
+test("weekday narratives may not conclude there is nothing worth doing without the negative advice", () => {
+  // A neutral weekday section (not the week's best, not rain-poorest)
+  // so the named weekday reason is the only rejection in play.
+  const facts = baseFacts({
+    comingDays: [
+      { weekday: "Friday", date: "2026-10-23", solarKwh: 2.29, solarScore: 8, condition: "rain" },
+      { weekday: "Saturday", date: "2026-10-24", solarKwh: 6.0, solarScore: 22, condition: "cloudy" },
+      { weekday: "Sunday", date: "2026-10-25", solarKwh: 10.87, solarScore: 26, condition: "sunny" },
+    ],
+  });
+  const sat = section("sat", facts);
+  assert.equal(sat.facts.advice !== undefined, true);
+  for (const text of [
+    "The forecast is rain, so there is nothing worth doing.",
+    "The day's figures are strong, yet the forecast is rain, so there is nothing worth doing.",
+    "With rain in the forecast, the day is not worth acting on.",
+    "The rain means there is nothing to act on.",
+  ]) {
+    const verdict = validateSectionNarrative(text, sat);
+    assert.equal(verdict.ok, false, `expected rejection: ${text}`);
+    assert.ok(
+      verdict.reasons.some((r) => r.includes("without the served negative advice")),
+      `expected a named weekday reason: ${text}`
+    );
+  }
+  // The rain-poorest day carries the negative advice: the phrasing is
+  // honest there and passes.
+  const fri = section("fri", facts);
+  assert.equal(fri.facts.advice, RAIN_DAY_ADVICE);
+  const verdict = validateSectionNarrative(
+    "With rain expected, there is nothing worth doing.",
+    fri
+  );
+  assert.equal(verdict.ok, true, JSON.stringify(verdict.reasons));
+});
+
+test("the no-opportunity phrasing ban leaves TODAY and TOMORROW untouched", () => {
+  const facts = baseFacts();
+  const today = section("today", facts);
+  const todayVerdict = validateSectionNarrative(
+    "The remaining window is not worth acting on, so there is nothing worth doing.",
+    today
+  );
+  assert.equal(todayVerdict.ok, true, JSON.stringify(todayVerdict.reasons));
+  const tomorrow = section("tomorrow", facts);
+  const tomorrowVerdict = validateSectionNarrative(
+    "Tomorrow evening is not worth acting on.",
+    tomorrow
+  );
+  assert.equal(tomorrowVerdict.ok, true, JSON.stringify(tomorrowVerdict.reasons));
 });
 
 test("a dry poorest day carries no rain-day advice", () => {
@@ -693,6 +840,13 @@ test("the style brief carries the tuning register: generic imperatives without t
       "Describe the weather only as the served condition states; add no other weather words."
     )
   );
+  // The owner decision of 22 October: the condition never carries the
+  // judgment; a rainy day can still deliver strong solar output.
+  assert.ok(
+    brief.includes(
+      "The condition describes the weather, never the production; never conclude from the condition alone that there is nothing worth doing; a rainy day can still deliver strong solar output."
+    )
+  );
   // The register stays uncontracted.
   assert.ok(brief.includes("No contractions: write 'it is', not 'it's'."));
   // Self-containment: the brief never invites cross-day mentions or
@@ -819,7 +973,8 @@ test("generateMonologue accepts clean narratives on the first call", async () =>
   assert.equal(sun.ok, true);
   const sunPayload = payload.find((s) => s.label === "SUN");
   assert.equal(sunPayload.narrative, null);
-  assert.equal(sunPayload.fallback_sentences.length, 1);
+  // The strong Sunday serves its day line plus the positive advice.
+  assert.equal(sunPayload.fallback_sentences.length, 2);
 });
 
 test("generateMonologue retries once per section, then serves the fallback", async () => {
