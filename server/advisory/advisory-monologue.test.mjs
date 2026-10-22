@@ -10,7 +10,7 @@ import assert from "node:assert/strict";
 import { buildSections, NO_OPPORTUNITY_STATEMENT } from "./advisory-core.mjs";
 import {
   MONOLOGUE_STYLE_BRIEF,
-  HORIZON_SENTENCE,
+  HORIZON_NOTE,
   TOMORROW_UNPUBLISHED_SENTENCE,
   LOW_SOLAR_GRID_NOTE,
   RAIN_DAY_ADVICE,
@@ -423,7 +423,7 @@ test("a low-solar unpublished TOMORROW carries the hedged grid note in facts and
   assert.deepEqual(tomorrow.fallback_sentences, [
     TOMORROW_UNPUBLISHED_SENTENCE,
     "Little sun is forecast tomorrow: 2.2 kWh against 8.18 kWh today, so the house will lean on the grid and prices are usually firmer in that case; a better picture follows once tomorrow's prices are published.",
-    HORIZON_SENTENCE,
+    HORIZON_NOTE,
   ]);
 });
 
@@ -443,8 +443,72 @@ test("a non-low-solar unpublished TOMORROW carries no grid note and the plain so
   assert.deepEqual(tomorrow.fallback_sentences, [
     TOMORROW_UNPUBLISHED_SENTENCE,
     "The forecast is 11.99 kWh of sun, against 8.18 kWh today.",
-    HORIZON_SENTENCE,
+    HORIZON_NOTE,
   ]);
+});
+
+test("the horizon note serves with a published TOMORROW whenever sections beyond tomorrow exist", () => {
+  // The owner decision of 22 October: parity with the retired card -
+  // the note serves on the beyond-tomorrow condition alone, regardless
+  // of tomorrow's publication status.
+  const facts = baseFacts({
+    tomorrow: {
+      pricesPublished: true,
+      prices: [0.31, 0.3, 0.29],
+      averageEur: 0.29,
+      window: "13:00-16:00",
+      windowAverageEur: 0.24,
+      weekday: "Wednesday",
+      solarKwh: 12.5,
+      solarScore: 45,
+      lowSolar: false,
+      compareSolarKwh: 8.18,
+    },
+  });
+  const tomorrow = section("tomorrow", facts);
+  assert.equal(tomorrow.facts.horizon_note, HORIZON_NOTE);
+  assert.equal(
+    tomorrow.fallback_sentences[tomorrow.fallback_sentences.length - 1],
+    HORIZON_NOTE,
+    "the note is the final fallback sentence"
+  );
+  assert.ok(
+    tomorrow.notes.some((note) => note.required === HORIZON_NOTE),
+    "the parity append guarantees the note in the served narrative"
+  );
+});
+
+test("the horizon note is absent when no sections beyond tomorrow exist", () => {
+  // Published and unpublished alike: without beyond-tomorrow sections
+  // the TOMORROW section carries no horizon note at all.
+  const published = baseFacts({
+    comingDays: [],
+    tomorrow: {
+      pricesPublished: true,
+      prices: [0.31, 0.3, 0.29],
+      averageEur: 0.29,
+      window: "13:00-16:00",
+      windowAverageEur: 0.24,
+      weekday: "Wednesday",
+      solarKwh: 12.5,
+      solarScore: 45,
+      lowSolar: false,
+      compareSolarKwh: 8.18,
+    },
+  });
+  const publishedTomorrow = section("tomorrow", published);
+  assert.equal(publishedTomorrow.facts.horizon_note, undefined);
+  assert.ok(!publishedTomorrow.fallback_sentences.includes(HORIZON_NOTE));
+  assert.ok(!publishedTomorrow.notes.some((n) => n.required === HORIZON_NOTE));
+  const unpublished = baseFacts({ comingDays: [] });
+  const unpublishedTomorrow = section("tomorrow", unpublished);
+  assert.ok(!unpublishedTomorrow.fallback_sentences.includes(HORIZON_NOTE));
+  assert.ok(
+    unpublishedTomorrow.fallback_sentences.includes(
+      TOMORROW_UNPUBLISHED_SENTENCE
+    ),
+    "tomorrow's own unpublished sentence still serves"
+  );
 });
 
 test("a published tomorrow serves its average, window and window average pre-formatted", () => {
@@ -971,7 +1035,7 @@ test("content parity: missing notes are appended verbatim, woven notes are not d
     1,
     "the woven grid note is not appended a second time"
   );
-  assert.ok(tomorrow.narrative.includes(HORIZON_SENTENCE));
+  assert.ok(tomorrow.narrative.includes(HORIZON_NOTE));
   // FRI: the pinned rain-day advice is appended.
   const fri = payload.find((s) => s.label === "FRI");
   assert.ok(fri.narrative.includes(RAIN_DAY_ADVICE));
@@ -994,10 +1058,37 @@ test("content parity: the grid note rides the composed hedged sentence when not 
     `${LOW_SOLAR_GRID_NOTE}.`;
   assert.ok(tomorrow.narrative.includes("Tomorrow will be dull."));
   assert.ok(tomorrow.narrative.includes(expectedAppend));
-  assert.ok(tomorrow.narrative.includes(HORIZON_SENTENCE));
+  assert.ok(tomorrow.narrative.includes(HORIZON_NOTE));
   const report = sections.find((s) => s.key === "tomorrow");
   assert.equal(report.sentenceCount, 3); // dull + hedged + horizon, budget 3
   // The appended prose passes the sentence audit.
+  const audit = auditMonologueText(payload);
+  assert.equal(audit.ok, true, JSON.stringify(audit.failures));
+});
+
+test("content parity: the woven horizon note is not appended a second time", async () => {
+  const facts = baseFacts();
+  const stub = async () => ({
+    narratives: {
+      tomorrow: `Tomorrow's prices are not published yet. ${HORIZON_NOTE}`,
+    },
+  });
+  const { payload, sections } = await generateMonologue(
+    buildSections(facts, NOW),
+    facts,
+    NOW,
+    stub
+  );
+  const tomorrow = payload.find((s) => s.label === "TOMORROW");
+  assert.equal(
+    tomorrow.narrative.split(HORIZON_NOTE).length - 1,
+    1,
+    "the woven horizon note serves exactly once"
+  );
+  const report = sections.find((s) => s.key === "tomorrow");
+  assert.equal(report.offered, true);
+  assert.equal(report.ok, true);
+  // The woven prose passes the sentence audit.
   const audit = auditMonologueText(payload);
   assert.equal(audit.ok, true, JSON.stringify(audit.failures));
 });

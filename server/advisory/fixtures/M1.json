@@ -34,7 +34,7 @@
     "contextNote": null,
     "narratives": {
       "today": "Today's lowest price is €0.23 at 13:00 and the peak is €0.46 at 19:00. Run your large appliances between 11:00 and 14:00 to pay today's lowest price, about €0.23/kWh against a day average of €0.31. Your dishwasher used 1.07 kWh today; shifting it into that window saves €0.12. Your battery is charging at 72% and today's solar is on track for about 9.5 kWh, so the afternoon is largely covered. On its own that is small, but it is the kind of shift that quietly adds up when it becomes a habit.",
-      "tomorrow": "Tomorrow brings much less sun than today: 2.2 kWh against 8.18 kWh, so the house will lean on the grid and prices are usually firmer in that case; a better picture follows once tomorrow's prices are published. Beyond tomorrow, grid prices are not yet published.",
+      "tomorrow": "Tomorrow brings much less sun than today: 2.2 kWh against 8.18 kWh, so the house will lean on the grid and prices are usually firmer in that case; a better picture follows once tomorrow's prices are published. Note: Beyond tomorrow, grid prices are not yet published; there the solar forecast is the deciding signal.",
       "fri": "Friday looks like the week's weakest solar day at 2.29 kWh. With rain expected, it is not a good day to run your large appliances.",
       "sun": "Sunday looks the best for solar: score 26 and 10.87 kWh expected."
     }
