@@ -11,8 +11,17 @@ import {
   buildSections,
   composeAdvisoryCard,
 } from "./advisory/advisory-core.mjs";
+import { generateMonologue } from "./advisory/advisory-monologue.mjs";
 import { buildAdvisoryFacts } from "./facts.mjs";
 import { localIsoWithOffset } from "./time.mjs";
+
+// The monologue switch: EMS_ADVISORY_MONOLOGUE, default off, read once
+// at startup. While off the summary payload carries no monologue field
+// and is identical to today's.
+const MONOLOGUE_SWITCH =
+  (process.env.EMS_ADVISORY_MONOLOGUE ?? "").trim().toLowerCase();
+export const ADVISORY_MONOLOGUE_ENABLED =
+  MONOLOGUE_SWITCH === "1" || MONOLOGUE_SWITCH === "true";
 
 // The style brief for the modelStub, from contract sections 3 and 4: the
 // sections model is the input, the output carries exactly the two
@@ -86,4 +95,41 @@ export function serveAdvisoryCard(request, insight) {
     stale: insight?.stale ?? (insight?.state ?? "error") === "reasoning",
     error: insight?.error ?? null,
   };
+}
+
+// The monologue payload (contract section 4, the Stage 4 monologue
+// specification): one entry per section with its label, narrative,
+// fallback sentences and facts. The section facts are the core's
+// pre-formatted figure strings; nowIso is injected here by the adapter
+// - the core stays pure, the request's moment travels as data. Absent
+// keys read as null. The model stub is a parameter, never a network
+// call: without one every section serves its deterministic fallback
+// sentences, so the switched-on summary path draws no model budget.
+export async function serveAdvisoryMonologue(request, modelStub = null) {
+  const sections = buildSections(request.facts, request.nowIso);
+  const stub = modelStub ?? (async () => null);
+  const { payload } = await generateMonologue(
+    sections,
+    request.facts,
+    request.nowIso,
+    stub
+  );
+  return (Array.isArray(payload) ? payload : []).map((section) => ({
+    label: section?.label ?? null,
+    narrative: section?.narrative ?? null,
+    fallback_sentences: section?.fallback_sentences ?? null,
+    facts: { ...(section?.facts ?? {}), nowIso: request.nowIso },
+  }));
+}
+
+// The summary API's advisory fields: the served insight card always,
+// the monologue only while the switch is on. The summary route spreads
+// this object into its response, so with the switch off the payload is
+// identical to today's - no monologue key at all.
+export async function serveSummaryAdvisory(request, insight, modelStub = null) {
+  const fields = { insight: serveAdvisoryCard(request, insight) };
+  if (ADVISORY_MONOLOGUE_ENABLED) {
+    fields.monologue = await serveAdvisoryMonologue(request, modelStub);
+  }
+  return fields;
 }
