@@ -3,14 +3,15 @@ import AdvisoryDayChip from "@/components/AdvisoryDayChip";
 import type { SummaryMonologueSection } from "@/lib/api";
 
 // The advisory monologue card (contract section 4, Stage 4): the same
-// /api/summary payload the advisory card reads, rendered as prose
-// framed exactly like the advisory card's day cards - each section's
-// served day label as the same glass chip the advisory card uses,
-// the narrative (or the deterministic fallback sentences) as one
-// flowing paragraph beneath it, and hairline dividers between the
-// sections (the owner decision of 22 October: visual parity with the
-// legacy card's section framing, superseding the earlier no-chips
-// rule). No row titles, no muted notes, no confidence: the
+// /api/summary payload the advisory card reads, mirrored onto the
+// advisory area's own structure - the same area header, then one
+// card per monologue section in served order, each in the advisory
+// card's per-day card chrome with the served day label as the same
+// glass chip at the top-left and the narrative (or the deterministic
+// fallback sentences) as one flowing paragraph beneath it (the
+// owner decision of 22 October: one card per section, matching the
+// legacy per-day cards, superseding the interim all-sections-in-one
+// block). No row titles, no muted notes, no confidence: the
 // composition is the server's, and the card only presents it. The
 // facts object rides the payload for grounding and is never rendered.
 // The header keeps the advisory panel's own furniture: the
@@ -57,12 +58,14 @@ function sectionBody(section: SummaryMonologueSection): string {
   return "";
 }
 
-// One monologue section: the served day label as the advisory
-// card's own glass chip (never recomputed or localized on the
-// client), the body as a single flowing paragraph in the advisory
-// card's body-text register beneath it. A malformed section object
-// renders whatever it honestly has - chip alone, body alone, or
-// nothing - and never throws.
+// One monologue section: its own card, in the advisory card's per-day
+// card chrome - the same glass block surface, the served day label
+// as the advisory card's own glass chip at the top-left (never
+// recomputed or localized on the client), the body as a single
+// flowing paragraph in the advisory card's body-text register
+// beneath it. A malformed section object renders whatever it
+// honestly has - chip alone, body alone - and a section with
+// nothing to show renders no card at all; nothing throws.
 function MonologueSectionView({
   section,
 }: {
@@ -70,12 +73,11 @@ function MonologueSectionView({
 }) {
   const label = isText(section?.label) ? section.label : null;
   const body = sectionBody(section);
+  if (label === null && body === "") return null;
   return (
-    <div className="flex flex-col gap-1.5 py-2 first:pt-0 last:pb-0">
+    <div className={GLASS_BLOCK}>
       {label !== null && <AdvisoryDayChip label={label} />}
-      {body !== "" && (
-        <p className="text-sm leading-snug">{body}</p>
-      )}
+      {body !== "" && <p className="text-sm leading-snug">{body}</p>}
     </div>
   );
 }
@@ -136,20 +138,16 @@ function MonologueCard({
           </span>
         </span>
       </p>
-      {/* The sections render in the advisory card's own framing: one
-          glass block in the stat cards' surface, every section
-          separated by the same hairline divider the advisory card
-          draws between its advice units, the day chip on its own
-          line above its narrative - so the monologue reads as the
-          same design language as the legacy card below it. */}
-      <div className="mt-2">
-        <div className={GLASS_BLOCK}>
-          <div className="divide-y divide-white/15">
-            {safeSections.map((section, index) => (
-              <MonologueSectionView key={index} section={section} />
-            ))}
-          </div>
-        </div>
+      {/* The sections mirror the advisory area's own structure: the
+          same stacked rhythm (mt-2 space-y-2), one glass block per
+          section in served order - the day chip at the top-left, the
+          narrative beneath - so the monologue area reads as the same
+          design language as the legacy area below it, one card per
+          day. */}
+      <div className="mt-2 space-y-2">
+        {safeSections.map((section, index) => (
+          <MonologueSectionView key={index} section={section} />
+        ))}
       </div>
     </div>
   );
