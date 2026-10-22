@@ -202,6 +202,13 @@ export async function buildAdvisoryFacts(snapshot, loaders = {}) {
                   tomorrowWindow.end
                 )}`
               : null,
+          // The cheapest window's own average, so a tomorrow narrative
+          // attributes a price to the window from this value and never
+          // from the day average.
+          windowAverageEur:
+            published && tomorrowWindow !== null
+              ? tomorrowWindow.average_price
+              : null,
           condition: tomorrowCondition,
           solarKwh: advisory.tomorrow_solar_kwh,
           solarScore: advisory.tomorrow_solar_score,

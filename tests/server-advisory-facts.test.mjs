@@ -201,6 +201,7 @@ describe("buildAdvisoryFacts: the contract facts shape", () => {
     assert.equal(facts.tomorrow.prices, null);
     assert.equal(facts.tomorrow.averageEur, null);
     assert.equal(facts.tomorrow.window, null);
+    assert.equal(facts.tomorrow.windowAverageEur, null);
     assert.equal(facts.tomorrow.solarKwh, 11.99);
     assert.equal(facts.tomorrow.solarScore, 28);
     assert.equal(facts.tomorrow.lowSolar, false);
@@ -217,6 +218,9 @@ describe("buildAdvisoryFacts: the contract facts shape", () => {
     assert.deepEqual(facts.tomorrow.prices, [0.36, 0.35, 0.34]);
     assert.equal(facts.tomorrow.averageEur, 0.28);
     assert.equal(facts.tomorrow.window, "17:00-20:00");
+    // The cheapest window's own average, so the monologue serves a
+    // window price from this value and never from the day average.
+    assert.equal(facts.tomorrow.windowAverageEur, 0.2);
   });
 
   it("carries the outlook days as the coming days", async () => {

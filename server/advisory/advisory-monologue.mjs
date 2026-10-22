@@ -40,9 +40,11 @@ import { validateSectionFigures } from "./figure-verbatim.mjs";
 // advantage and never the saving (the saving lives once, in the
 // supporting baseline sentence), and served notes are woven verbatim.
 // Habit-close tuning: a TODAY section with a real action and a small
-// saving may close with one meaning-only habit sentence.
+// saving may close with one meaning-only habit sentence. Window-price
+// tuning: a price is attributed to a window only from the window's own
+// average fact, never from the day average.
 export const MONOLOGUE_STYLE_BRIEF =
-  "You write the energy advisory for a household. You see one section at a time, with its facts. Write 2 to 5 flowing sentences in plain household language, second person. Every sentence either carries one of the served facts or makes exactly one honest interpretive step from them; never invent, compute, or round any number, and copy every figure exactly as served, including the currency marker. When you tell the household to run something, speak of your large appliances and never name a specific appliance; a run instruction names the window and the price advantage and never the saving. The named appliance, its measured load and the saving belong in one plain supporting sentence, as in 'Your dishwasher used 1.07 kWh today; shifting it into that window saves €0.12.' When the section is TODAY and there is a real action with a small saving, you may close with one meaning-only sentence that puts the saving in perspective, as in 'On its own that is small, but it is the kind of shift that quietly adds up when it becomes a habit.' It never states a yearly or monthly amount, never carries any figure, and appears at most once. When the facts carry a served note, weave it into your narrative word for word where it fits best. When the facts carry the battery and the day's solar forecast, spend one sentence on that household context. When you name the week's best solar day, keep the forecast framing, as in 'Sunday looks the best for solar: score 26 and 10.87 kWh expected.' Mention other days only briefly when the section is TODAY; their numbers live in their own sections. No flattery, no exclamation marks, no technical vocabulary such as candidates, thresholds, payloads, or budgets. If the facts say there is nothing worth doing, say so plainly and briefly.";
+  "You write the energy advisory for a household. You see one section at a time, with its facts. Write 2 to 5 flowing sentences in plain household language, second person. Every sentence either carries one of the served facts or makes exactly one honest interpretive step from them; never invent, compute, or round any number, and copy every figure exactly as served, including the currency marker. Attribute a price to a window only from the window's own average fact, never from the day average. When you tell the household to run something, speak of your large appliances and never name a specific appliance; a run instruction names the window and the price advantage and never the saving. The named appliance, its measured load and the saving belong in one plain supporting sentence, as in 'Your dishwasher used 1.07 kWh today; shifting it into that window saves €0.12.' When the section is TODAY and there is a real action with a small saving, you may close with one meaning-only sentence that puts the saving in perspective, as in 'On its own that is small, but it is the kind of shift that quietly adds up when it becomes a habit.' It never states a yearly or monthly amount, never carries any figure, and appears at most once. When the facts carry a served note, weave it into your narrative word for word where it fits best. When the facts carry the battery and the day's solar forecast, spend one sentence on that household context. When you name the week's best solar day, keep the forecast framing, as in 'Sunday looks the best for solar: score 26 and 10.87 kWh expected.' Mention other days only briefly when the section is TODAY; their numbers live in their own sections. No flattery, no exclamation marks, no technical vocabulary such as candidates, thresholds, payloads, or budgets. If the facts say there is nothing worth doing, say so plainly and briefly.";
 
 // Server-owned strings, served verbatim and never rephrased with different
 // figures: the horizon sentence, the tomorrow-unpublished sentence, the
@@ -71,15 +73,19 @@ function splitSentences(text) {
 // Deterministic formatting of the served fact strings. The standard
 // amounts reuse advisory-core's formatEur (euro sign flush against the
 // amount, two decimals when nonzero at two decimals). A candidate saving
-// keeps its full precision at the served display: the first decimal
-// rendering that reads back exactly, so -€0.0036 serves as "-€0.0036" and
-// €0.12 serves as "€0.12".
+// of a cent or more renders naturally at two decimals (0.1217 serves as
+// "€0.12" - the form the household and the model both reach for); only a
+// sub-cent saving keeps the minimal-precision display, the first decimal
+// rendering that reads back exactly, so -€0.0036 serves as "-€0.0036".
 // ---------------------------------------------------------------------------
 
 export function formatSavingEur(value) {
   if (!isNum(value)) return null;
   const sign = value < 0 ? "-" : "";
   const abs = Math.abs(value);
+  if (abs >= 0.01) {
+    return `${sign}€${abs.toFixed(2)}`;
+  }
   for (const decimals of [2, 3, 4, 5, 6]) {
     const rendered = abs.toFixed(decimals);
     if (Math.abs(Number(rendered) - abs) <= 1e-9) {
@@ -116,8 +122,9 @@ function addWindow(facts, key, label) {
 // ---------------------------------------------------------------------------
 // Section building: label, pre-formatted facts, fallback sentences and
 // the advisory sentence budget (logged by the runner, never asserted).
-// Budgets: TODAY 5 on an action day, 3 on a quiet day, 4 in recap mode;
-// TOMORROW at most 3; days beyond tomorrow 1 sentence.
+// Budgets: TODAY 5 on an action day, 3 on a quiet day, 4 in recap mode
+// (5 when a recap day composes a battery action); TOMORROW at most 3;
+// days beyond tomorrow 1 sentence.
 // ---------------------------------------------------------------------------
 
 function priceFallback(facts) {
@@ -131,6 +138,22 @@ function priceFallback(facts) {
     return `The peak price so far is ${facts.peak_price} at ${facts.peak_hour}.`;
   }
   return null;
+}
+
+// The battery action's appliance: the facts layer labels it "Battery
+// recharge", fixtures may call it "battery". The battery is never a
+// large-appliance run, so its fallback sentence is its own deterministic
+// form - the generic large-appliances imperative stays reserved for
+// appliance actions.
+function isBatteryAppliance(label) {
+  return /^battery\b/i.test(String(label ?? "").trim());
+}
+
+function batteryActionSentence(facts) {
+  const where = facts.appliance_window
+    ? `in ${facts.appliance_window}`
+    : "in the cheap hours";
+  return `The battery can recharge ${where} and save ${facts.appliance_saving}.`;
 }
 
 function buildTodaySection(todaySection, eveningSection, rawFacts) {
@@ -154,6 +177,10 @@ function buildTodaySection(todaySection, eveningSection, rawFacts) {
       if (best != null) candidate = { ...best, worthwhile: false };
     }
   }
+  // A battery action never takes the large-appliances imperative; it
+  // composes its own deterministic fallback sentence instead.
+  const batteryAction =
+    actionAvailable && candidate !== null && isBatteryAppliance(candidate.label);
 
   const facts = {};
   facts.action_available = actionAvailable;
@@ -270,6 +297,13 @@ function buildTodaySection(todaySection, eveningSection, rawFacts) {
     // achievements, the evening window, the day's usage and cost, and
     // only then the price recap.
     fallbacks.length = Math.min(fallbacks.length, 4);
+    // A battery action survives the recap composition: when the day's
+    // cheap hours have passed and the section still carries a worthwhile
+    // battery action, its sentence composes with the recap sentences
+    // (recap budget 5), so the fallback never reports the day without it.
+    if (batteryAction) {
+      fallbacks.push(batteryActionSentence(facts));
+    }
   } else {
     const price = priceFallback(facts);
     if (price !== null) fallbacks.push(price);
@@ -281,33 +315,42 @@ function buildTodaySection(todaySection, eveningSection, rawFacts) {
       );
     }
     if (actionAvailable) {
-      // The imperative register: the command speaks of the household's
-      // large appliances, never names the specific appliance and never
-      // carries the saving; it names the window and the price advantage.
-      // The saving appears exactly once, in the supporting baseline
-      // sentence with the named appliance and its measured load.
-      const where =
-        facts.appliance_window_start && facts.appliance_window_end
-          ? `between ${facts.appliance_window_start} and ${facts.appliance_window_end}`
-          : "in the cheap hours";
-      const priceClause = facts.low_price
-        ? `today's lowest price, about ${facts.low_price}/kWh`
-        : facts.cheap_window_average
-          ? `about ${facts.cheap_window_average}/kWh`
-          : null;
-      const averageClause = facts.day_average
-        ? ` against a day average of ${facts.day_average}`
-        : "";
-      fallbacks.push(
-        priceClause !== null
-          ? `Run your large appliances ${where} to pay ${priceClause}${averageClause}.`
-          : `Run your large appliances ${where}.`
-      );
-      fallbacks.push(
-        facts.appliance_window
-          ? `Your ${facts.appliance} used ${facts.appliance_load} today; shifting it into that window saves ${facts.appliance_saving}.`
-          : `Your ${facts.appliance} used ${facts.appliance_load} today; shifting it saves ${facts.appliance_saving}.`
-      );
+      if (batteryAction) {
+        // The battery action's own deterministic sentence: the window and
+        // the saving from the appliance facts verbatim. The generic
+        // large-appliances imperative stays reserved for appliance
+        // actions, and no supporting baseline sentence is needed - the
+        // saving appears exactly once, here.
+        fallbacks.push(batteryActionSentence(facts));
+      } else {
+        // The imperative register: the command speaks of the household's
+        // large appliances, never names the specific appliance and never
+        // carries the saving; it names the window and the price advantage.
+        // The saving appears exactly once, in the supporting baseline
+        // sentence with the named appliance and its measured load.
+        const where =
+          facts.appliance_window_start && facts.appliance_window_end
+            ? `between ${facts.appliance_window_start} and ${facts.appliance_window_end}`
+            : "in the cheap hours";
+        const priceClause = facts.low_price
+          ? `today's lowest price, about ${facts.low_price}/kWh`
+          : facts.cheap_window_average
+            ? `about ${facts.cheap_window_average}/kWh`
+            : null;
+        const averageClause = facts.day_average
+          ? ` against a day average of ${facts.day_average}`
+          : "";
+        fallbacks.push(
+          priceClause !== null
+            ? `Run your large appliances ${where} to pay ${priceClause}${averageClause}.`
+            : `Run your large appliances ${where}.`
+        );
+        fallbacks.push(
+          facts.appliance_window
+            ? `Your ${facts.appliance} used ${facts.appliance_load} today; shifting it into that window saves ${facts.appliance_saving}.`
+            : `Your ${facts.appliance} used ${facts.appliance_load} today; shifting it saves ${facts.appliance_saving}.`
+        );
+      }
     } else {
       fallbacks.push(NO_OPPORTUNITY_STATEMENT);
       // The model never writes the pinned statement (the register guard
@@ -327,7 +370,7 @@ function buildTodaySection(todaySection, eveningSection, rawFacts) {
     facts,
     fallback_sentences: fallbacks,
     notes,
-    budget: recap ? 4 : actionAvailable ? 5 : 3,
+    budget: recap ? (batteryAction ? 5 : 4) : actionAvailable ? 5 : 3,
   };
 }
 
@@ -363,6 +406,14 @@ function buildTomorrowSection(tomorrowSection, rawFacts) {
       rawFacts.tomorrow.window !== ""
     ) {
       addWindow(facts, "cheap_window", rawFacts.tomorrow.window);
+    }
+    // The cheapest window's own average, so a narrative never attaches
+    // the day average to the window (formatted like the TODAY
+    // equivalent).
+    if (isNum(rawFacts.tomorrow?.windowAverageEur)) {
+      facts.cheap_window_average = formatEur(
+        rawFacts.tomorrow.windowAverageEur
+      );
     }
     if (isNum(rawFacts.dayAverageEur)) {
       facts.today_average = formatEur(rawFacts.dayAverageEur);
@@ -599,6 +650,9 @@ export async function generateMonologue(sections, rawFacts, now, modelStub) {
     let verdict = { ok: true, reasons: [] };
     let served = false;
     let retried = false;
+    // One entry per rejected attempt, so a fallback's log line can name
+    // why each attempt was rejected, not just count them.
+    const rejectedAttempts = [];
     for (let attempt = 0; attempt < 2 && !served; attempt += 1) {
       offered = await narrativeFromStub(modelStub, prompt, section.key);
       if (offered === null) break; // nothing offered: serve the fallback
@@ -606,7 +660,14 @@ export async function generateMonologue(sections, rawFacts, now, modelStub) {
       verdict = validateSectionNarrative(offered, section, {
         tomorrowPublished,
       });
-      if (verdict.ok) served = true;
+      if (verdict.ok) {
+        served = true;
+      } else {
+        rejectedAttempts.push({
+          attempt: attempt + 1,
+          reasons: [...verdict.reasons],
+        });
+      }
     }
     const narrative =
       served && offered !== null
@@ -628,6 +689,7 @@ export async function generateMonologue(sections, rawFacts, now, modelStub) {
       offered: offered !== null,
       ok: offered === null ? true : verdict.ok,
       reasons: offered === null ? [] : verdict.reasons,
+      rejected_attempts: rejectedAttempts,
       retried,
       sentenceCount: splitSentences(servedText).length,
     });

@@ -765,8 +765,9 @@ export function peekSummaryInsight(liveSignature = null) {
 // generation reason (new-facts, retry or fallback) and the count of
 // figure-verification rejections from validation; zero rejections is
 // the healthy state, and a rejection followed by a successful retry
-// is logged, never silently passed. logContext carries the refresh's
-// signature and reason for the budget log lines.
+// is logged, never silently passed. Every rejected attempt also logs
+// one line with its readable rejection reasons. logContext carries
+// the refresh's signature and reason for the budget log lines.
 export async function generateInsightMonologue(
   advisory,
   cachedSections,
@@ -812,6 +813,13 @@ export async function generateInsightMonologue(
     console.log(
       `monologue ${line.label}: ${line.reason}, figure rejections ${line.rejections}`
     );
+    // One line per rejected attempt with the readable rejection reasons,
+    // so a fallback is diagnosable from the log, not just counted.
+    for (const rejection of line.rejected_attempts ?? []) {
+      console.log(
+        `monologue ${line.label} attempt ${rejection.attempt} rejected: ${rejection.reasons.join("; ")}`
+      );
+    }
   }
   return { sections: refreshed.sections };
 }

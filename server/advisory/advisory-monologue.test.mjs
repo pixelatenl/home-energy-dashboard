@@ -190,8 +190,16 @@ test("validateSectionFigures combines membership and framing", () => {
 // Pre-formatted fact strings and fallbacks.
 // ---------------------------------------------------------------------------
 
-test("formatSavingEur keeps the candidate saving's precision at the served display", () => {
+test("formatSavingEur renders cents and above naturally, sub-cent values at minimal precision", () => {
+  // A saving of a cent or more serves at two decimals: the natural
+  // household reading the model reaches for.
+  assert.equal(formatSavingEur(0.1217), "€0.12");
   assert.equal(formatSavingEur(0.12), "€0.12");
+  assert.equal(formatSavingEur(0.5), "€0.50");
+  assert.equal(formatSavingEur(-0.1217), "-€0.12");
+  // A sub-cent saving keeps the minimal-precision display, the first
+  // decimal rendering that reads back exactly.
+  assert.equal(formatSavingEur(0.0036), "€0.0036");
   assert.equal(formatSavingEur(-0.0036), "-€0.0036");
   assert.equal(formatSavingEur(Number.NaN), null);
 });
@@ -260,6 +268,80 @@ test("an action day carries the appliance facts verbatim and a budget of 5", () 
   assert.equal(joined.split("€0.12").length - 1, 1, "the saving appears exactly once");
   assert.ok(!joined.includes("largest opportunity"));
   assert.ok(!joined.includes("Run the dishwasher"));
+});
+
+test("a battery action composes its own fallback sentence, never the large-appliances imperative", () => {
+  const facts = baseFacts({
+    candidates: [
+      { label: "Battery recharge", kwh: 2.4, savingEur: 0.1217, window: "21:00-00:00", worthwhile: true },
+    ],
+  });
+  const today = section("today", facts);
+  assert.equal(today.facts.action_available, true);
+  assert.equal(today.facts.appliance, "Battery recharge");
+  assert.equal(today.facts.appliance_saving, "€0.12");
+  assert.equal(today.facts.appliance_window, "21:00-00:00");
+  assert.ok(
+    today.fallback_sentences.includes(
+      "The battery can recharge in 21:00-00:00 and save €0.12."
+    )
+  );
+  const joined = today.fallback_sentences.join(" ");
+  assert.ok(!joined.includes("Run your large appliances"));
+  assert.ok(!joined.includes("Your Battery recharge used"));
+  assert.equal(joined.split("€0.12").length - 1, 1, "the saving appears exactly once");
+});
+
+test("the fallback-only TODAY path serves the battery action sentence", async () => {
+  const facts = baseFacts({
+    candidates: [
+      { label: "Battery recharge", kwh: 2.4, savingEur: 0.1217, window: "21:00-00:00", worthwhile: true },
+    ],
+  });
+  const stub = async () => ({ narratives: { today: "This saves €9.99." } });
+  const { payload } = await generateMonologue(
+    buildSections(facts, NOW),
+    facts,
+    NOW,
+    stub
+  );
+  const today = payload.find((s) => s.label === "TODAY");
+  assert.equal(today.narrative, null);
+  assert.ok(
+    today.fallback_sentences.includes(
+      "The battery can recharge in 21:00-00:00 and save €0.12."
+    )
+  );
+  const audit = auditMonologueText(payload);
+  assert.equal(audit.ok, true, JSON.stringify(audit.failures));
+});
+
+test("a recap TODAY composes the battery action sentence with the recap sentences", () => {
+  const facts = baseFacts({
+    candidates: [
+      { label: "Battery recharge", kwh: 2.4, savingEur: 0.1217, window: "21:00-00:00", worthwhile: true },
+    ],
+    solar_share_pct: 62,
+    battery_earned_eur: 1.4,
+    remainingWindow: { start: "21:00", end: "00:00", averageEur: 0.33, practicalBenefitEur: 0.02 },
+    remainingAverageEur: 0.35,
+    dayUsageKwh: 18.2,
+    dayCostEur: 2.4,
+    dayCheapestPassed: true,
+  });
+  const today = section("today", facts, RECAP_NOW);
+  assert.equal(today.mode, "recap");
+  assert.equal(today.budget, 5);
+  assert.ok(today.fallback_sentences.includes("Your own solar covered 62% of today's usage."));
+  assert.ok(today.fallback_sentences.includes("Your battery earned €1.40 today."));
+  // The battery action sentence composes with the recap sentences and is
+  // never squeezed out by the recap priorities.
+  const batteryLine = "The battery can recharge in 21:00-00:00 and save €0.12.";
+  assert.ok(today.fallback_sentences.includes(batteryLine));
+  assert.equal(
+    today.fallback_sentences[today.fallback_sentences.length - 1],
+    batteryLine
+  );
 });
 
 test("a coming day dated tomorrow belongs to TOMORROW only", () => {
@@ -335,13 +417,14 @@ test("a non-low-solar unpublished TOMORROW carries no grid note and the plain so
   ]);
 });
 
-test("a published tomorrow serves its average and window pre-formatted", () => {
+test("a published tomorrow serves its average, window and window average pre-formatted", () => {
   const facts = baseFacts({
     tomorrow: {
       pricesPublished: true,
       prices: [0.31, 0.3, 0.29],
       averageEur: 0.29,
       window: "13:00-16:00",
+      windowAverageEur: 0.24,
       solarKwh: 12.5,
       solarScore: 45,
       lowSolar: false,
@@ -352,7 +435,16 @@ test("a published tomorrow serves its average and window pre-formatted", () => {
   assert.equal(tomorrow.facts.average_price, "€0.29");
   assert.equal(tomorrow.facts.today_average, "€0.31");
   assert.equal(tomorrow.facts.cheap_window, "13:00-16:00");
+  // The window's own average fact, so a narrative attributes a price to
+  // the window from it, never from the day average.
+  assert.equal(tomorrow.facts.cheap_window_average, "€0.24");
   assert.ok(tomorrow.fallback_sentences[0].startsWith("Tomorrow averages €0.29 per kWh"));
+});
+
+test("an unpublished tomorrow serves no window average", () => {
+  const tomorrow = section("tomorrow");
+  assert.equal(tomorrow.facts.prices_published, false);
+  assert.equal(tomorrow.facts.cheap_window_average, undefined);
 });
 
 // ---------------------------------------------------------------------------
@@ -401,6 +493,11 @@ test("the style brief carries the tuning register: generic imperatives without t
   assert.ok(brief.includes("spend one sentence on that household context"));
   assert.ok(
     brief.includes("Sunday looks the best for solar: score 26 and 10.87 kWh expected.")
+  );
+  assert.ok(
+    brief.includes(
+      "Attribute a price to a window only from the window's own average fact, never from the day average."
+    )
   );
 });
 
@@ -502,9 +599,48 @@ test("generateMonologue retries once per section, then serves the fallback", asy
   assert.equal(today.ok, false);
   assert.equal(today.retried, true);
   assert.ok(today.reasons.some((r) => r.includes("€0.51")));
+  // Each rejected attempt is reported with its own readable reasons,
+  // one entry per attempt, so a fallback is diagnosable from the log.
+  assert.equal(today.rejected_attempts.length, 2);
+  assert.deepEqual(
+    today.rejected_attempts.map((a) => a.attempt),
+    [1, 2]
+  );
+  for (const attempt of today.rejected_attempts) {
+    assert.ok(attempt.reasons.some((r) => r.includes("€0.51")));
+  }
   const todayPayload = payload.find((s) => s.label === "TODAY");
   assert.equal(todayPayload.narrative, null);
   assert.ok(todayPayload.fallback_sentences.includes(NO_OPPORTUNITY_STATEMENT));
+});
+
+test("a rejected first attempt reports its reasons even when the retry accepts", async () => {
+  const facts = baseFacts();
+  let calls = 0;
+  const stub = async (prompt) => {
+    if (!prompt.includes("Write the TODAY section")) return {};
+    calls += 1;
+    return {
+      narratives: {
+        today:
+          calls === 1
+            ? "You could save €0.51 this afternoon."
+            : "Today's lowest price is €0.23 at 13:00 and the peak is €0.46 at 19:00.",
+      },
+    };
+  };
+  const { sections } = await generateMonologue(
+    buildSections(facts, NOW),
+    facts,
+    NOW,
+    stub
+  );
+  const today = sections.find((s) => s.key === "today");
+  assert.equal(today.ok, true);
+  assert.equal(today.retried, true);
+  assert.equal(today.rejected_attempts.length, 1);
+  assert.equal(today.rejected_attempts[0].attempt, 1);
+  assert.ok(today.rejected_attempts[0].reasons.some((r) => r.includes("€0.51")));
 });
 
 test("generateMonologue survives a throwing stub by serving fallbacks", async () => {
