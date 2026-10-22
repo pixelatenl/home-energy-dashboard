@@ -21,6 +21,7 @@ import {
   localDayStartUtcMs,
   localHourLabel,
   nextDateKey,
+  weekdayName,
 } from "./time.mjs";
 
 // Today's own-solar share of home usage (contract section 3, the recap
@@ -190,6 +191,10 @@ export async function buildAdvisoryFacts(snapshot, loaders = {}) {
       ? null
       : {
           pricesPublished: published,
+          // Tomorrow's weekday name, derived from tomorrow's date in the
+          // same formatting as the weekday sections, so a narrative never
+          // guesses the day of the week.
+          weekday: weekdayName(tomorrowKey),
           // Unpublished prices are null with the reason in the section
           // guidance note; the model is never offered a slot to fill.
           prices,
