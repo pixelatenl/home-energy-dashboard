@@ -8,7 +8,6 @@ import PricesWidget from "@/components/PricesWidget"
 import SavedEarnedCard from "@/components/SavedEarnedCard"
 import SolarForecastWidget from "@/components/SolarForecastWidget"
 import StatsHeader from "@/components/StatsHeader"
-import SummaryInsight from "@/components/SummaryInsight"
 import { TodayBatteryCard, TodaySolarCard } from "@/components/TodayCharts"
 import {
   fetchSummary,
@@ -38,7 +37,6 @@ function TodayPage() {
     null
   )
   const [remainingCalls, setRemainingCalls] = useState<number | null>(null)
-  const [insightLoading, setInsightLoading] = useState(true)
 
   // The insight rides the /api/summary response together with its
   // signature and the Mistral budget, so one refetch refreshes data and
@@ -52,7 +50,6 @@ function TodayPage() {
     } catch {
       setInsight(null)
     }
-    setInsightLoading(false)
   }, [])
 
   useEffect(() => {
@@ -82,6 +79,8 @@ function TodayPage() {
   // is the server's business (the Reasoning chip on the card). Only the
   // shared AI budget can disable it.
   const refreshDisabled = budgetExhausted
+  // The insight's as-of time as a formatted HH:MM label, or null
+  // before the first insight.
   const insightFrom =
     insight?.insight_as_of != null
       ? new Date(insight.insight_as_of).toLocaleTimeString("en-GB", {
@@ -89,24 +88,6 @@ function TodayPage() {
           minute: "2-digit",
         })
       : null
-
-  // The advisory card itself, kept as one value so the two layout
-  // branches below render the identical card: stacked beneath the
-  // monologue while the server serves it, otherwise exactly where
-  // it sits today.
-  const advisoryCard = (
-    <SummaryInsight
-      insight={insight}
-      loading={insightLoading}
-      from={insightFrom}
-      refreshDisabled={refreshDisabled}
-      onRefresh={() => {
-        void loadInsight(true)
-        triggerAiRefresh()
-        triggerDataRefresh()
-      }}
-    />
-  )
 
   return (
     <PageLayout
@@ -134,31 +115,26 @@ function TodayPage() {
       </div>
 
       {/* The AI advisory where the live hero used to be, beside the
-          prices widget; it carries its own provenance chip and
-          refresh control in its header. The gap matches the stats
-          cluster's own, so all card-to-card whitespace is one
-          rhythm. While the server serves the monologue (Stage 4),
-          the monologue card stacks directly above the advisory in
-          the same column, reading the same payload; with the field
-          absent the advisory is the grid's direct item again and
-          the layout is identical to the pre-monologue dashboard. */}
+          prices widget; it carries its own provenance chip and the
+          dashboard's only refresh control in its header (the owner
+          decision of 22 October: the monologue-based advisory area
+          is the dashboard's one advisory surface - the legacy card
+          retired). The gap matches the stats cluster's own, so all
+          card-to-card whitespace is one rhythm. With the monologue
+          field absent the area renders nothing at all and the prices
+          widget stands alone. */}
       <div className="grid gap-4 lg:grid-cols-2">
-        {monologue !== null && monologue.length > 0 ? (
-          <div className="flex flex-col gap-4">
-            <MonologueCard
-              sections={monologue}
-              reasoning={insight?.state === "reasoning"}
-              from={insightFrom}
-            />
-            {/* The advisory keeps its full-height stretch: the inner
-                column fills whatever the grid row leaves below the
-                monologue card, exactly as the advisory fills the row
-                on its own. */}
-            <div className="flex flex-1 flex-col">{advisoryCard}</div>
-          </div>
-        ) : (
-          advisoryCard
-        )}
+        <MonologueCard
+          sections={monologue}
+          reasoning={insight?.state === "reasoning"}
+          from={insightFrom}
+          refreshDisabled={refreshDisabled}
+          onRefresh={() => {
+            void loadInsight(true)
+            triggerAiRefresh()
+            triggerDataRefresh()
+          }}
+        />
         <PricesWidget />
       </div>
     </PageLayout>

@@ -8,10 +8,11 @@ import { isDataStale, localTimeOf, snapshotAgeMs } from "@/lib/time";
 // new snapshot arrives.
 const AGE_TICK_MS = 30_000;
 
-// The chip reuses the advisory card's provenance-chip register verbatim
-// (SummaryInsight's PROVENANCE_CHIP): the same glass pill, so the data
-// stamp reads as neutral hub furniture - not a button, not an AI
-// indicator. whitespace-nowrap keeps the pill from wrapping mid-text.
+// The chip reuses the advisory area's provenance-chip register verbatim
+// (the advisory surface module's PROVENANCE_CHIP): the same glass pill,
+// so the data stamp reads as neutral hub furniture - not a button, not
+// an AI indicator. whitespace-nowrap keeps the pill from wrapping
+// mid-text.
 const CHIP =
   "flex shrink-0 items-center whitespace-nowrap rounded-full border border-white/20 bg-white/15 px-2.5 py-1 text-xs font-medium text-chip-foreground tabular-nums backdrop-blur-sm";
 
