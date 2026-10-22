@@ -5,7 +5,8 @@
 // figure string served to the model is pre-formatted here, and the
 // figure-verbatim module (figure-verbatim.mjs) makes the model copy those
 // strings exactly. A section narrative that fails validation gets exactly
-// one retry; after a second failure the section is served with its
+// one retry, and the retry prompt carries the rejection reasons verbatim
+// as feedback; after a second failure the section is served with its
 // deterministic fallback sentences instead of the failing narrative.
 //
 // Purity contract: no clock reads, no network, no environment reads. `now`
@@ -42,9 +43,13 @@ import { validateSectionFigures } from "./figure-verbatim.mjs";
 // Habit-close tuning: a TODAY section with a real action and a small
 // saving may close with one meaning-only habit sentence. Window-price
 // tuning: a price is attributed to a window only from the window's own
-// average fact, never from the day average.
+// average fact, never from the day average. Self-containment: the brief
+// never carries another section's figures or invites cross-day
+// mentions - a section's fact set is self-contained by design, and no
+// calendar dates are written in prose (the weekday label anchors the
+// day).
 export const MONOLOGUE_STYLE_BRIEF =
-  "You write the energy advisory for a household. You see one section at a time, with its facts. Write 2 to 5 flowing sentences in plain household language, second person. Every sentence either carries one of the served facts or makes exactly one honest interpretive step from them; never invent, compute, or round any number, and copy every figure exactly as served, including the currency marker. Attribute a price to a window only from the window's own average fact, never from the day average. When you tell the household to run something, speak of your large appliances and never name a specific appliance; a run instruction names the window and the price advantage and never the saving. The named appliance, its measured load and the saving belong in one plain supporting sentence, as in 'Your dishwasher used 1.07 kWh today; shifting it into that window saves €0.12.' When the section is TODAY and there is a real action with a small saving, you may close with one meaning-only sentence that puts the saving in perspective, as in 'On its own that is small, but it is the kind of shift that quietly adds up when it becomes a habit.' It never states a yearly or monthly amount, never carries any figure, and appears at most once. When the facts carry a served note, weave it into your narrative word for word where it fits best. When the facts carry the battery and the day's solar forecast, spend one sentence on that household context. When you name the week's best solar day, keep the forecast framing, as in 'Sunday looks the best for solar: score 26 and 10.87 kWh expected.' Mention other days only briefly when the section is TODAY; their numbers live in their own sections. No flattery, no exclamation marks, no technical vocabulary such as candidates, thresholds, payloads, or budgets. If the facts say there is nothing worth doing, say so plainly and briefly.";
+  "You write the energy advisory for a household. You see one section at a time, with its facts. Write 2 to 5 flowing sentences in plain household language, second person. Every sentence either carries one of the served facts or makes exactly one honest interpretive step from them; never invent, compute, or round any number, and copy every figure exactly as served, including the currency marker. Never write calendar dates or years; the weekday label already anchors the day. Attribute a price to a window only from the window's own average fact, never from the day average. When you tell the household to run something, speak of your large appliances and never name a specific appliance; a run instruction names the window and the price advantage and never the saving. The named appliance, its measured load and the saving belong in one plain supporting sentence, as in 'Your dishwasher used 1.07 kWh today; shifting it into that window saves €0.12.' When the section is TODAY and there is a real action with a small saving, you may close with one meaning-only sentence that puts the saving in perspective, as in 'On its own that is small, but it is the kind of shift that quietly adds up when it becomes a habit.' It never states a yearly or monthly amount, never carries any figure, and appears at most once. When the facts carry a served note, weave it into your narrative word for word where it fits best. When the facts carry the battery and the day's solar forecast, spend one sentence on that household context. When the facts mark this section as the week's best solar day, keep the forecast framing, with its own score and expected energy. No flattery, no exclamation marks, no technical vocabulary such as candidates, thresholds, payloads, or budgets. If the facts say there is nothing worth doing, say so plainly and briefly.";
 
 // Server-owned strings, served verbatim and never rephrased with different
 // figures: the horizon sentence, the tomorrow-unpublished sentence, the
@@ -559,16 +564,27 @@ export function buildMonologueSections(sections, rawFacts, now) {
 
 // ---------------------------------------------------------------------------
 // The model prompt: the style brief verbatim, one section at a time with
-// its facts. The stub is a parameter, never a network call.
+// its own facts - and nothing else. No other section's facts, no wider
+// day or week context: a section's fact set is self-contained by
+// design. On a retry the prompt adds one feedback line carrying the
+// previous attempt's rejection reasons verbatim, so the retry corrects
+// instead of re-rolling blind. The stub is a parameter, never a network
+// call.
 // ---------------------------------------------------------------------------
 
-export function buildSectionPrompt(section) {
-  return [
+export function buildSectionPrompt(section, rejectionReasons = null) {
+  const lines = [
     MONOLOGUE_STYLE_BRIEF,
     "",
     `Write the ${section.label} section of the advisory.`,
     `Facts: ${JSON.stringify(section.facts)}`,
-  ].join("\n");
+  ];
+  if (Array.isArray(rejectionReasons) && rejectionReasons.length > 0) {
+    lines.push(
+      `Your previous attempt was rejected for these reasons: ${rejectionReasons.join("; ")}. Write the section again, correcting exactly these issues; every figure must be a verbatim copy of a served fact of this section.`
+    );
+  }
+  return lines.join("\n");
 }
 
 // ---------------------------------------------------------------------------
@@ -645,15 +661,21 @@ export async function generateMonologue(sections, rawFacts, now, modelStub) {
   const payload = [];
   const report = [];
   for (const section of monologueSections) {
-    const prompt = buildSectionPrompt(section);
     let offered = null;
     let verdict = { ok: true, reasons: [] };
     let served = false;
     let retried = false;
     // One entry per rejected attempt, so a fallback's log line can name
-    // why each attempt was rejected, not just count them.
+    // why each attempt was rejected, not just count them. The retry's
+    // prompt carries the previous attempt's reasons verbatim, so the
+    // second attempt corrects exactly what was rejected.
     const rejectedAttempts = [];
     for (let attempt = 0; attempt < 2 && !served; attempt += 1) {
+      const feedback =
+        attempt > 0 && rejectedAttempts.length > 0
+          ? rejectedAttempts[rejectedAttempts.length - 1].reasons
+          : null;
+      const prompt = buildSectionPrompt(section, feedback);
       offered = await narrativeFromStub(modelStub, prompt, section.key);
       if (offered === null) break; // nothing offered: serve the fallback
       if (attempt > 0) retried = true;

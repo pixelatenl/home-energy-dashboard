@@ -458,6 +458,54 @@ test("buildSectionPrompt embeds the style brief verbatim, one section at a time"
   assert.ok(prompt.includes("Write the TODAY section of the advisory."));
   assert.ok(prompt.includes('"low_price":"€0.23"'));
   assert.ok(!prompt.includes('"solar_forecast":"2.2 kWh"')); // tomorrow's facts stay in tomorrow
+  assert.ok(!prompt.includes("Your previous attempt was rejected")); // no feedback on a first attempt
+});
+
+test("a TODAY section prompt carries only its own facts, never another section's", () => {
+  const sections = monologueSections();
+  const today = sections.find((s) => s.key === "today");
+  const prompt = buildSectionPrompt(today);
+  // The section's own fact set, verbatim.
+  assert.ok(prompt.includes(`Facts: ${JSON.stringify(today.facts)}`));
+  // No other section's fact value leaks into the prompt. Values that
+  // TODAY legitimately serves itself (its actual solar is tomorrow's
+  // comparison figure) are its own; everything else stays out.
+  const ownValues = new Set(Object.values(today.facts));
+  for (const other of sections.filter((s) => s.key !== "today")) {
+    for (const value of Object.values(other.facts)) {
+      if (
+        typeof value === "string" &&
+        value !== "" &&
+        !ownValues.has(value)
+      ) {
+        assert.ok(
+          !prompt.includes(JSON.stringify(value)),
+          `foreign value ${value}`
+        );
+      }
+    }
+  }
+});
+
+test("buildSectionPrompt appends the rejection reasons as retry feedback, nothing else", () => {
+  const today = section("today");
+  const reasons = [
+    'amount "€0.51" matches no served amount in this section (amounts carry the currency marker exactly as served)',
+    "contains an exclamation mark; model sentences are warm but factual",
+  ];
+  const prompt = buildSectionPrompt(today, reasons);
+  assert.ok(prompt.startsWith(MONOLOGUE_STYLE_BRIEF));
+  assert.ok(prompt.endsWith(
+    "Your previous attempt was rejected for these reasons: " +
+      'amount "€0.51" matches no served amount in this section (amounts carry the currency marker exactly as served); ' +
+      "contains an exclamation mark; model sentences are warm but factual. " +
+      "Write the section again, correcting exactly these issues; every figure must be a verbatim copy of a served fact of this section."
+  ));
+  // The feedback line carries the section's own facts and the brief, so the
+  // retry corrects against the same self-contained prompt plus the reasons.
+  assert.ok(prompt.includes(`Facts: ${JSON.stringify(today.facts)}`));
+  // An empty or absent reasons list produces the plain first-attempt prompt.
+  assert.ok(!buildSectionPrompt(today, []).includes("Your previous attempt was rejected"));
 });
 
 test("the style brief carries the tuning register: generic imperatives without the saving, note weaving, context sentence, best-day framing", () => {
@@ -492,13 +540,27 @@ test("the style brief carries the tuning register: generic imperatives without t
   );
   assert.ok(brief.includes("spend one sentence on that household context"));
   assert.ok(
-    brief.includes("Sunday looks the best for solar: score 26 and 10.87 kWh expected.")
+    brief.includes(
+      "When the facts mark this section as the week's best solar day, keep the forecast framing, with its own score and expected energy."
+    )
   );
   assert.ok(
     brief.includes(
       "Attribute a price to a window only from the window's own average fact, never from the day average."
     )
   );
+  // The date ban: calendar dates and years never appear in prose; the
+  // weekday label anchors the day.
+  assert.ok(
+    brief.includes(
+      "Never write calendar dates or years; the weekday label already anchors the day."
+    )
+  );
+  // Self-containment: the brief never invites cross-day mentions or
+  // carries another section's figures.
+  assert.ok(!brief.includes("Mention other days"));
+  assert.ok(!brief.includes("10.87"));
+  assert.ok(!brief.includes("score 26"));
 });
 
 // ---------------------------------------------------------------------------
@@ -641,6 +703,40 @@ test("a rejected first attempt reports its reasons even when the retry accepts",
   assert.equal(today.rejected_attempts.length, 1);
   assert.equal(today.rejected_attempts[0].attempt, 1);
   assert.ok(today.rejected_attempts[0].reasons.some((r) => r.includes("€0.51")));
+});
+
+test("the retry's model call receives the previous rejection reasons as prompt feedback", async () => {
+  const facts = baseFacts();
+  const todayPrompts = [];
+  const stub = async (prompt) => {
+    if (!prompt.includes("Write the TODAY section")) return {};
+    todayPrompts.push(prompt);
+    return { narratives: { today: "You could save €0.51 this afternoon." } };
+  };
+  await generateMonologue(buildSections(facts, NOW), facts, NOW, stub);
+  assert.equal(todayPrompts.length, 2, "the first attempt and one retry");
+  // The first attempt is the plain self-contained prompt.
+  assert.ok(!todayPrompts[0].includes("Your previous attempt was rejected"));
+  // The retry carries the rejection reasons verbatim as feedback.
+  assert.ok(
+    todayPrompts[1].startsWith(MONOLOGUE_STYLE_BRIEF),
+    "the retry keeps the brief"
+  );
+  assert.ok(
+    todayPrompts[1].includes(
+      "Your previous attempt was rejected for these reasons:"
+    )
+  );
+  assert.ok(
+    todayPrompts[1].includes(
+      'amount "€0.51" matches no served amount in this section (amounts carry the currency marker exactly as served)'
+    )
+  );
+  assert.ok(
+    todayPrompts[1].endsWith(
+      "Write the section again, correcting exactly these issues; every figure must be a verbatim copy of a served fact of this section."
+    )
+  );
 });
 
 test("generateMonologue survives a throwing stub by serving fallbacks", async () => {
