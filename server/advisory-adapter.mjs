@@ -144,8 +144,9 @@ export function monologueSectionKeyFromPrompt(prompt) {
 // the per-section model seam the tests use: one prompt in, { narratives }
 // out. It is called only for sections without a reusable narrative.
 // Returns the section store for the new record plus one log entry per
-// generated section - label, reason (new-facts, retry or fallback)
-// and the count of figure-verification rejections from validation.
+// generated section - label, reason (new-facts, retry or fallback),
+// the count of figure-verification rejections from validation, and the
+// readable rejection reasons of each rejected attempt.
 export async function refreshAdvisoryMonologue(
   request,
   cachedSections,
@@ -214,7 +215,14 @@ export async function refreshAdvisoryMonologue(
           ? 1
           : 0
         : 2;
-    log.push({ label: entry.label, reason, rejections });
+    log.push({
+      label: entry.label,
+      reason,
+      rejections,
+      rejected_attempts: Array.isArray(entry.rejected_attempts)
+        ? entry.rejected_attempts
+        : [],
+    });
   }
   return { sections: store, log };
 }

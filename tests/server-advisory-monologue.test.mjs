@@ -157,6 +157,21 @@ describe("the monologue refresh (generateInsightMonologue)", () => {
           line.includes("figure rejections 0")
       )
     );
+    // Each rejected attempt logs one line with its readable rejection
+    // reasons, so the fallback is diagnosable from the log.
+    assert.ok(
+      lines.some(
+        (line) =>
+          line.startsWith("monologue TODAY attempt 1 rejected:") &&
+          line.includes("€9.99") &&
+          line.includes("matches no served amount")
+      )
+    );
+    assert.ok(
+      lines.some((line) =>
+        line.startsWith("monologue TODAY attempt 2 rejected:")
+      )
+    );
   });
 
   it("counts monologue model calls against the shared budget", async () => {
