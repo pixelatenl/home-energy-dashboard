@@ -131,7 +131,10 @@ function weekdayOf(t) {
 }
 
 // The calendar day `days` after the given local moment (same offset).
-function shiftDay(t, days) {
+// Exported for the monologue layer, which needs the calendar day after the
+// request moment to keep the TOMORROW section and the weekday sections
+// disjoint (a coming day dated tomorrow belongs to TOMORROW, never both).
+export function shiftDay(t, days) {
   const wallClockAsUtc = t.utcMs + days * 86_400_000 + t.offsetMin * 60_000;
   const d = new Date(wallClockAsUtc);
   return {
@@ -251,7 +254,9 @@ function sanitizeFinite(value) {
 // the price points, the battery and the windows drop entirely (contract
 // section 5: a null fact omits its sentence or clause, never a guess), and a
 // candidate without finite figures cannot state an action, so it is dropped.
-function sanitizeFacts(facts) {
+// Sanitization is also exported for the monologue layer, which builds its
+// pre-formatted fact strings from the same sanitized view (F1 everywhere).
+export function sanitizeFacts(facts) {
   const f = sanitizeFinite(facts ?? {});
   if (f.lowPrice != null && !isNum(f.lowPrice.price)) f.lowPrice = null;
   if (f.peakPrice != null && !isNum(f.peakPrice.price)) f.peakPrice = null;

@@ -1,0 +1,46 @@
+{
+  "name": "M7 adversarial fabricated figure",
+  "now": "2026-10-20T15:30:00+02:00",
+  "facts": {
+    "lowPrice": { "timestamp": "13:00", "price": 0.23 },
+    "peakPrice": { "timestamp": "19:00", "price": 0.46 },
+    "dayAverageEur": 0.31,
+    "cheapestWindow": { "start": "11:00", "end": "14:00", "averageEur": 0.23 },
+    "spreadPerKwhEur": 0.23,
+    "practicalBenefitEur": 0.08,
+    "co2IntensityGPerKwh": 133,
+    "solarToday": { "actualKwh": 8.18, "forecastKwh": 9.5 },
+    "battery": { "socPct": 72, "state": "charging", "todayInKwh": 4.3, "todayOutKwh": 2.4 },
+    "candidates": [],
+    "dayCheapestWindow": "11:00-14:00",
+    "dayCheapestPassed": false,
+    "tomorrow": {
+      "pricesPublished": false,
+      "prices": null,
+      "solarKwh": 2.2,
+      "solarScore": 15,
+      "lowSolar": true,
+      "compareSolarKwh": 8.18
+    },
+    "comingDays": [
+      { "weekday": "Friday", "date": "2026-10-23", "solarKwh": 2.29, "solarScore": 8, "condition": "rain" },
+      { "weekday": "Sunday", "date": "2026-10-25", "solarKwh": 10.87, "solarScore": 26, "condition": "sunny" }
+    ]
+  },
+  "stub": {
+    "warning": null,
+    "contextNote": null,
+    "narratives": {
+      "today": "You could save €0.51 by shifting your laundry to the afternoon.",
+      "tomorrow": "Tomorrow brings much less sun than today: 2.2 kWh against 8.18 kWh.",
+      "fri": "Friday looks like the week's weakest solar day at 2.29 kWh. With rain expected, it is not a good day to run your large appliances.",
+      "sun": "Sunday looks the best for solar: score 26 and 10.87 kWh expected."
+    }
+  },
+  "expected_narrative_verdicts": {
+    "today": "rejected",
+    "tomorrow": "accepted",
+    "fri": "accepted",
+    "sun": "accepted"
+  }
+}

@@ -1,0 +1,636 @@
+// The advisory monologue (STEP 2 retry/fallback + STEP 3 composition).
+// One facts layer in, one monologue out: sections labeled TODAY, TOMORROW
+// or a weekday, each carrying a short flowing narrative written by the
+// model from that section's own facts. Facts stay server-owned: every
+// figure string served to the model is pre-formatted here, and the
+// figure-verbatim module (figure-verbatim.mjs) makes the model copy those
+// strings exactly. A section narrative that fails validation gets exactly
+// one retry; after a second failure the section is served with its
+// deterministic fallback sentences instead of the failing narrative.
+//
+// Purity contract: no clock reads, no network, no environment reads. `now`
+// is an ISO-8601 local timestamp string with an explicit offset, carried
+// as pure data (the same contract as advisory-core.mjs).
+
+import {
+  NO_OPPORTUNITY_STATEMENT,
+  formatEur,
+  parseLocalTime,
+  sanitizeFacts,
+  shiftDay,
+} from "./advisory-core.mjs";
+import {
+  ACHIEVEMENT_MIN_BATTERY_EARN_EUR,
+  ACHIEVEMENT_MIN_SOLAR_SHARE_PCT,
+} from "../advisory-constants.mjs";
+import {
+  guardTomorrowPrice,
+  guardBeyondTomorrowPrice,
+  guardArithmetic,
+  guardInternalVocabulary,
+  guardNonFiniteText,
+  guardRegister,
+  guardNoOpportunityPhrasing,
+} from "./narrative-guards.mjs";
+import { validateSectionFigures } from "./figure-verbatim.mjs";
+
+// The style brief, embedded verbatim in the model prompt builder
+// (buildSectionPrompt). Exported so the tests can pin it word for word.
+// Micro-tuning: a run instruction names the window and the price
+// advantage and never the saving (the saving lives once, in the
+// supporting baseline sentence), and served notes are woven verbatim.
+// Habit-close tuning: a TODAY section with a real action and a small
+// saving may close with one meaning-only habit sentence.
+export const MONOLOGUE_STYLE_BRIEF =
+  "You write the energy advisory for a household. You see one section at a time, with its facts. Write 2 to 5 flowing sentences in plain household language, second person. Every sentence either carries one of the served facts or makes exactly one honest interpretive step from them; never invent, compute, or round any number, and copy every figure exactly as served, including the currency marker. When you tell the household to run something, speak of your large appliances and never name a specific appliance; a run instruction names the window and the price advantage and never the saving. The named appliance, its measured load and the saving belong in one plain supporting sentence, as in 'Your dishwasher used 1.07 kWh today; shifting it into that window saves €0.12.' When the section is TODAY and there is a real action with a small saving, you may close with one meaning-only sentence that puts the saving in perspective, as in 'On its own that is small, but it is the kind of shift that quietly adds up when it becomes a habit.' It never states a yearly or monthly amount, never carries any figure, and appears at most once. When the facts carry a served note, weave it into your narrative word for word where it fits best. When the facts carry the battery and the day's solar forecast, spend one sentence on that household context. When you name the week's best solar day, keep the forecast framing, as in 'Sunday looks the best for solar: score 26 and 10.87 kWh expected.' Mention other days only briefly when the section is TODAY; their numbers live in their own sections. No flattery, no exclamation marks, no technical vocabulary such as candidates, thresholds, payloads, or budgets. If the facts say there is nothing worth doing, say so plainly and briefly.";
+
+// Server-owned strings, served verbatim and never rephrased with different
+// figures: the horizon sentence, the tomorrow-unpublished sentence, the
+// low-solar hedged grid note (a clause the narrative attaches to its own
+// lead-in) and the rain-day advice line.
+export const HORIZON_SENTENCE =
+  "Beyond tomorrow, grid prices are not yet published.";
+export const TOMORROW_UNPUBLISHED_SENTENCE =
+  "Tomorrow's prices are not published yet.";
+export const LOW_SOLAR_GRID_NOTE =
+  "so the house will lean on the grid and prices are usually firmer in that case; a better picture follows once tomorrow's prices are published";
+export const RAIN_DAY_ADVICE =
+  "With rain expected, it is not a good day to run your large appliances.";
+
+function isNum(v) {
+  return typeof v === "number" && Number.isFinite(v);
+}
+
+function splitSentences(text) {
+  return String(text ?? "")
+    .split(/(?<=[.!?])\s+/)
+    .filter((sentence) => sentence.trim() !== "");
+}
+
+// ---------------------------------------------------------------------------
+// Deterministic formatting of the served fact strings. The standard
+// amounts reuse advisory-core's formatEur (euro sign flush against the
+// amount, two decimals when nonzero at two decimals). A candidate saving
+// keeps its full precision at the served display: the first decimal
+// rendering that reads back exactly, so -€0.0036 serves as "-€0.0036" and
+// €0.12 serves as "€0.12".
+// ---------------------------------------------------------------------------
+
+export function formatSavingEur(value) {
+  if (!isNum(value)) return null;
+  const sign = value < 0 ? "-" : "";
+  const abs = Math.abs(value);
+  for (const decimals of [2, 3, 4, 5, 6]) {
+    const rendered = abs.toFixed(decimals);
+    if (Math.abs(Number(rendered) - abs) <= 1e-9) {
+      return `${sign}€${rendered}`;
+    }
+  }
+  return `${sign}€${abs.toFixed(6)}`;
+}
+
+function kwhString(value) {
+  return isNum(value) ? `${value} kWh` : null;
+}
+
+function pctString(value) {
+  return isNum(value) ? `${value}%` : null;
+}
+
+// A window label is served as one string plus its two boundary hours, so
+// the model may write the range ("11:00-14:00") or the word form
+// ("between 11:00 and 14:00") with both figures verbatim.
+function addWindow(facts, key, label) {
+  facts[key] = label;
+  const m = /(\d{1,2}:\d{2})\s*[-–]\s*(\d{1,2}:\d{2})/.exec(label);
+  if (m !== null) {
+    const pad = (hour) => {
+      const [hh, mm] = hour.split(":");
+      return `${hh.padStart(2, "0")}:${mm}`;
+    };
+    facts[`${key}_start`] = pad(m[1]);
+    facts[`${key}_end`] = pad(m[2]);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Section building: label, pre-formatted facts, fallback sentences and
+// the advisory sentence budget (logged by the runner, never asserted).
+// Budgets: TODAY 5 on an action day, 3 on a quiet day, 4 in recap mode;
+// TOMORROW at most 3; days beyond tomorrow 1 sentence.
+// ---------------------------------------------------------------------------
+
+function priceFallback(facts) {
+  if (facts.low_price && facts.peak_price) {
+    return `Today's lowest price is ${facts.low_price} at ${facts.low_hour} and the peak is ${facts.peak_price} at ${facts.peak_hour}.`;
+  }
+  if (facts.low_price) {
+    return `The lowest price so far is ${facts.low_price} at ${facts.low_hour}.`;
+  }
+  if (facts.peak_price) {
+    return `The peak price so far is ${facts.peak_price} at ${facts.peak_hour}.`;
+  }
+  return null;
+}
+
+function buildTodaySection(todaySection, eveningSection, rawFacts) {
+  const tf = todaySection.facts ?? {};
+  const recap = todaySection.mode === "recap";
+  const actionAvailable = tf.candidate?.worthwhile === true;
+
+  // The best candidate the facts layer knows about, worthwhile or not:
+  // the section serves its figures honestly either way, and
+  // action_available marks whether it clears the bar worth acting on.
+  // buildSections selects only worthwhile candidates into the section,
+  // so the best below-threshold offer comes from the raw facts (largest
+  // saving first, the card's candidate order).
+  let candidate = tf.candidate ?? null;
+  if (candidate === null) {
+    const list = Array.isArray(rawFacts?.candidates) ? rawFacts.candidates : [];
+    if (list.length > 0) {
+      const best = [...list].sort(
+        (a, b) => (b.savingEur ?? 0) - (a.savingEur ?? 0)
+      )[0];
+      if (best != null) candidate = { ...best, worthwhile: false };
+    }
+  }
+
+  const facts = {};
+  facts.action_available = actionAvailable;
+  if (tf.low) {
+    facts.low_price = formatEur(tf.low.eur);
+    facts.low_hour = tf.low.hour;
+  }
+  if (tf.peak) {
+    facts.peak_price = formatEur(tf.peak.eur);
+    facts.peak_hour = tf.peak.hour;
+    facts.peak_ahead = tf.peak_ahead === true;
+  }
+  if (tf.cheapest_window) {
+    addWindow(
+      facts,
+      "cheap_window",
+      `${tf.cheapest_window.start}-${tf.cheapest_window.end}`
+    );
+    facts.cheap_window_average = formatEur(tf.cheapest_window.average_eur);
+  }
+  if (isNum(tf.day_average_eur)) facts.day_average = formatEur(tf.day_average_eur);
+  if (tf.solar_today) {
+    const solar = kwhString(tf.solar_today.actual_kwh);
+    const forecast = kwhString(tf.solar_today.forecast_kwh);
+    if (solar !== null) facts.solar_today = solar;
+    if (forecast !== null) facts.solar_forecast = forecast;
+  }
+  if (tf.battery) {
+    const level = pctString(tf.battery.soc_pct);
+    if (level !== null) facts.battery_level = level;
+    if (typeof tf.battery.state === "string") facts.battery_state = tf.battery.state;
+  }
+  if (typeof tf.day_cheapest_window === "string" && tf.day_cheapest_window !== "") {
+    addWindow(facts, "day_cheap_hours", tf.day_cheapest_window);
+    facts.day_cheap_hours_passed = tf.day_cheapest_passed === true;
+  }
+  if (candidate !== null) {
+    // Section candidates carry the section shape (saving_eur); raw
+    // facts-layer candidates carry the facts shape (savingEur).
+    facts.appliance = candidate.label;
+    facts.appliance_load = kwhString(candidate.kwh);
+    facts.appliance_saving = formatSavingEur(
+      candidate.saving_eur ?? candidate.savingEur
+    );
+    if (typeof candidate.window === "string" && candidate.window !== "") {
+      addWindow(facts, "appliance_window", candidate.window);
+    }
+  }
+  if (recap) {
+    // The recap-only facts, at the served display precision the
+    // achievement lines use.
+    if (isNum(tf.solar_share_pct)) {
+      facts.solar_share = `${Math.round(tf.solar_share_pct)}%`;
+    }
+    if (isNum(tf.battery_earned_eur)) {
+      facts.battery_earned = formatEur(tf.battery_earned_eur);
+    }
+  }
+  // The evening section's facts fold into TODAY: the evening window is
+  // part of today's story, and its figures belong to TODAY's fact set.
+  const ef = eveningSection?.facts ?? {};
+  const rw = ef.remaining_window ?? null;
+  if (rw) {
+    addWindow(facts, "evening_window", `${rw.start}-${rw.end}`);
+    if (isNum(rw.average_eur)) {
+      facts.evening_window_average = formatEur(rw.average_eur);
+    }
+    facts.evening_worth_using = rw.practical === true;
+  }
+  if (isNum(ef.remaining_average_eur)) {
+    facts.evening_average = formatEur(ef.remaining_average_eur);
+  }
+  if (isNum(ef.day_usage_kwh)) facts.day_usage = kwhString(ef.day_usage_kwh);
+  if (isNum(ef.day_cost_eur)) facts.day_cost = formatEur(ef.day_cost_eur);
+
+  // Deterministic fallback sentences (served when the narrative fails
+  // twice, and always present in the payload). Quiet plan days lead with
+  // the pinned no-opportunity statement; recap days carry the
+  // achievement lines only when they clear their thresholds.
+  // `notes` collects the server-owned strings this section serves: each
+  // must appear verbatim in the final narrative (content parity); the
+  // orchestrator appends the ones the model did not weave.
+  const fallbacks = [];
+  const notes = [];
+  if (recap) {
+    if (isNum(tf.solar_share_pct) && tf.solar_share_pct >= ACHIEVEMENT_MIN_SOLAR_SHARE_PCT) {
+      const line = `Your own solar covered ${facts.solar_share} of today's usage.`;
+      fallbacks.push(line);
+      notes.push({ required: line, append: line });
+    }
+    if (
+      isNum(tf.battery_earned_eur) &&
+      tf.battery_earned_eur >= ACHIEVEMENT_MIN_BATTERY_EARN_EUR
+    ) {
+      const line = `Your battery earned ${facts.battery_earned} today.`;
+      fallbacks.push(line);
+      notes.push({ required: line, append: line });
+    }
+    if (facts.evening_window) {
+      fallbacks.push(
+        facts.evening_worth_using
+          ? `The remaining window is ${facts.evening_window}, averaging ${facts.evening_window_average}, which is worth using.`
+          : `The remaining window is ${facts.evening_window}, averaging ${facts.evening_window_average}, which is not worth acting on.`
+      );
+    }
+    if (facts.day_usage && facts.day_cost) {
+      fallbacks.push(
+        `Today's usage came to ${facts.day_usage} at a cost of ${facts.day_cost}.`
+      );
+    }
+    const price = priceFallback(facts);
+    if (price !== null) fallbacks.push(price);
+    // The recap budget is 4 sentences; the deterministic priorities are
+    // achievements, the evening window, the day's usage and cost, and
+    // only then the price recap.
+    fallbacks.length = Math.min(fallbacks.length, 4);
+  } else {
+    const price = priceFallback(facts);
+    if (price !== null) fallbacks.push(price);
+    if (facts.cheap_window) {
+      fallbacks.push(
+        facts.day_average
+          ? `The cheapest window is ${facts.cheap_window}, averaging ${facts.cheap_window_average} against a day average of ${facts.day_average}.`
+          : `The cheapest window is ${facts.cheap_window}, averaging ${facts.cheap_window_average}.`
+      );
+    }
+    if (actionAvailable) {
+      // The imperative register: the command speaks of the household's
+      // large appliances, never names the specific appliance and never
+      // carries the saving; it names the window and the price advantage.
+      // The saving appears exactly once, in the supporting baseline
+      // sentence with the named appliance and its measured load.
+      const where =
+        facts.appliance_window_start && facts.appliance_window_end
+          ? `between ${facts.appliance_window_start} and ${facts.appliance_window_end}`
+          : "in the cheap hours";
+      const priceClause = facts.low_price
+        ? `today's lowest price, about ${facts.low_price}/kWh`
+        : facts.cheap_window_average
+          ? `about ${facts.cheap_window_average}/kWh`
+          : null;
+      const averageClause = facts.day_average
+        ? ` against a day average of ${facts.day_average}`
+        : "";
+      fallbacks.push(
+        priceClause !== null
+          ? `Run your large appliances ${where} to pay ${priceClause}${averageClause}.`
+          : `Run your large appliances ${where}.`
+      );
+      fallbacks.push(
+        facts.appliance_window
+          ? `Your ${facts.appliance} used ${facts.appliance_load} today; shifting it into that window saves ${facts.appliance_saving}.`
+          : `Your ${facts.appliance} used ${facts.appliance_load} today; shifting it saves ${facts.appliance_saving}.`
+      );
+    } else {
+      fallbacks.push(NO_OPPORTUNITY_STATEMENT);
+      // The model never writes the pinned statement (the register guard
+      // rejects it), so the composition always appends it to a quiet
+      // day's accepted narrative.
+      notes.push({
+        required: NO_OPPORTUNITY_STATEMENT,
+        append: NO_OPPORTUNITY_STATEMENT,
+      });
+    }
+  }
+
+  return {
+    key: "today",
+    label: "TODAY",
+    mode: recap ? "recap" : "plan",
+    facts,
+    fallback_sentences: fallbacks,
+    notes,
+    budget: recap ? 4 : actionAvailable ? 5 : 3,
+  };
+}
+
+function tomorrowSolarSentence(facts) {
+  return facts.solar_today
+    ? `The forecast is ${facts.solar_forecast} of sun, against ${facts.solar_today} today.`
+    : `The forecast is ${facts.solar_forecast} of sun.`;
+}
+
+function buildTomorrowSection(tomorrowSection, rawFacts) {
+  const tmf = tomorrowSection.facts ?? {};
+  const published = tmf.prices_published === true;
+
+  const facts = { prices_published: published };
+  const solar = kwhString(tmf.solar_kwh);
+  if (solar !== null) facts.solar_forecast = solar;
+  if (isNum(tmf.solar_score)) facts.solar_score = `${tmf.solar_score}`;
+  if (typeof tmf.low_solar === "boolean") facts.low_solar = tmf.low_solar;
+  const compare = kwhString(tmf.compare_solar_kwh);
+  if (compare !== null) facts.solar_today = compare;
+  // A low-solar tomorrow while prices are unpublished carries the hedged
+  // grid-reliance note as a server-owned string the narrative may weave.
+  const lowSolar = tmf.low_solar === true;
+  if (lowSolar && !published) facts.grid_note = LOW_SOLAR_GRID_NOTE;
+  if (published) {
+    // The published day-ahead averages and window are facts-layer values,
+    // served pre-formatted for a plain comparison with today.
+    if (isNum(rawFacts.tomorrow?.averageEur)) {
+      facts.average_price = formatEur(rawFacts.tomorrow.averageEur);
+    }
+    if (
+      typeof rawFacts.tomorrow?.window === "string" &&
+      rawFacts.tomorrow.window !== ""
+    ) {
+      addWindow(facts, "cheap_window", rawFacts.tomorrow.window);
+    }
+    if (isNum(rawFacts.dayAverageEur)) {
+      facts.today_average = formatEur(rawFacts.dayAverageEur);
+    }
+  }
+
+  const fallbacks = [];
+  // The hedged fallback sentence carrying the grid note, composed once
+  // so the fallback and the parity append serve the identical string.
+  const hedgedSolar = lowSolar
+    ? facts.solar_forecast
+      ? `${facts.solar_today
+          ? `Little sun is forecast tomorrow: ${facts.solar_forecast} against ${facts.solar_today} today`
+          : `Little sun is forecast tomorrow: ${facts.solar_forecast}`}, ${LOW_SOLAR_GRID_NOTE}.`
+      : `Little sun is expected tomorrow, ${LOW_SOLAR_GRID_NOTE}.`
+    : null;
+  const notes = [];
+  if (published) {
+    if (facts.average_price && facts.today_average) {
+      fallbacks.push(
+        `Tomorrow averages ${facts.average_price} per kWh against ${facts.today_average} today.`
+      );
+    } else if (facts.average_price) {
+      fallbacks.push(`Tomorrow averages ${facts.average_price} per kWh.`);
+    } else {
+      fallbacks.push("Tomorrow's prices are published.");
+    }
+    if (facts.solar_forecast) fallbacks.push(tomorrowSolarSentence(facts));
+  } else {
+    fallbacks.push(TOMORROW_UNPUBLISHED_SENTENCE);
+    if (hedgedSolar !== null) {
+      fallbacks.push(hedgedSolar);
+    } else if (facts.solar_forecast) {
+      fallbacks.push(tomorrowSolarSentence(facts));
+    }
+    fallbacks.push(HORIZON_SENTENCE);
+    // Content parity: the grid note and the horizon statement must
+    // appear verbatim in the final narrative. The grid note is a clause,
+    // so its append is the composed sentence that carries it verbatim.
+    if (lowSolar) {
+      notes.push({ required: LOW_SOLAR_GRID_NOTE, append: hedgedSolar });
+    }
+    notes.push({ required: HORIZON_SENTENCE, append: HORIZON_SENTENCE });
+  }
+
+  return {
+    key: "tomorrow",
+    label: "TOMORROW",
+    mode: "plan",
+    facts,
+    fallback_sentences: fallbacks,
+    notes,
+    budget: 3,
+  };
+}
+
+function buildDaySections(comingDaysSection, tomorrowDate) {
+  // A coming day dated tomorrow belongs to the TOMORROW section, never to
+  // both (the outlook's "tomorrow wins" rule).
+  const days = (comingDaysSection.days ?? []).filter(
+    (d) => d.date !== tomorrowDate
+  );
+  const withSolar = days.filter((d) => isNum(d.solar_kwh));
+  const maxSolar = withSolar.length > 0 ? Math.max(...withSolar.map((d) => d.solar_kwh)) : null;
+  const minSolar = withSolar.length > 0 ? Math.min(...withSolar.map((d) => d.solar_kwh)) : null;
+
+  return days.map((d) => {
+    const label = String(d.weekday).slice(0, 3).toUpperCase();
+    const facts = { weekday: d.weekday, date: d.date };
+    if (typeof d.condition === "string" && d.condition !== "") {
+      facts.condition = d.condition;
+    }
+    const solar = kwhString(d.solar_kwh);
+    if (solar !== null) facts.solar_kwh = solar;
+    if (isNum(d.solar_score)) facts.solar_score = `${d.solar_score}`;
+    const isBest = isNum(d.solar_kwh) && d.solar_kwh === maxSolar;
+    const isPoorest = isNum(d.solar_kwh) && d.solar_kwh === minSolar;
+    facts.week_best = isBest;
+    facts.week_poorest = isPoorest;
+
+    const fallbacks = [];
+    if (!isNum(d.solar_kwh)) {
+      fallbacks.push(`${d.weekday} has no solar forecast yet.`);
+    } else if (isBest && isPoorest && withSolar.length === 1) {
+      fallbacks.push(`${d.weekday} brings ${facts.solar_kwh} of sun.`);
+    } else if (isBest) {
+      // The forecast framing stays: the figures are what is expected.
+      fallbacks.push(
+        facts.solar_score
+          ? `${d.weekday} looks the best for solar: score ${facts.solar_score} and ${facts.solar_kwh} expected.`
+          : `${d.weekday} looks the best for solar: ${facts.solar_kwh} expected.`
+      );
+    } else if (isPoorest) {
+      fallbacks.push(
+        `${d.weekday} looks like the week's weakest solar day at ${facts.solar_kwh}.`
+      );
+    } else {
+      fallbacks.push(`${d.weekday} brings ${facts.solar_kwh} of sun.`);
+    }
+    // A rainy poorest day carries the pinned rain-day advice as a
+    // server-owned line, served verbatim; the logged budget guidance for
+    // such a day is 2 sentences.
+    const rainPoorest = facts.condition === "rain" && isPoorest;
+    if (rainPoorest) {
+      facts.advice = RAIN_DAY_ADVICE;
+      fallbacks.push(RAIN_DAY_ADVICE);
+    }
+
+    return {
+      key: label.toLowerCase(),
+      label,
+      mode: "day",
+      facts,
+      fallback_sentences: fallbacks,
+      notes: rainPoorest
+        ? [{ required: RAIN_DAY_ADVICE, append: RAIN_DAY_ADVICE }]
+        : [],
+      budget: rainPoorest ? 2 : 1,
+    };
+  });
+}
+
+// Builds the monologue sections from the built sections (buildSections
+// output) plus the raw facts. The payload facts carry pre-formatted
+// figure strings only - the model copies, never computes.
+export function buildMonologueSections(sections, rawFacts, now) {
+  const list = Array.isArray(sections) ? sections : [];
+  const f = sanitizeFacts(rawFacts ?? {});
+  const t = parseLocalTime(now);
+  const tomorrowDate = shiftDay(t, 1).dateStr;
+  const out = [];
+  const todaySection = list.find((s) => s.id === "today");
+  const eveningSection = list.find((s) => s.id === "today_evening");
+  const tomorrowSection = list.find((s) => s.id === "tomorrow");
+  const comingDaysSection = list.find((s) => s.id === "coming_days");
+  if (todaySection) {
+    out.push(buildTodaySection(todaySection, eveningSection, f));
+  }
+  if (tomorrowSection) out.push(buildTomorrowSection(tomorrowSection, f));
+  if (comingDaysSection) out.push(...buildDaySections(comingDaysSection, tomorrowDate));
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// The model prompt: the style brief verbatim, one section at a time with
+// its facts. The stub is a parameter, never a network call.
+// ---------------------------------------------------------------------------
+
+export function buildSectionPrompt(section) {
+  return [
+    MONOLOGUE_STYLE_BRIEF,
+    "",
+    `Write the ${section.label} section of the advisory.`,
+    `Facts: ${JSON.stringify(section.facts)}`,
+  ].join("\n");
+}
+
+// ---------------------------------------------------------------------------
+// Validation of one section narrative: the figure-verbatim check (figure
+// membership in this section's fact set, plus the framing rule) replaces
+// the figure ban for narrative text; every other narrative guard stays.
+// ---------------------------------------------------------------------------
+
+export function validateSectionNarrative(
+  narrative,
+  section,
+  { tomorrowPublished = false } = {}
+) {
+  const text =
+    typeof narrative === "string" && narrative.trim() !== "" ? narrative : null;
+  if (text === null) return { ok: true, reasons: [] };
+  const reasons = [...validateSectionFigures(text, section.facts).problems];
+  for (const guard of [
+    guardTomorrowPrice(text, { tomorrowPublished }),
+    guardBeyondTomorrowPrice(text),
+    guardArithmetic(text),
+    guardInternalVocabulary(text),
+    guardNonFiniteText(text),
+    guardRegister(text),
+    guardNoOpportunityPhrasing(text),
+  ]) {
+    reasons.push(...guard.problems);
+  }
+  return { ok: reasons.length === 0, reasons };
+}
+
+// ---------------------------------------------------------------------------
+// Orchestration: per section, one model call, validation, at most one
+// retry, then the fallback sentences instead of a failing narrative.
+// ---------------------------------------------------------------------------
+
+async function narrativeFromStub(modelStub, prompt, key) {
+  let output = null;
+  try {
+    output = await modelStub(prompt);
+  } catch {
+    return null; // a stub failure serves the fallback, never a crash
+  }
+  const narrative = output?.narratives?.[key];
+  return typeof narrative === "string" && narrative.trim() !== ""
+    ? narrative
+    : null;
+}
+
+// Content parity for server-owned notes: every note a section serves
+// (grid_note, advice, the horizon statement, achievement lines, the
+// no-opportunity statement) must appear verbatim in the final narrative.
+// The model may weave a note in its own position; anything it did not
+// weave is appended verbatim, so the narrative never carries less
+// content than the fallback sentences. A note's `append` is the
+// audit-safe sentence that carries it (the grid note is a clause, so it
+// rides the composed hedged sentence).
+function narrativeWithNotes(narrative, notes) {
+  let text = narrative;
+  for (const note of notes ?? []) {
+    if (note.append !== null && !text.includes(note.required)) {
+      text = `${text}${text.endsWith(" ") ? "" : " "}${note.append}`;
+    }
+  }
+  return text;
+}
+
+export async function generateMonologue(sections, rawFacts, now, modelStub) {
+  const monologueSections = buildMonologueSections(sections, rawFacts, now);
+  const tomorrowPublished =
+    (Array.isArray(sections) ? sections : []).find((s) => s.id === "tomorrow")
+      ?.facts?.prices_published === true;
+
+  const payload = [];
+  const report = [];
+  for (const section of monologueSections) {
+    const prompt = buildSectionPrompt(section);
+    let offered = null;
+    let verdict = { ok: true, reasons: [] };
+    let served = false;
+    let retried = false;
+    for (let attempt = 0; attempt < 2 && !served; attempt += 1) {
+      offered = await narrativeFromStub(modelStub, prompt, section.key);
+      if (offered === null) break; // nothing offered: serve the fallback
+      if (attempt > 0) retried = true;
+      verdict = validateSectionNarrative(offered, section, {
+        tomorrowPublished,
+      });
+      if (verdict.ok) served = true;
+    }
+    const narrative =
+      served && offered !== null
+        ? narrativeWithNotes(offered, section.notes)
+        : null;
+    const servedText =
+      narrative ?? section.fallback_sentences.join(" ");
+    payload.push({
+      label: section.label,
+      narrative,
+      fallback_sentences: section.fallback_sentences,
+      facts: section.facts,
+    });
+    report.push({
+      key: section.key,
+      label: section.label,
+      mode: section.mode,
+      budget: section.budget,
+      offered: offered !== null,
+      ok: offered === null ? true : verdict.ok,
+      reasons: offered === null ? [] : verdict.reasons,
+      retried,
+      sentenceCount: splitSentences(servedText).length,
+    });
+  }
+  return { payload, sections: report };
+}
