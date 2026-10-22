@@ -1,14 +1,18 @@
 import { Sparkles } from "lucide-react";
+import AdvisoryDayChip from "@/components/AdvisoryDayChip";
 import type { SummaryMonologueSection } from "@/lib/api";
 
 // The advisory monologue card (contract section 4, Stage 4): the same
-// /api/summary payload the advisory card reads, rendered as pure
-// prose - one section per day, the served day label as the only
-// structural element and the narrative (or the deterministic
-// fallback sentences) as flowing body text beneath it. No chips, no
-// row titles, no muted notes, no confidence: the composition is the
-// server's, and the card only presents it. The facts object rides
-// the payload for grounding and is never rendered.
+// /api/summary payload the advisory card reads, rendered as prose
+// framed exactly like the advisory card's day cards - each section's
+// served day label as the same glass chip the advisory card uses,
+// the narrative (or the deterministic fallback sentences) as one
+// flowing paragraph beneath it, and hairline dividers between the
+// sections (the owner decision of 22 October: visual parity with the
+// legacy card's section framing, superseding the earlier no-chips
+// rule). No row titles, no muted notes, no confidence: the
+// composition is the server's, and the card only presents it. The
+// facts object rides the payload for grounding and is never rendered.
 // The header keeps the advisory panel's own furniture: the
 // Reasoning chip while the server regenerates the insight and the
 // "Insight from HH:MM" stamp, both from the same insight metadata
@@ -27,6 +31,13 @@ const GLASS_CHIP =
 // card carries, in the panel's own glass register.
 const PROVENANCE_CHIP =
   "flex shrink-0 items-center rounded-full border border-white/20 bg-white/15 px-2.5 py-1 text-xs font-medium text-chip-foreground tabular-nums backdrop-blur-sm";
+// The sections' glass block: the same surface the advisory card's
+// day cards render in - the app-wide glass pane, the token fill and
+// rounding, the card elevation - so the monologue's sections sit on
+// the identical chrome the legacy card's days sit on.
+const CARD_SURFACE =
+  "glass-card glass-inset rounded-inset bg-card text-muted-foreground shadow-card";
+const GLASS_BLOCK = `flex flex-col gap-1.5 p-3 ${CARD_SURFACE}`;
 
 // A served string: non-null text with something in it. Guards the
 // boundary between the API payload and the render - a malformed
@@ -46,34 +57,26 @@ function sectionBody(section: SummaryMonologueSection): string {
   return "";
 }
 
-// One monologue section: the served day label verbatim (never
-// recomputed or localized on the client), the body as a single
-// paragraph of plain prose beneath it. A malformed section object
-// renders whatever it honestly has - label alone, body alone, or
+// One monologue section: the served day label as the advisory
+// card's own glass chip (never recomputed or localized on the
+// client), the body as a single flowing paragraph in the advisory
+// card's body-text register beneath it. A malformed section object
+// renders whatever it honestly has - chip alone, body alone, or
 // nothing - and never throws.
 function MonologueSectionView({
   section,
-  index,
 }: {
   section: SummaryMonologueSection;
-  index: number;
 }) {
   const label = isText(section?.label) ? section.label : null;
   const body = sectionBody(section);
-  // The label's quiet section-header register: the small caps-weight
-  // label style the card's own sections already use, applied without
-  // transforming the served text itself.
   return (
-    <section className={index > 0 ? "pt-3" : undefined}>
-      {label !== null && (
-        <p className="text-xs font-semibold tracking-wide text-muted-foreground">
-          {label}
-        </p>
-      )}
+    <div className="flex flex-col gap-1.5 py-2 first:pt-0 last:pb-0">
+      {label !== null && <AdvisoryDayChip label={label} />}
       {body !== "" && (
-        <p className="mt-1 text-sm leading-relaxed">{body}</p>
+        <p className="text-sm leading-snug">{body}</p>
       )}
-    </section>
+    </div>
   );
 }
 
@@ -133,10 +136,20 @@ function MonologueCard({
           </span>
         </span>
       </p>
-      <div className="mt-2 space-y-2">
-        {safeSections.map((section, index) => (
-          <MonologueSectionView key={index} section={section} index={index} />
-        ))}
+      {/* The sections render in the advisory card's own framing: one
+          glass block in the stat cards' surface, every section
+          separated by the same hairline divider the advisory card
+          draws between its advice units, the day chip on its own
+          line above its narrative - so the monologue reads as the
+          same design language as the legacy card below it. */}
+      <div className="mt-2">
+        <div className={GLASS_BLOCK}>
+          <div className="divide-y divide-white/15">
+            {safeSections.map((section, index) => (
+              <MonologueSectionView key={index} section={section} />
+            ))}
+          </div>
+        </div>
       </div>
     </div>
   );
