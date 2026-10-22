@@ -19,6 +19,7 @@ import {
   advisorySectionsContext,
   prepareAdvisoryRequest,
   serveAdvisoryCard,
+  serveSummaryAdvisory,
 } from "./advisory-adapter.mjs";
 import { getGridScoreDebug } from "./gridscore.mjs";
 import {
@@ -325,7 +326,10 @@ app.get(
       // for the debug panel (the insight state folds the signature
       // comparison in server-side).
       signature: snapshot.signature,
-      insight: serveAdvisoryCard(advisoryRequest, insight),
+      // The served advisory card always; the monologue field rides
+      // along only while EMS_ADVISORY_MONOLOGUE is on (default off),
+      // so the payload stays identical to today's with the switch off.
+      ...(await serveSummaryAdvisory(advisoryRequest, insight)),
       // Remaining calls in the shared daily Mistral budget.
       remaining_calls: getMistralBudget().remaining_calls,
       server_version: SERVER_VERSION,

@@ -1,13 +1,21 @@
-// Scenario runner for the AI Advisory core (contract v2.0).
-// Reads fixtures/*.json - each carrying { name, facts, now, stub } where
-// stub is the model narrative ({ warning, contextNote }) - and runs the same
-// orchestration generateAdvisoryCard uses: build sections, project the model
-// context, one model call, validation against the received sections, at most
-// one regeneration attempt, then serve without any failing sentence. Each
-// composed card payload is printed as formatted JSON with the verdicts it was
-// served under. The runner also refuses to print a payload that carries a
-// transport field: those are owned by the summary insight path (contract
-// section 5) and must never be composed.
+// Scenario runner for the AI Advisory core (contract v2.0) and the
+// advisory monologue. Reads fixtures/*.json - each carrying { name, facts,
+// now, stub } where stub is the model output ({ warning, contextNote }
+// and optionally { narratives } keyed by monologue section) - and runs the
+// same orchestration generateAdvisoryCard uses: build sections, project the
+// model context, one model call, validation against the received sections,
+// at most one regeneration attempt, then serve without any failing
+// sentence. Each fixture also runs the monologue pipeline: per section,
+// one model call with the section prompt, figure-verbatim validation
+// against that section's own fact set, at most one retry, then the
+// deterministic fallback sentences. Each composed card payload and each
+// monologue payload is printed as formatted JSON with the verdicts they
+// were served under; the sentence count per monologue section is logged
+// against its advisory budget. The runner also refuses to print a payload
+// that carries a transport field: those are owned by the summary insight
+// path (contract section 5) and must never be composed. Fixtures may
+// carry expected_narrative_verdicts ({ [sectionKey]: "accepted" |
+// "rejected" }); the runner asserts them.
 
 import { readFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -20,7 +28,8 @@ import {
   sanitizeOutput,
   composeAdvisoryCard,
 } from "./advisory-core.mjs";
-import { auditServedText } from "./served-text-audit.mjs";
+import { generateMonologue } from "./advisory-monologue.mjs";
+import { auditServedText, auditMonologueText } from "./served-text-audit.mjs";
 
 // Transport fields owned by the summary insight path; the composer never
 // touches them (contract section 5 field ownership).
@@ -50,7 +59,30 @@ async function runFixture(fixture) {
       throw new Error(`${name}: transport field "${field}" must never be composed`);
     }
   }
-  return { name, verdicts: attempt.verdicts, served, card };
+
+  // The monologue: per-section narrative, figure-verbatim validation
+  // against the section's own fact set, one retry, then fallbacks.
+  const monologue = await generateMonologue(sections, facts, now, modelStub);
+
+  // Data-driven expected verdicts (M fixtures): accepted or rejected per
+  // monologue section, asserted through the standard runner only.
+  for (const [key, expected] of Object.entries(
+    fixture.expected_narrative_verdicts ?? {}
+  )) {
+    const entry = monologue.sections.find((s) => s.key === key);
+    if (entry === undefined) {
+      throw new Error(`${name}: expected a monologue section "${key}", none was built`);
+    }
+    const actual = entry.offered ? (entry.ok ? "accepted" : "rejected") : "absent";
+    if (actual !== expected) {
+      throw new Error(
+        `${name}: monologue section "${key}" expected ${expected}, got ${actual}` +
+          (entry.reasons.length > 0 ? ` (reasons: ${entry.reasons.join(" | ")})` : "")
+      );
+    }
+  }
+
+  return { name, verdicts: attempt.verdicts, served, card, monologue };
 }
 
 async function main() {
@@ -64,7 +96,7 @@ async function main() {
   let auditFailures = 0;
   for (const file of files) {
     const fixture = JSON.parse(readFileSync(join(fixtureDir, file), "utf8"));
-    const { name, verdicts, served, card } = await runFixture(fixture);
+    const { name, verdicts, served, card, monologue } = await runFixture(fixture);
     console.log(`\n=== ${name} (${file}) ===`);
     console.log(
       `verdicts: ok=${String(verdicts.ok)}` +
@@ -77,19 +109,40 @@ async function main() {
         `served without the failing sentences: warning=${JSON.stringify(served.warning)}, contextNote=${JSON.stringify(served.contextNote)}`
       );
     }
+
+    // Monologue verdicts and the advisory sentence budgets (logged, never
+    // asserted): TODAY 5 on an action day, 3 on a quiet day, 4 in recap
+    // mode; TOMORROW at most 3; days beyond tomorrow 1 sentence.
+    for (const section of monologue.sections) {
+      const state = section.offered
+        ? section.ok
+          ? "accepted"
+          : `rejected: [${section.reasons.join(" | ")}]`
+        : "no narrative offered";
+      console.log(
+        `monologue ${section.label}: ${state}` +
+          (section.retried ? " (after one retry)" : "") +
+          `, served ${section.sentenceCount} sentence(s) (budget ${section.budget}, ${section.mode})`
+      );
+    }
+    console.log(JSON.stringify(monologue.payload, null, 2));
     console.log(JSON.stringify(card, null, 2));
 
     // Served-text audit (contract section 9): every composed sentence in
-    // every payload, every run. Failures print with reasons; the run fails
-    // on any.
-    const audit = auditServedText(card);
-    if (!audit.ok) {
-      auditFailures += audit.failures.length;
-      console.log("text audit: FAIL");
-      for (const failure of audit.failures) {
-        console.log(
-          `  - ${failure.path}: ${failure.rule}: ${JSON.stringify(failure.text)}`
-        );
+    // every payload, every run - the card and the monologue prose. Failures
+    // print with reasons; the run fails on any.
+    for (const [auditName, audit] of [
+      ["card", auditServedText(card)],
+      ["monologue", auditMonologueText(monologue.payload)],
+    ]) {
+      if (!audit.ok) {
+        auditFailures += audit.failures.length;
+        console.log(`${auditName} text audit: FAIL`);
+        for (const failure of audit.failures) {
+          console.log(
+            `  - ${failure.path}: ${failure.rule}: ${JSON.stringify(failure.text)}`
+          );
+        }
       }
     }
     printed += 1;

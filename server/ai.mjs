@@ -16,6 +16,12 @@ import {
   generateAdvisoryCard,
   validateModelOutput,
 } from "./advisory/advisory-core.mjs";
+import { MONOLOGUE_STYLE_BRIEF } from "./advisory/advisory-monologue.mjs";
+import {
+  ADVISORY_MONOLOGUE_ENABLED,
+  monologueSectionKeyFromPrompt,
+  refreshAdvisoryMonologue,
+} from "./advisory-adapter.mjs";
 
 const MISTRAL_URL = "https://api.mistral.ai/v1/chat/completions";
 const MISTRAL_MODEL = "mistral-small-latest";
@@ -749,6 +755,67 @@ export function peekSummaryInsight(liveSignature = null) {
   };
 }
 
+// The monologue refresh seam (Stage 4): wraps every per-section model
+// call in the shared budget accounting - the daily cap check, the
+// summary throttle timestamp and recordApiCall - then hands the
+// prompt to the injected stub (the same model seam the tests use) or
+// the real model call. Sections whose composition facts are unchanged
+// never reach the seam: the adapter replays their stored narrative.
+// Each section generation logs one line with the section label, the
+// generation reason (new-facts, retry or fallback) and the count of
+// figure-verification rejections from validation; zero rejections is
+// the healthy state, and a rejection followed by a successful retry
+// is logged, never silently passed. logContext carries the refresh's
+// signature and reason for the budget log lines.
+export async function generateInsightMonologue(
+  advisory,
+  cachedSections,
+  stub = null,
+  logContext = null
+) {
+  const signature = logContext?.signature ?? "monologue";
+  const reason = logContext?.reason ?? "monologue_refresh";
+  const seam = async (prompt) => {
+    if (dailyLimitReached()) {
+      logMistral("summary", signature, reason, "skipped_daily_limit");
+      return null; // the section serves its fallback sentences
+    }
+    summaryLastCallAt = Date.now();
+    recordApiCall();
+    if (stub !== null) {
+      return stub(prompt);
+    }
+    try {
+      // The section prompt carries the style brief verbatim; the
+      // system message keeps it and the user message carries the task
+      // and the section's facts.
+      const task = prompt.startsWith(MONOLOGUE_STYLE_BRIEF)
+        ? prompt.slice(MONOLOGUE_STYLE_BRIEF.length).trim()
+        : prompt;
+      const key = monologueSectionKeyFromPrompt(prompt);
+      if (key === null) {
+        return null;
+      }
+      const prose = await callMistral(MONOLOGUE_STYLE_BRIEF, task);
+      return { narratives: { [key]: prose } };
+    } catch (err) {
+      logMistral("summary", signature, reason, `error:${shortError(err)}`);
+      return null; // a stub failure serves the fallback, never a crash
+    }
+  };
+  const refreshed = await refreshAdvisoryMonologue(
+    advisory,
+    cachedSections,
+    seam
+  );
+  for (const line of refreshed.log) {
+    console.log(
+      `monologue ${line.label}: ${line.reason}, figure rejections ${line.rejections}`
+    );
+  }
+  return { sections: refreshed.sections };
+}
+
 export async function getSummaryInsight(snapshot, options = {}) {
   const { signature, asOf } = snapshot;
   const force = options.force === true;
@@ -913,6 +980,26 @@ export async function getSummaryInsight(snapshot, options = {}) {
       narrative: { warning: card.warning, contextNote: card.context_note },
       generatedAt: new Date().toISOString(),
     };
+    // The monologue (Stage 4): generated after the card, only while the
+    // switch is on, and stored in the insight record - the section
+    // store carries each narrative keyed by the hash of its
+    // composition facts, so a later refresh reuses every section
+    // whose facts are unchanged and makes no model call for it. A
+    // failure here never fails the card generation: the record serves
+    // the monologue it has, and every section without a stored
+    // narrative serves its deterministic fallback sentences.
+    if (ADVISORY_MONOLOGUE_ENABLED) {
+      try {
+        result.monologue = await generateInsightMonologue(
+          advisory,
+          cached?.result?.monologue?.sections ?? null,
+          options.monologueStub ?? null,
+          { signature, reason }
+        );
+      } catch (err) {
+        logMistral("summary", signature, reason, `error:${shortError(err)}`);
+      }
+    }
     summaryInsightCache = { signature, asOf, result };
     summaryWarmupError = null;
     return serve(result, "fresh");
