@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react"
 import BatteryStatusWidget from "@/components/BatteryStatusWidget"
 import DataFreshnessLabel from "@/components/DataFreshnessLabel"
 import LiveUsageCard from "@/components/LiveUsageCard"
+import MonologueCard from "@/components/MonologueCard"
 import PageLayout from "@/components/PageLayout"
 import PricesWidget from "@/components/PricesWidget"
 import SavedEarnedCard from "@/components/SavedEarnedCard"
@@ -9,7 +10,11 @@ import SolarForecastWidget from "@/components/SolarForecastWidget"
 import StatsHeader from "@/components/StatsHeader"
 import SummaryInsight from "@/components/SummaryInsight"
 import { TodayBatteryCard, TodaySolarCard } from "@/components/TodayCharts"
-import { fetchSummary, type SummaryInsight as SummaryInsightData } from "@/lib/api"
+import {
+  fetchSummary,
+  type SummaryInsight as SummaryInsightData,
+  type SummaryMonologueSection,
+} from "@/lib/api"
 import { greetingFor } from "@/lib/time"
 import { triggerAiRefresh } from "@/lib/useAiContext"
 import { triggerDataRefresh, useRefetchOnWake } from "@/lib/useDataRefresh"
@@ -25,6 +30,13 @@ function TodayPage() {
   // Ticks once a minute so the greeting follows the local time of day.
   const [nowTick, setNowTick] = useState(() => Date.now())
   const [insight, setInsight] = useState<SummaryInsightData | null>(null)
+  // The advisory monologue sections ride the same /api/summary
+  // response as the insight (Stage 4, served only while the server
+  // switch is on), so they share this fetch and its refresh cycle
+  // - no separate request of their own.
+  const [monologue, setMonologue] = useState<SummaryMonologueSection[] | null>(
+    null
+  )
   const [remainingCalls, setRemainingCalls] = useState<number | null>(null)
   const [insightLoading, setInsightLoading] = useState(true)
 
@@ -35,6 +47,7 @@ function TodayPage() {
     try {
       const value = await fetchSummary(force)
       setInsight(value.insight)
+      setMonologue(value.monologue ?? null)
       setRemainingCalls(value.remaining_calls)
     } catch {
       setInsight(null)
@@ -77,6 +90,24 @@ function TodayPage() {
         })
       : null
 
+  // The advisory card itself, kept as one value so the two layout
+  // branches below render the identical card: stacked beneath the
+  // monologue while the server serves it, otherwise exactly where
+  // it sits today.
+  const advisoryCard = (
+    <SummaryInsight
+      insight={insight}
+      loading={insightLoading}
+      from={insightFrom}
+      refreshDisabled={refreshDisabled}
+      onRefresh={() => {
+        void loadInsight(true)
+        triggerAiRefresh()
+        triggerDataRefresh()
+      }}
+    />
+  )
+
   return (
     <PageLayout
       title={greetingFor(nowTick)}
@@ -106,19 +137,28 @@ function TodayPage() {
           prices widget; it carries its own provenance chip and
           refresh control in its header. The gap matches the stats
           cluster's own, so all card-to-card whitespace is one
-          rhythm. */}
+          rhythm. While the server serves the monologue (Stage 4),
+          the monologue card stacks directly above the advisory in
+          the same column, reading the same payload; with the field
+          absent the advisory is the grid's direct item again and
+          the layout is identical to the pre-monologue dashboard. */}
       <div className="grid gap-4 lg:grid-cols-2">
-        <SummaryInsight
-          insight={insight}
-          loading={insightLoading}
-          from={insightFrom}
-          refreshDisabled={refreshDisabled}
-          onRefresh={() => {
-            void loadInsight(true)
-            triggerAiRefresh()
-            triggerDataRefresh()
-          }}
-        />
+        {monologue !== null && monologue.length > 0 ? (
+          <div className="flex flex-col gap-4">
+            <MonologueCard
+              sections={monologue}
+              reasoning={insight?.state === "reasoning"}
+              from={insightFrom}
+            />
+            {/* The advisory keeps its full-height stretch: the inner
+                column fills whatever the grid row leaves below the
+                monologue card, exactly as the advisory fills the row
+                on its own. */}
+            <div className="flex flex-1 flex-col">{advisoryCard}</div>
+          </div>
+        ) : (
+          advisoryCard
+        )}
         <PricesWidget />
       </div>
     </PageLayout>

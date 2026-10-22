@@ -244,6 +244,10 @@ export interface SummaryData {
   signature: string
   // The cached AI insight served with the summary.
   insight: SummaryInsight
+  // The advisory monologue sections (Stage 4): served only while the
+  // server switch EMS_ADVISORY_MONOLOGUE is on, so absent or null on
+  // payloads from a switched-off server - never a separate fetch.
+  monologue?: SummaryMonologueSection[] | null
   // Remaining calls in the shared daily Mistral budget.
   remaining_calls: number
 }
@@ -371,6 +375,24 @@ export interface SummaryInsight {
   // old payload comparisons; remove with the C25 cleanup.
   stale?: boolean
   error: string | null
+}
+
+// The advisory monologue (contract section 4, Stage 4): one section
+// per day served only while the server switch EMS_ADVISORY_MONOLOGUE
+// is on, so the field is absent from older payloads and the card
+// treats it as optional end to end. Each section renders its label
+// verbatim, the model narrative when it validated, or the
+// deterministic fallback sentences otherwise. The facts object is
+// the section's grounding data and is never rendered.
+export interface SummaryMonologueSection {
+  label: string | null
+  // Null when the narrative failed validation or was never generated;
+  // the fallback sentences serve in its place.
+  narrative: string | null
+  // The server-composed deterministic sentences, served as an array
+  // and rendered as one flowing paragraph; null-safe at the boundary.
+  fallback_sentences?: string[] | null
+  facts: Record<string, unknown>
 }
 
 let summaryInFlight: Promise<SummaryData> | null = null
