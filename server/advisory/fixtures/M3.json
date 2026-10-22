@@ -38,9 +38,9 @@
     "contextNote": null,
     "narratives": {
       "today": "Your own solar covered 62% of today's usage. Your battery earned €1.40 today. The day's cheap hours (11:00-14:00) have passed, and the remaining window 21:00-00:00 averages €0.33, which is not worth acting on. Your battery is charging at 72% and today's solar came in at 8.18 kWh, so the house goes into the evening well placed.",
-      "tomorrow": "Tomorrow's prices are not published yet, and only 2.2 kWh of sun is forecast against 8.18 kWh today, so the house will lean on the grid and prices are usually firmer in that case; a better picture follows once tomorrow's prices are published. Beyond tomorrow, grid prices are not yet published.",
+      "tomorrow": "Tomorrow's prices are not published yet, and only 2.2 kWh of sun is forecast against 8.18 kWh today, so the house will lean on the grid and prices are usually firmer in that case; a better picture follows once tomorrow's prices are published. Note: Beyond tomorrow, grid prices are not yet published; there the solar forecast is the deciding signal.",
       "fri": "Friday looks like the week's weakest solar day at 2.29 kWh. With rain expected, it is not a good day to run your large appliances.",
-      "sun": "Sunday looks the best for solar: score 26 and 10.87 kWh expected."
+      "sun": "Sunday looks the best for solar: score 26 and 10.87 kWh expected. With 10.87 kWh expected, it is a good day to run your large appliances on solar."
     }
   },
   "expected_narrative_verdicts": {

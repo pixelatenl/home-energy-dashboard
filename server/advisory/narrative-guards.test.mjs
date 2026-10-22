@@ -288,6 +288,45 @@ test("guardNoOpportunityPhrasing: accepts quiet-day notes without deferral", () 
   }
 });
 
+test("guardNoOpportunityPhrasing: the weekday ban rejects no-opportunity variants unless the negative advice is served", () => {
+  // The owner decision of 22 October: in weekday sections only, the
+  // variants are rejected with a named reason.
+  for (const text of [
+    "The forecast is rain, so there is nothing worth doing.",
+    "With rain in the forecast, the day is not worth acting on.",
+    "The rain means there is nothing to act on.",
+  ]) {
+    const verdict = guardNoOpportunityPhrasing(text, {
+      weekdaySection: true,
+      negativeAdviceServed: false,
+    });
+    assert.equal(verdict.ok, false, `expected rejection: ${text}`);
+    assert.ok(
+      verdict.problems.every((p) => p.includes("without the served negative advice")),
+      `expected named weekday reasons: ${text}`
+    );
+  }
+  // The negative advice lifts the ban.
+  assert.equal(
+    guardNoOpportunityPhrasing("With rain expected, there is nothing worth doing.", {
+      weekdaySection: true,
+      negativeAdviceServed: true,
+    }).ok,
+    true
+  );
+  // TODAY and TOMORROW are never touched by the weekday ban.
+  for (const text of [
+    "The remaining window is not worth acting on, so there is nothing worth doing.",
+    "Tomorrow evening is not worth acting on.",
+  ]) {
+    assert.equal(
+      guardNoOpportunityPhrasing(text).ok,
+      true,
+      `expected acceptance outside weekday sections: ${text}`
+    );
+  }
+});
+
 // ---------------------------------------------------------------------------
 // The week-best framing rule.
 // ---------------------------------------------------------------------------

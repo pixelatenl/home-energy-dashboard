@@ -34,7 +34,7 @@
       "today": "The sun has been generous today at 8.18 kWh. The low sits at €0.23 at 13:00 and the peak at €0.46 at 19:00, so the afternoon is the calm stretch. Your battery is charging at 72% and today's solar is on track for about 9.5 kWh, so the rest of the day is largely covered.",
       "tomorrow": "Little sun is expected tomorrow, just 2.2 kWh against 8.18 kWh today, so the house will lean on the grid and prices are usually firmer in that case; a better picture follows once tomorrow's prices are published.",
       "fri": "Friday looks like the week's weakest solar day at 2.29 kWh. With rain expected, it is not a good day to run your large appliances.",
-      "sun": "Sunday looks the best for solar: score 26 and 10.87 kWh expected."
+      "sun": "Sunday looks the best for solar: score 26 and 10.87 kWh expected. With 10.87 kWh expected, it is a good day to run your large appliances on solar."
     }
   },
   "expected_narrative_verdicts": {

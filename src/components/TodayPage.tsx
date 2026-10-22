@@ -2,14 +2,18 @@ import { useCallback, useEffect, useState } from "react"
 import BatteryStatusWidget from "@/components/BatteryStatusWidget"
 import DataFreshnessLabel from "@/components/DataFreshnessLabel"
 import LiveUsageCard from "@/components/LiveUsageCard"
+import MonologueCard from "@/components/MonologueCard"
 import PageLayout from "@/components/PageLayout"
 import PricesWidget from "@/components/PricesWidget"
 import SavedEarnedCard from "@/components/SavedEarnedCard"
 import SolarForecastWidget from "@/components/SolarForecastWidget"
 import StatsHeader from "@/components/StatsHeader"
-import SummaryInsight from "@/components/SummaryInsight"
 import { TodayBatteryCard, TodaySolarCard } from "@/components/TodayCharts"
-import { fetchSummary, type SummaryInsight as SummaryInsightData } from "@/lib/api"
+import {
+  fetchSummary,
+  type SummaryInsight as SummaryInsightData,
+  type SummaryMonologueSection,
+} from "@/lib/api"
 import { greetingFor } from "@/lib/time"
 import { triggerAiRefresh } from "@/lib/useAiContext"
 import { triggerDataRefresh, useRefetchOnWake } from "@/lib/useDataRefresh"
@@ -25,7 +29,17 @@ function TodayPage() {
   // Ticks once a minute so the greeting follows the local time of day.
   const [nowTick, setNowTick] = useState(() => Date.now())
   const [insight, setInsight] = useState<SummaryInsightData | null>(null)
+  // The advisory monologue sections ride the same /api/summary
+  // response as the insight (Stage 4, served only while the server
+  // switch is on), so they share this fetch and its refresh cycle
+  // - no separate request of their own.
+  const [monologue, setMonologue] = useState<SummaryMonologueSection[] | null>(
+    null
+  )
   const [remainingCalls, setRemainingCalls] = useState<number | null>(null)
+  // True only until the first payload lands; the advisory area shows
+  // its first-paint skeleton meanwhile, and refreshes keep the
+  // previous content visible instead.
   const [insightLoading, setInsightLoading] = useState(true)
 
   // The insight rides the /api/summary response together with its
@@ -35,6 +49,7 @@ function TodayPage() {
     try {
       const value = await fetchSummary(force)
       setInsight(value.insight)
+      setMonologue(value.monologue ?? null)
       setRemainingCalls(value.remaining_calls)
     } catch {
       setInsight(null)
@@ -69,6 +84,8 @@ function TodayPage() {
   // is the server's business (the Reasoning chip on the card). Only the
   // shared AI budget can disable it.
   const refreshDisabled = budgetExhausted
+  // The insight's as-of time as a formatted HH:MM label, or null
+  // before the first insight.
   const insightFrom =
     insight?.insight_as_of != null
       ? new Date(insight.insight_as_of).toLocaleTimeString("en-GB", {
@@ -103,16 +120,21 @@ function TodayPage() {
       </div>
 
       {/* The AI advisory where the live hero used to be, beside the
-          prices widget; it carries its own provenance chip and
-          refresh control in its header. The gap matches the stats
-          cluster's own, so all card-to-card whitespace is one
-          rhythm. */}
+          prices widget; it carries its own provenance chip and the
+          dashboard's only refresh control in its header (the owner
+          decision of 22 October: the monologue-based advisory area
+          is the dashboard's one advisory surface - the legacy card
+          retired). The gap matches the stats cluster's own, so all
+          card-to-card whitespace is one rhythm. With the monologue
+          field absent the area renders nothing at all and the prices
+          widget stands alone. */}
       <div className="grid gap-4 lg:grid-cols-2">
-        <SummaryInsight
-          insight={insight}
-          loading={insightLoading}
+        <MonologueCard
+          sections={monologue}
+          reasoning={insight?.state === "reasoning"}
           from={insightFrom}
           refreshDisabled={refreshDisabled}
+          loading={insightLoading}
           onRefresh={() => {
             void loadInsight(true)
             triggerAiRefresh()

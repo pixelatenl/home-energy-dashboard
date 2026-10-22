@@ -293,13 +293,28 @@ export function guardActionRestatement(text, { candidate } = {}) {
 // server injects; the model never writes it. It is also never phrased as
 // deferral advice - the two standing patterns are "wait until ..." and
 // "hold off until/for ...".
+// The weekday no-opportunity ban (the owner decision of 22 October): in
+// weekday sections only - never TODAY or TOMORROW - a narrative may not
+// conclude from the weather condition alone that the day offers nothing;
+// the rejection is named, and it is lifted only when the section's facts
+// carry the served negative advice (the rain-poorest day, whose advice
+// honestly says it). TODAY's remaining-window fallback phrasing is never
+// touched: the ban applies to weekday narratives only.
 const NO_OPPORTUNITY_RE = /\bno\s+action\s+worth\s+taking\b/i;
 const DEFERRAL_PATTERNS = [
   [/\b(?:waits?|waiting)\s+until\b/i, "wait until"],
   [/\bhold\s+off\s+(?:until|for)\b/i, "hold off until"],
 ];
+const WEEKDAY_NO_OPPORTUNITY_PATTERNS = [
+  [/\bnothing\s+worth\s+doing\b/i, "nothing worth doing"],
+  [/\bnot\s+worth\s+acting\s+on\b/i, "not worth acting on"],
+  [/\bnothing\s+to\s+act\s+on\b/i, "nothing to act on"],
+];
 
-export function guardNoOpportunityPhrasing(text) {
+export function guardNoOpportunityPhrasing(
+  text,
+  { weekdaySection = false, negativeAdviceServed = false } = {}
+) {
   const problems = [];
   const t = String(text ?? "");
   if (NO_OPPORTUNITY_RE.test(t)) {
@@ -308,6 +323,15 @@ export function guardNoOpportunityPhrasing(text) {
   for (const [pattern, label] of DEFERRAL_PATTERNS) {
     if (pattern.test(t)) {
       problems.push(`phrases advice as deferral ("${label}")`);
+    }
+  }
+  if (weekdaySection && !negativeAdviceServed) {
+    for (const [pattern, label] of WEEKDAY_NO_OPPORTUNITY_PATTERNS) {
+      if (pattern.test(t)) {
+        problems.push(
+          `concludes there is "${label}" in a weekday section without the served negative advice; never judge the day from the weather condition alone`
+        );
+      }
     }
   }
   return { ok: problems.length === 0, problems };
