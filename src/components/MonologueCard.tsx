@@ -1,5 +1,7 @@
 import { RefreshCw, Sparkles } from "lucide-react";
 import AdvisoryDayChip from "@/components/AdvisoryDayChip";
+import SkeletonReveal from "@/components/SkeletonReveal";
+import { Skeleton } from "@/components/ui/skeleton";
 import type { SummaryMonologueSection } from "@/lib/api";
 import {
   GLASS_BLOCK,
@@ -24,7 +26,9 @@ import {
 // for grounding and is never rendered.
 // The area is strictly optional: with the monologue field absent,
 // null or empty it renders nothing and the dashboard is identical
-// to the advisory-free layout.
+// to the advisory-free layout. Until the first payload arrives the
+// area renders its first-paint skeleton in the loaded area's exact
+// grid position, so the advisory column never moves.
 
 // A served string: non-null text with something in it. Guards the
 // boundary between the API payload and the render - a malformed
@@ -82,6 +86,7 @@ function MonologueCard({
   from,
   refreshDisabled,
   onRefresh,
+  loading,
 }: {
   // The sections as served by /api/summary, in payload order; null,
   // undefined or an empty array renders nothing at all.
@@ -96,6 +101,11 @@ function MonologueCard({
   // regenerate control; only the shared AI budget can disable it.
   refreshDisabled: boolean;
   onRefresh: () => void;
+  // True only until the first /api/summary payload lands: the
+  // first-paint placeholder owns the area meanwhile, so the
+  // advisory column holds its final position from the very first
+  // paint. Refreshes keep the previous content visible instead.
+  loading: boolean;
 }) {
   // The defensive boundary: only real objects reach the render, so
   // a malformed payload shapes the area instead of crashing it.
@@ -105,14 +115,45 @@ function MonologueCard({
           section !== null && typeof section === "object"
       )
     : [];
-  if (safeSections.length === 0) return null;
 
   const refreshTitle = refreshDisabled
     ? "Daily AI budget exhausted; the insight refreshes tomorrow"
     : "Regenerate all AI insights and refresh widget data now";
 
-  return (
-    <div className="glass-card glass-inset h-full rounded-lg bg-gradient-to-bl from-[#0d0805] via-[#241610] to-[#4a2c14] p-4 text-card-foreground shadow-card">
+  // The first-paint placeholder: the same warm brown AI panel in
+  // skeleton form, in exactly the grid position and shape the loaded
+  // area occupies - the panel title on the header row (the
+  // provenance chip and refresh control appear with the content, as
+  // the retired card's own skeleton did), then five glass-block
+  // placeholders in the loaded per-section cards' own stacked rhythm
+  // and surface. The shell itself does not pulse; only the shared
+  // Skeleton lines inside it do.
+  const skeleton = (
+    <div
+      className="glass-card glass-inset h-full min-h-36 rounded-lg bg-gradient-to-bl from-[#0d0805] via-[#241610] to-[#4a2c14] p-4 text-card-foreground shadow-card"
+      aria-busy="true"
+    >
+      <p className="flex items-center gap-2 font-heading text-lg font-medium text-muted-foreground">
+        <Sparkles className="size-6" aria-hidden="true" />
+        AI advisory
+      </p>
+      <div className="mt-2 space-y-2">
+        {[0, 1, 2, 3, 4].map((index) => (
+          <div key={index} className={GLASS_BLOCK}>
+            <Skeleton className="h-3.5 w-16" />
+            <Skeleton className="h-3 w-3/4" />
+            <Skeleton className="h-3 w-1/2" />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
+  // The loaded area: nothing at all once the payload carries no
+  // sections - the absent-field dashboard is advisory-free, as today.
+  const loaded =
+    safeSections.length === 0 ? null : (
+      <div className="glass-card glass-inset h-full rounded-lg bg-gradient-to-bl from-[#0d0805] via-[#241610] to-[#4a2c14] p-4 text-card-foreground shadow-card">
       {/* The header follows the retired advisory card's own pattern:
           the panel title with its sparkle, the Reasoning chip pulsing
           while the server rebuilds the insight, the provenance stamp
@@ -156,7 +197,18 @@ function MonologueCard({
           <MonologueSectionView key={index} section={section} />
         ))}
       </div>
-    </div>
+      </div>
+    );
+
+  // The stable swap: the skeleton and the loaded area occupy the same
+  // grid cell and cross-fade inside it, so no element on the page
+  // moves between the loading and loaded states. With the monologue
+  // field absent the loaded area is nothing, and the fade lands on
+  // the advisory-free dashboard, as today.
+  return (
+    <SkeletonReveal loading={loading} skeleton={skeleton}>
+      {loaded}
+    </SkeletonReveal>
   );
 }
 

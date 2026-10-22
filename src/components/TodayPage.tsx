@@ -37,6 +37,10 @@ function TodayPage() {
     null
   )
   const [remainingCalls, setRemainingCalls] = useState<number | null>(null)
+  // True only until the first payload lands; the advisory area shows
+  // its first-paint skeleton meanwhile, and refreshes keep the
+  // previous content visible instead.
+  const [insightLoading, setInsightLoading] = useState(true)
 
   // The insight rides the /api/summary response together with its
   // signature and the Mistral budget, so one refetch refreshes data and
@@ -50,6 +54,7 @@ function TodayPage() {
     } catch {
       setInsight(null)
     }
+    setInsightLoading(false)
   }, [])
 
   useEffect(() => {
@@ -129,6 +134,7 @@ function TodayPage() {
           reasoning={insight?.state === "reasoning"}
           from={insightFrom}
           refreshDisabled={refreshDisabled}
+          loading={insightLoading}
           onRefresh={() => {
             void loadInsight(true)
             triggerAiRefresh()
