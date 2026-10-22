@@ -95,13 +95,39 @@ test("extractFigureTokens: currency, times, ranges, kWh, percentages and bare fi
   assert.ok(!kinds.some((k) => k.startsWith("time:11:00")));
 });
 
-test("extractFigureTokens: negative amounts, the EUR code and padded hours normalize", () => {
-  const tokens = extractFigureTokens("worth -€0.0036, or EUR 0.29, between 9:00 and 10:00");
+test("extractFigureTokens: negative amounts, the EUR code, padded hours and spaced percentages normalize", () => {
+  const tokens = extractFigureTokens("worth -€0.0036, or EUR 0.29, between 9:00 and 10:00, at 5 % charge");
   const currency = tokens.filter((t) => t.kind === "currency").map((t) => t.raw);
   assert.ok(currency.includes("-€0.0036"));
   assert.ok(currency.includes("EUR 0.29"));
   const times = tokens.filter((t) => t.kind === "time").map((t) => t.normalized);
   assert.deepEqual(times, ["09:00", "10:00"]);
+  // A percentage with whitespace before the percent sign is the same
+  // token as its served form: "5 %" normalizes to "5%".
+  const percent = tokens.find((t) => t.kind === "percent");
+  assert.equal(percent.raw, "5 %");
+  assert.equal(percent.normalized, "5%");
+});
+
+test("a percentage with a space before the percent sign matches its served form", () => {
+  const facts = { battery_level: "5%" };
+  assert.equal(validateNarrativeFigures("The battery is at 5%.", facts).ok, true);
+  assert.equal(validateNarrativeFigures("The battery is at 5 %.", facts).ok, true);
+  // When a percentage still fails, the rejection names the typography.
+  const verdict = validateNarrativeFigures("The battery is at 45 %.", facts);
+  assert.equal(verdict.ok, false);
+  assert.ok(
+    verdict.problems.some((p) =>
+      p.includes('percentage "45 %" matches no served percentage in this section')
+    )
+  );
+  assert.ok(
+    verdict.problems.some((p) =>
+      p.includes(
+        'write percentages exactly as served, for example "5%" without a space'
+      )
+    )
+  );
 });
 
 // ---------------------------------------------------------------------------
@@ -518,11 +544,15 @@ test("the style brief carries the tuning register: generic imperatives without t
   assert.ok(
     brief.includes("a run instruction names the window and the price advantage and never the saving")
   );
+  // The supporting-sentence example keeps only its form: bracketed
+  // slots, never concrete figures.
   assert.ok(
     brief.includes(
-      "Your dishwasher used 1.07 kWh today; shifting it into that window saves €0.12."
+      "Your [appliance] used [appliance_load] today; shifting it into that window saves [appliance_saving]."
     )
   );
+  assert.ok(!brief.includes("1.07"));
+  assert.ok(!brief.includes("€0.12"));
   assert.ok(
     brief.includes(
       "When the section is TODAY and there is a real action with a small saving, you may close with one meaning-only sentence that puts the saving in perspective"
@@ -556,6 +586,20 @@ test("the style brief carries the tuning register: generic imperatives without t
       "Never write calendar dates or years; the weekday label already anchors the day."
     )
   );
+  // No computed differences or totals between served amounts.
+  assert.ok(
+    brief.includes(
+      "Never compute a difference or a total between served amounts; state each amount exactly as served and compare by placing them side by side."
+    )
+  );
+  // Weekday sections speak of their day by weekday name only.
+  assert.ok(
+    brief.includes(
+      "In a weekday section, refer to the day only by its weekday name; never write 'today'."
+    )
+  );
+  // The register stays uncontracted.
+  assert.ok(brief.includes("No contractions: write 'it is', not 'it's'."));
   // Self-containment: the brief never invites cross-day mentions or
   // carries another section's figures.
   assert.ok(!brief.includes("Mention other days"));
@@ -736,6 +780,45 @@ test("the retry's model call receives the previous rejection reasons as prompt f
     todayPrompts[1].endsWith(
       "Write the section again, correcting exactly these issues; every figure must be a verbatim copy of a served fact of this section."
     )
+  );
+});
+
+test("buildSectionPrompt deduplicates identical rejection reasons, preserving order", () => {
+  const today = section("today");
+  const r1 =
+    'amount "€0.51" matches no served amount in this section (amounts carry the currency marker exactly as served)';
+  const r2 = "contains an exclamation mark; model sentences are warm but factual";
+  const prompt = buildSectionPrompt(today, [r1, r2, r1, r2, r1]);
+  assert.equal(
+    prompt.split(r1).length - 1,
+    1,
+    "an identical reason appears once in the feedback line"
+  );
+  assert.equal(prompt.split(r2).length - 1, 1);
+  assert.ok(
+    prompt.indexOf(r1) < prompt.indexOf(r2),
+    "the first occurrence's order is preserved"
+  );
+});
+
+test("the retry feedback line deduplicates the reasons of one failed attempt", async () => {
+  const facts = baseFacts();
+  const todayPrompts = [];
+  const stub = async (prompt) => {
+    if (!prompt.includes("Write the TODAY section")) return {};
+    todayPrompts.push(prompt);
+    // The same fabricated amount twice: two identical rejection
+    // reasons from one attempt.
+    return { narratives: { today: "You could save €0.51 today or €0.51 tonight." } };
+  };
+  await generateMonologue(buildSections(facts, NOW), facts, NOW, stub);
+  assert.equal(todayPrompts.length, 2);
+  const reason =
+    'amount "€0.51" matches no served amount in this section (amounts carry the currency marker exactly as served)';
+  assert.equal(
+    todayPrompts[1].split(reason).length - 1,
+    1,
+    "the repeated figure yields one deduped reason in the retry prompt"
   );
 });
 

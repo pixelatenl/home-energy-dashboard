@@ -89,7 +89,8 @@ function normalizeRange(raw) {
 // Extracts every figure token from prose: { kind, raw, normalized }.
 // kind is one of range, currency, kwh, percent, time, number; raw is the
 // token exactly as written (what a rejection names), normalized is the
-// comparison form (padded hours, dash-normalized ranges).
+// comparison form (padded hours, dash-normalized ranges, a percentage's
+// whitespace before the percent sign removed).
 export function extractFigureTokens(prose) {
   const tokens = [];
   for (const match of String(prose ?? "").matchAll(TOKEN_RE)) {
@@ -105,7 +106,9 @@ export function extractFigureTokens(prose) {
           ? normalizeRange(raw)
           : kind === "time"
             ? normalizeHourLabel(raw)
-            : raw,
+            : kind === "percent"
+              ? raw.replace(/\s+%/u, "%")
+              : raw,
     });
   }
   return tokens;
@@ -145,8 +148,10 @@ export function servedFigureSets(facts) {
 // The per-section figure-verbatim validation. amounts must match the
 // served formatted string exactly, including the currency marker (€0.23,
 // never "0.23" and never "EUR 0.23"); times and ranges must match exactly
-// (zero-padding normalized); kWh values, percentages and scores must
-// appear verbatim. Every other figure matches nothing and is rejected.
+// (zero-padding normalized); percentages match with the whitespace
+// before the percent sign normalized, so "5 %" matches the served "5%";
+// kWh values and scores must appear verbatim. Every other figure matches
+// nothing and is rejected.
 // ---------------------------------------------------------------------------
 
 export function validateNarrativeFigures(narrative, facts) {
@@ -158,14 +163,16 @@ export function validateNarrativeFigures(narrative, facts) {
         ? sets.ranges.has(token.normalized)
         : token.kind === "time"
           ? sets.times.has(token.normalized)
-          : sets.exact.has(token.raw);
+          : token.kind === "percent"
+            ? sets.exact.has(token.normalized)
+            : sets.exact.has(token.raw);
     if (member) continue;
     const named = {
       range: `time range "${token.raw}" matches no served window in this section`,
       time: `time "${token.raw}" matches no served time in this section`,
       currency: `amount "${token.raw}" matches no served amount in this section (amounts carry the currency marker exactly as served)`,
       kwh: `kWh figure "${token.raw}" matches no served kWh figure in this section`,
-      percent: `percentage "${token.raw}" matches no served percentage in this section`,
+      percent: `percentage "${token.raw}" matches no served percentage in this section (write percentages exactly as served, for example "5%" without a space)`,
       number: `figure "${token.raw}" matches no served figure in this section`,
     }[token.kind];
     problems.push(named);
