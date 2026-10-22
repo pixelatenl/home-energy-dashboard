@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { localDateKey, localDayStartUtcMs } from "../server/time.mjs";
+import { localDateKey, localDayStartUtcMs, weekdayName } from "../server/time.mjs";
 
 // The local-day helper behind every daily bucket decision: localDateKey
 // derives the Europe/Amsterdam calendar day of an instant, and
@@ -122,5 +122,22 @@ describe("localDayStartUtcMs: daily bucket starts at local midnight", () => {
       localDayStartUtcMs("2026-03-30") - localDayStartUtcMs("2026-03-29");
     assert.equal(fallBack, 25 * 3_600_000);
     assert.equal(spring, 23 * 3_600_000);
+  });
+});
+
+describe("weekdayName: the long en-GB weekday name of a date key", () => {
+  it("derives the weekday from the calendar date, never the clock", () => {
+    // The M-fixture dates: 2026-10-21 is a Wednesday, 2026-10-23 a
+    // Friday, 2026-10-25 a Sunday - the same names the outlook days
+    // carry.
+    assert.equal(weekdayName("2026-10-21"), "Wednesday");
+    assert.equal(weekdayName("2026-10-23"), "Friday");
+    assert.equal(weekdayName("2026-10-25"), "Sunday");
+  });
+
+  it("reads the date at noon UTC so no offset can shift the day", () => {
+    // A DST-switch day still answers with its own weekday.
+    assert.equal(weekdayName("2026-10-25"), "Sunday"); // fall-back day
+    assert.equal(weekdayName("2026-03-29"), "Sunday"); // spring day
   });
 });

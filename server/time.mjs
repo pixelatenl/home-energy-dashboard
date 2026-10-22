@@ -187,3 +187,14 @@ export function mondayDateKey(now = new Date()) {
 export function localHourLabel(iso) {
   return `${localHourKey(new Date(iso)).slice(11, 13)}:00`;
 }
+
+// The long en-GB weekday name of a date key ("2026-10-21" -> "Wednesday"),
+// the same formatting the outlook days carry. Noon UTC sidesteps every
+// offset edge, the same trick dayLabel uses. Pure: the date key is data,
+// the clock is never read.
+export function weekdayName(dateKey) {
+  return new Date(`${dateKey}T12:00:00Z`).toLocaleDateString("en-GB", {
+    timeZone: "UTC",
+    weekday: "long",
+  });
+}

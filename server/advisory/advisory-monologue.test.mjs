@@ -49,6 +49,8 @@ function baseFacts(overrides = {}) {
     tomorrow: {
       pricesPublished: false,
       prices: null,
+      // The facts layer's weekday name for tomorrow (2026-10-21).
+      weekday: "Wednesday",
       solarKwh: 2.2,
       solarScore: 15,
       lowSolar: true,
@@ -413,6 +415,8 @@ test("a quiet plan day leads its fallback with the pinned no-opportunity stateme
 test("a low-solar unpublished TOMORROW carries the hedged grid note in facts and fallback", () => {
   const tomorrow = section("tomorrow");
   assert.equal(tomorrow.facts.prices_published, false);
+  // The served weekday name for tomorrow, from the facts layer.
+  assert.equal(tomorrow.facts.weekday, "Wednesday");
   assert.equal(tomorrow.facts.solar_forecast, "2.2 kWh");
   assert.equal(tomorrow.facts.solar_today, "8.18 kWh");
   assert.equal(tomorrow.facts.grid_note, LOW_SOLAR_GRID_NOTE);
@@ -451,6 +455,7 @@ test("a published tomorrow serves its average, window and window average pre-for
       averageEur: 0.29,
       window: "13:00-16:00",
       windowAverageEur: 0.24,
+      weekday: "Wednesday",
       solarKwh: 12.5,
       solarScore: 45,
       lowSolar: false,
@@ -464,6 +469,7 @@ test("a published tomorrow serves its average, window and window average pre-for
   // The window's own average fact, so a narrative attributes a price to
   // the window from it, never from the day average.
   assert.equal(tomorrow.facts.cheap_window_average, "€0.24");
+  assert.equal(tomorrow.facts.weekday, "Wednesday");
   assert.ok(tomorrow.fallback_sentences[0].startsWith("Tomorrow averages €0.29 per kWh"));
 });
 
@@ -598,6 +604,31 @@ test("the style brief carries the tuning register: generic imperatives without t
       "In a weekday section, refer to the day only by its weekday name; never write 'today'."
     )
   );
+  // Tomorrow's weekday comes from the served fact, never a guess.
+  assert.ok(
+    brief.includes(
+      "Use the served weekday name for tomorrow; never guess the day of the week."
+    )
+  );
+  // The battery recharge load is future draw, never "used today".
+  assert.ok(
+    brief.includes(
+      "For the battery recharge action, the load is what the recharge will draw, not what it used today; never write that the battery used its load today."
+    )
+  );
+  // A saving is stated as served, never explained by a constructed
+  // comparison.
+  assert.ok(
+    brief.includes(
+      "State a saving exactly as served; never construct a price comparison to explain it."
+    )
+  );
+  // Weather words stay within the served condition.
+  assert.ok(
+    brief.includes(
+      "Describe the weather only as the served condition states; add no other weather words."
+    )
+  );
   // The register stays uncontracted.
   assert.ok(brief.includes("No contractions: write 'it is', not 'it's'."));
   // Self-containment: the brief never invites cross-day mentions or
@@ -645,6 +676,46 @@ test("a tomorrow price in prose rejects while tomorrow is unpublished", () => {
   );
   assert.equal(verdict.ok, false);
   assert.ok(verdict.reasons.some((r) => /not published/.test(r)));
+});
+
+test("the week-best framing rule accepts a best-framed SUN narrative and rejects a poor one", () => {
+  const sun = section("sun"); // baseFacts marks Sunday the week's best
+  assert.equal(sun.facts.week_best, true);
+  // Accepts: the narrative frames the day as the week's best.
+  const best = validateSectionNarrative(
+    "Sunday looks the best for solar: score 26 and 10.87 kWh expected.",
+    sun
+  );
+  assert.equal(best.ok, true, best.reasons.join(" | "));
+  // Rejects: the live failure, the week's best day called a poor day.
+  const poor = validateSectionNarrative(
+    "Sunday looks like a poor solar day at 10.87 kWh.",
+    sun
+  );
+  assert.equal(poor.ok, false);
+  assert.ok(
+    poor.reasons.includes(
+      "the facts mark this day as the week's best solar day; frame it as the week's best"
+    )
+  );
+  // Rejects: no framing as the week's best at all.
+  const noBest = validateSectionNarrative(
+    "Sunday brings 10.87 kWh of sun at score 26.",
+    sun
+  );
+  assert.equal(noBest.ok, false);
+  assert.ok(
+    noBest.reasons.includes(
+      "the facts mark this day as the week's best solar day; frame it as the week's best"
+    )
+  );
+  // Inert on a section without the marker: the poorest day may say poor.
+  const fri = section("fri");
+  assert.equal(fri.facts.week_best, false);
+  assert.equal(
+    validateSectionNarrative("Friday looks like the week's weakest solar day.", fri).ok,
+    true
+  );
 });
 
 // ---------------------------------------------------------------------------
@@ -833,6 +904,36 @@ test("generateMonologue survives a throwing stub by serving fallbacks", async ()
     }
   );
   assert.ok(sections.every((s) => s.offered === false && s.ok === true));
+});
+
+test("generateMonologue collapses internal whitespace in the produced narrative", async () => {
+  const facts = baseFacts();
+  const stub = async () => ({
+    narratives: {
+      today:
+        "Today's lowest price is €0.23 at 13:00.\n\tThe peak is €0.46 at 19:00.\n\n  A calm day overall.  ",
+    },
+  });
+  const { payload, sections } = await generateMonologue(
+    buildSections(facts, NOW),
+    facts,
+    NOW,
+    stub
+  );
+  const today = payload.find((s) => s.label === "TODAY");
+  assert.ok(
+    today.narrative.startsWith(
+      "Today's lowest price is €0.23 at 13:00. The peak is €0.46 at 19:00. A calm day overall."
+    ),
+    today.narrative
+  );
+  // No newline, tab or space run survives into the stored narrative.
+  assert.ok(!today.narrative.includes("\n"));
+  assert.ok(!today.narrative.includes("\t"));
+  assert.ok(!/ {2}/.test(today.narrative));
+  // The validation ran against the collapsed narrative and accepted it.
+  const report = sections.find((s) => s.key === "today");
+  assert.equal(report.ok, true);
 });
 
 // ---------------------------------------------------------------------------

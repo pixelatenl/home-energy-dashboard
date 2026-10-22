@@ -312,3 +312,24 @@ export function guardNoOpportunityPhrasing(text) {
   }
   return { ok: problems.length === 0, problems };
 }
+
+// Guard 10: the week-best framing rule. A section whose facts mark it the
+// week's best solar day must be framed that way: the narrative carries the
+// word "best" and no "poor"-rooted word ("poor", "poorest"), so the live
+// failure of a best day called "a poor solar day" rejects with a readable
+// reason. Inert whenever the facts do not carry the marker.
+const WEEK_BEST_WORD_RE = /\bbest\b/i;
+const WEEK_POOR_WORD_RE = /\bpoor\w*/i;
+
+export function guardWeekBestFraming(text, facts) {
+  const problems = [];
+  if (facts?.week_best !== true) return { ok: true, problems };
+  const t = String(text ?? "");
+  if (t.trim() === "") return { ok: true, problems };
+  if (WEEK_POOR_WORD_RE.test(t) || !WEEK_BEST_WORD_RE.test(t)) {
+    problems.push(
+      "the facts mark this day as the week's best solar day; frame it as the week's best"
+    );
+  }
+  return { ok: problems.length === 0, problems };
+}

@@ -17,6 +17,7 @@ import {
   guardRegister,
   guardActionRestatement,
   guardNoOpportunityPhrasing,
+  guardWeekBestFraming,
 } from "./narrative-guards.mjs";
 
 // The selected candidate the restatement tests run against, in the today
@@ -166,6 +167,7 @@ test("all guards accept empty and null text", () => {
     guardRegister,
     (t) => guardActionRestatement(t, {}),
     guardNoOpportunityPhrasing,
+    (t) => guardWeekBestFraming(t, { week_best: true }),
   ]) {
     assert.equal(guard(null).ok, true);
     assert.equal(guard("").ok, true);
@@ -284,4 +286,54 @@ test("guardNoOpportunityPhrasing: accepts quiet-day notes without deferral", () 
   ]) {
     assert.equal(guardNoOpportunityPhrasing(text).ok, true, `expected acceptance: ${text}`);
   }
+});
+
+// ---------------------------------------------------------------------------
+// The week-best framing rule.
+// ---------------------------------------------------------------------------
+
+test("guardWeekBestFraming accepts a best-framed narrative on a week-best day", () => {
+  const facts = { week_best: true, solar_kwh: "10.87 kWh" };
+  assert.equal(
+    guardWeekBestFraming("Sunday looks the best for solar: 10.87 kWh expected.", facts).ok,
+    true
+  );
+  assert.equal(
+    guardWeekBestFraming("It is the best solar day of the week.", facts).ok,
+    true
+  );
+});
+
+test("guardWeekBestFraming rejects a poor or best-less framing with the named reason", () => {
+  const facts = { week_best: true, solar_kwh: "10.87 kWh" };
+  const reason =
+    "the facts mark this day as the week's best solar day; frame it as the week's best";
+  // The live failure: the week's best day called "a poor solar day".
+  const poor = guardWeekBestFraming(
+    "Sunday looks like a poor solar day at 10.87 kWh.",
+    facts
+  );
+  assert.equal(poor.ok, false);
+  assert.ok(poor.problems.includes(reason));
+  // A "poorest" framing is the same contradiction.
+  const poorest = guardWeekBestFraming(
+    "Sunday is the week's poorest solar day.",
+    facts
+  );
+  assert.equal(poorest.ok, false);
+  assert.ok(poorest.problems.includes(reason));
+  // Missing the word "best" also rejects.
+  const noBest = guardWeekBestFraming(
+    "Sunday brings 10.87 kWh of sun.",
+    facts
+  );
+  assert.equal(noBest.ok, false);
+  assert.ok(noBest.problems.includes(reason));
+});
+
+test("guardWeekBestFraming is inert without the week-best marker", () => {
+  const text = "Friday looks like a poor solar day at 2.29 kWh.";
+  assert.equal(guardWeekBestFraming(text, { week_best: false }).ok, true);
+  assert.equal(guardWeekBestFraming(text, {}).ok, true);
+  assert.equal(guardWeekBestFraming(text, { week_poorest: true }).ok, true);
 });

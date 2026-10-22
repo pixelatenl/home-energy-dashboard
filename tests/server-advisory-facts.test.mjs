@@ -198,6 +198,15 @@ describe("buildAdvisoryFacts: the contract facts shape", () => {
     const { loaders, ...snapshot } = snapshotFixture();
     const facts = await buildAdvisoryFacts(snapshot, loaders);
     assert.equal(facts.tomorrow.pricesPublished, false);
+    // Tomorrow's weekday name, derived from tomorrow's date in the same
+    // formatting as the weekday sections.
+    assert.equal(
+      facts.tomorrow.weekday,
+      new Date(`${tomorrowKey}T12:00:00Z`).toLocaleDateString("en-GB", {
+        timeZone: "UTC",
+        weekday: "long",
+      })
+    );
     assert.equal(facts.tomorrow.prices, null);
     assert.equal(facts.tomorrow.averageEur, null);
     assert.equal(facts.tomorrow.window, null);
