@@ -11,7 +11,10 @@ import {
   buildSections,
   composeAdvisoryCard,
 } from "./advisory/advisory-core.mjs";
-import { generateMonologue } from "./advisory/advisory-monologue.mjs";
+import {
+  buildMonologueSections,
+  generateMonologue,
+} from "./advisory/advisory-monologue.mjs";
 import { buildAdvisoryFacts } from "./facts.mjs";
 import { localIsoWithOffset } from "./time.mjs";
 
@@ -97,19 +100,148 @@ export function serveAdvisoryCard(request, insight) {
   };
 }
 
+// ---------------------------------------------------------------------------
+// The monologue refresh (Stage 4, step 1): per-section generation at
+// insight refresh, with the section cache that keeps a stored narrative
+// alive while its composition facts are unchanged.
+// ---------------------------------------------------------------------------
+
+// Stable hash over a section's composition facts, nowIso excluded: the
+// request's moment is injected at serve time and must never trigger a
+// regeneration. Sorted keys keep the hash stable across rebuilds.
+function compositionFactsHash(facts) {
+  const canonical = JSON.stringify(
+    Object.entries(facts ?? {})
+      .filter(([key]) => key !== "nowIso")
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+  );
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < canonical.length; i += 1) {
+    hash ^= canonical.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(16);
+}
+
+// The section key carried by a monologue section prompt: the prompt
+// builder writes "Write the TODAY section of the advisory." and every
+// section key is its label lowercased (today, tomorrow, the weekday
+// keys). Exported for the insight path's model seam, which wraps raw
+// model prose into the narratives shape keyed the same way.
+export function monologueSectionKeyFromPrompt(prompt) {
+  const match =
+    /Write the ([A-Z]+) section of the advisory\./.exec(String(prompt ?? ""));
+  const label = match === null ? null : match[1];
+  return typeof label === "string" && label !== ""
+    ? label.toLowerCase()
+    : null;
+}
+
+// Regenerates the monologue at insight refresh. cachedSections is the
+// previous insight record's monologue section store ({ [key]:
+// { facts_hash, narrative } }); a section whose hash is unchanged
+// reuses its stored narrative and costs no model call. modelSeam is
+// the per-section model seam the tests use: one prompt in, { narratives }
+// out. It is called only for sections without a reusable narrative.
+// Returns the section store for the new record plus one log entry per
+// generated section - label, reason (new-facts, retry or fallback)
+// and the count of figure-verification rejections from validation.
+export async function refreshAdvisoryMonologue(
+  request,
+  cachedSections,
+  modelSeam
+) {
+  const built = buildSections(request.facts, request.nowIso);
+  const monologueSections = buildMonologueSections(
+    built,
+    request.facts,
+    request.nowIso
+  );
+  const hashes = new Map(
+    monologueSections.map((section) => [
+      section.key,
+      compositionFactsHash(section.facts),
+    ])
+  );
+  const cached = cachedSections ?? null;
+  const reuse = new Map();
+  for (const section of monologueSections) {
+    const entry = cached?.[section.key];
+    if (
+      entry != null &&
+      typeof entry === "object" &&
+      entry.facts_hash === hashes.get(section.key)
+    ) {
+      reuse.set(section.key, entry.narrative ?? null);
+    }
+  }
+  // The stub generateMonologue calls: cached sections replay their
+  // stored narrative (re-validated against the live facts), everything
+  // else goes to the model seam.
+  const stub = async (prompt) => {
+    const key = monologueSectionKeyFromPrompt(prompt);
+    if (key !== null && reuse.has(key)) {
+      const narrative = reuse.get(key);
+      return narrative === null ? null : { narratives: { [key]: narrative } };
+    }
+    return modelSeam(prompt);
+  };
+  const { payload, sections: report } = await generateMonologue(
+    built,
+    request.facts,
+    request.nowIso,
+    stub
+  );
+  const store = {};
+  const log = [];
+  for (const [i, entry] of report.entries()) {
+    store[entry.key] = {
+      facts_hash: hashes.get(entry.key) ?? null,
+      narrative: payload[i]?.narrative ?? null,
+    };
+    if (reuse.has(entry.key)) continue; // reused: no generation this refresh
+    const reason = !entry.offered
+      ? "fallback"
+      : entry.ok
+        ? entry.retried
+          ? "retry"
+          : "new-facts"
+        : "fallback";
+    const rejections = !entry.offered
+      ? 0
+      : entry.ok
+        ? entry.retried
+          ? 1
+          : 0
+        : 2;
+    log.push({ label: entry.label, reason, rejections });
+  }
+  return { sections: store, log };
+}
+
 // The monologue payload (contract section 4, the Stage 4 monologue
 // specification): one entry per section with its label, narrative,
-// fallback sentences and facts. The section facts are the core's
-// pre-formatted figure strings; nowIso is injected here by the adapter
-// - the core stays pure, the request's moment travels as data. Absent
-// keys read as null. The model stub is a parameter, never a network
-// call: without one every section serves its deterministic fallback
-// sentences, so the switched-on summary path draws no model budget.
-export async function serveAdvisoryMonologue(request, modelStub = null) {
-  const sections = buildSections(request.facts, request.nowIso);
-  const stub = modelStub ?? (async () => null);
+// fallback sentences and facts, served from the insight record's
+// stored narratives - never a model call at serve time. The stored
+// narrative is re-validated against the live section facts by the same
+// pipeline that generated it, so a narrative that no longer holds
+// serves the section's deterministic fallback sentences instead.
+// nowIso is injected here by the adapter - the core stays pure, the
+// request's moment travels as data. Absent keys read as null.
+export async function serveAdvisoryMonologue(request, storedSections = null) {
+  const built = buildSections(request.facts, request.nowIso);
+  const stored = storedSections ?? null;
+  const stub = async (prompt) => {
+    const key = monologueSectionKeyFromPrompt(prompt);
+    const narrative =
+      key !== null && stored?.[key] != null && typeof stored[key] === "object"
+        ? stored[key].narrative
+        : null;
+    if (typeof narrative !== "string" || narrative.trim() === "") return null;
+    return { narratives: { [key]: narrative } };
+  };
   const { payload } = await generateMonologue(
-    sections,
+    built,
     request.facts,
     request.nowIso,
     stub
@@ -123,13 +255,16 @@ export async function serveAdvisoryMonologue(request, modelStub = null) {
 }
 
 // The summary API's advisory fields: the served insight card always,
-// the monologue only while the switch is on. The summary route spreads
-// this object into its response, so with the switch off the payload is
-// identical to today's - no monologue key at all.
-export async function serveSummaryAdvisory(request, insight, modelStub = null) {
+// the monologue only while the switch is on. The monologue comes from
+// the insight record's stored sections; with the switch off the field
+// is absent and the payload is identical to today's.
+export async function serveSummaryAdvisory(request, insight) {
   const fields = { insight: serveAdvisoryCard(request, insight) };
   if (ADVISORY_MONOLOGUE_ENABLED) {
-    fields.monologue = await serveAdvisoryMonologue(request, modelStub);
+    fields.monologue = await serveAdvisoryMonologue(
+      request,
+      insight?.monologue?.sections ?? null
+    );
   }
   return fields;
 }
