@@ -24,6 +24,7 @@ import {
 } from "@/lib/solarChart";
 import { niceStep } from "@/lib/chartScale";
 import { barPath } from "@/lib/barPath";
+import { DISCHARGING_COLOR } from "@/lib/flowDiagram";
 import { dateKeyPlus, localHourOf } from "@/lib/time";
 
 // The chart's geometry, the per-slot chart's idiom: the viewBox height
@@ -450,9 +451,9 @@ function SolarProductionChart({
                     />
                     {curve ? (
                       /* The week's production curve: every local hour,
-                       nights at zero, as one line. Unknown-price
-                       hours in cost mode drop out rather than read
-                       as zero. */
+                       nights at zero, as one line in the production
+                       green. Unknown-price hours in cost mode drop
+                       out rather than read as zero. */
                       <polyline
                         points={slots
                           .filter((slot) => slotValue(slot) !== null)
@@ -462,7 +463,7 @@ function SolarProductionChart({
                           )
                           .join(" ")}
                         fill="none"
-                        stroke="currentColor"
+                        stroke={DISCHARGING_COLOR}
                         strokeOpacity={0.55}
                         strokeWidth={1.5}
                         vectorEffect="non-scaling-stroke"
@@ -498,7 +499,11 @@ function SolarProductionChart({
                               BASE,
                               5,
                             )}
-                            className="fill-muted-foreground/40"
+                            /* The production series reads in the
+                              battery's discharge green (the data-viz
+                              palette's own green), so solar output
+                              and battery release share one hue. */
+                            fill={DISCHARGING_COLOR}
                           />
                         );
                       })
