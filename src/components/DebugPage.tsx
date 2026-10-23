@@ -32,7 +32,6 @@ import {
   getHourlyTotals,
   type DebugHaFetch,
   type DebugMistral,
-  type InsightCandidate,
   type InsightDebugData,
 } from "@/lib/api";
 
@@ -267,11 +266,13 @@ function EndpointCard({
   );
 }
 
-// The read-only AI insight context panel: the exact payload the
-// summary insight is built from, grouped by section, with the C1b
-// candidates' arithmetic laid out so a hand check takes seconds.
-// Fetching it never triggers a Mistral call. Section helper: a titled
-// key/value group.
+// The read-only AI insight traceability panel: the exact sections
+// context the summary insight model receives - now_local, today_date
+// and every section with its composition facts and its guidance note -
+// plus the last served advisory card and the composed system prompt,
+// so the claim and the numbers it was built from sit side by side.
+// Fetching it never triggers a Mistral call. Section helper: a
+// titled key/value group.
 function DebugSection({
   title,
   children,
@@ -308,115 +309,6 @@ function InsightContextCard() {
     void load();
   }, [load]);
 
-  const candidates = data?.context.candidates ?? [];
-  // The insight consistency check, three rules: (a) a zero claimed
-  // saving with an empty candidate list or all candidates
-  // belowThreshold, on a no-opportunity insight, is the honest state -
-  // green and neutral; (b) a nonzero claimed saving that matches no
-  // candidate is the arithmetic guard - red, unchanged; (c) the
-  // inverse - an above-threshold candidate exists but the insight
-  // claims no opportunity or a lower saving - is a missed real saving,
-  // red.
-  const CHECK_EPSILON = 0.00005;
-  const bestAboveThreshold =
-    candidates
-      .filter((candidate) => !candidate.below_threshold)
-      .reduce<InsightCandidate | null>(
-        (best, candidate) =>
-          best === null || candidate.saving_eur > best.saving_eur
-            ? candidate
-            : best,
-        null,
-      ) ?? null;
-  const claimed = data?.insight?.primary_action?.saving_eur ?? null;
-  const consistency: { ok: boolean; label: string } | null = (() => {
-    const insight = data?.insight;
-    if (!insight?.primary_action || claimed === null) {
-      return null;
-    }
-    const allBelowOrNone = candidates.every(
-      (candidate) => candidate.below_threshold,
-    );
-    if (claimed === 0 && allBelowOrNone && insight.no_opportunity) {
-      return {
-        ok: true,
-        label:
-          candidates.length === 0
-            ? "no candidates today"
-            : "only below-threshold candidates today",
-      };
-    }
-    if (
-      bestAboveThreshold !== null &&
-      claimed < bestAboveThreshold.saving_eur - CHECK_EPSILON
-    ) {
-      return {
-        ok: false,
-        label: `insight misses a candidate saving of ${bestAboveThreshold.saving_eur} EUR`,
-      };
-    }
-    if (
-      candidates.some(
-        (candidate) => Math.abs(candidate.saving_eur - claimed) < CHECK_EPSILON,
-      )
-    ) {
-      return { ok: true, label: "saving matches candidate" };
-    }
-    return { ok: false, label: "saving does not match any candidate" };
-  })();
-  // The guidance rule: the insight's guidance numbers must match the
-  // price data in the context exactly; any mismatch is red - the model
-  // recomputed instead of copying.
-  const contextGuidance = data?.context.guidance ?? null;
-  const insightGuidance = data?.insight?.guidance ?? null;
-  const guidanceMismatch =
-    contextGuidance !== null &&
-    insightGuidance !== null &&
-    (insightGuidance.window !== contextGuidance.window ||
-      Math.abs(
-        insightGuidance.cheapest_window_average_eur -
-          contextGuidance.cheapest_window_average_eur,
-      ) > CHECK_EPSILON ||
-      insightGuidance.peak_hour !== (contextGuidance.peak_hour ?? "") ||
-      Math.abs(
-        insightGuidance.peak_price_eur - contextGuidance.peak_price_eur,
-      ) > CHECK_EPSILON ||
-      Math.abs(
-        insightGuidance.spread_per_kwh_eur - contextGuidance.spread_per_kwh_eur,
-      ) > CHECK_EPSILON);
-  // The advisory rule: the insight's advisory numbers must match the
-  // price and forecast data in the context exactly; any mismatch is
-  // red - the model recomputed instead of copying.
-  const contextAdvisory = data?.context.advisory ?? null;
-  const insightAdvisory = data?.insight?.advisory ?? null;
-  const numberMatches = (a: number | null, b: number | null) =>
-    a === null || b === null ? a === b : Math.abs(a - b) <= CHECK_EPSILON;
-  const advisoryMismatch =
-    contextAdvisory !== null &&
-    insightAdvisory !== null &&
-    (insightAdvisory.type !== contextAdvisory.type ||
-      insightAdvisory.compare_day !== contextAdvisory.compare_day ||
-      !numberMatches(
-        insightAdvisory.tomorrow_average_eur,
-        contextAdvisory.tomorrow_average_eur,
-      ) ||
-      !numberMatches(
-        insightAdvisory.tomorrow_solar_kwh,
-        contextAdvisory.tomorrow_solar_kwh,
-      ) ||
-      !numberMatches(
-        insightAdvisory.compare_average_eur,
-        contextAdvisory.compare_average_eur,
-      ) ||
-      !numberMatches(
-        insightAdvisory.compare_solar_kwh,
-        contextAdvisory.compare_solar_kwh,
-      ) ||
-      !numberMatches(
-        insightAdvisory.price_difference_per_kwh,
-        contextAdvisory.price_difference_per_kwh,
-      ));
-
   return (
     <Card>
       <CardHeader>
@@ -426,32 +318,13 @@ function InsightContextCard() {
               GET /api/insight/debug
             </CardTitle>
             <CardDescription>
-              The exact context payload the summary insight is built from, with
-              the precomputed candidates - read-only, no AI call
+              The exact sections context the summary insight is built from,
+              with the last served advisory - read-only, no AI call
             </CardDescription>
           </div>
           <div className="flex items-center gap-2">
-            {status === "ok" && guidanceMismatch && (
-              <Badge variant="destructive">
-                guidance numbers do not match the price data
-              </Badge>
-            )}
-            {status === "ok" && advisoryMismatch && (
-              <Badge variant="destructive">
-                advisory numbers do not match the price and forecast data
-              </Badge>
-            )}
-            {status === "ok" && consistency && (
-              <Badge
-                variant={consistency.ok ? "outline" : "destructive"}
-                className={
-                  consistency.ok
-                    ? "border-emerald-600/40 text-emerald-600 dark:text-emerald-400"
-                    : undefined
-                }
-              >
-                {consistency.label}
-              </Badge>
+            {status === "ok" && data?.insight?.state === "reasoning" && (
+              <Badge>reasoning</Badge>
             )}
             <StatusBadge
               result={
@@ -484,199 +357,87 @@ function InsightContextCard() {
               <p className="font-mono text-xs">
                 as_of {data.as_of} · signature {data.signature}
                 {data.insight
-                  ? ` · insight from ${data.insight.as_of} (signature ${
-                      data.insight.signature === data.signature
-                        ? "current"
-                        : "differs"
-                    }, state ${data.insight.state})`
+                  ? ` · insight from ${data.insight.insight_as_of} (state ${data.insight.state}${data.insight.stale ? ", stale" : ""})`
                   : " · no insight generated yet"}
                 {` · Mistral budget ${data.mistral.remaining_calls}/${data.mistral.daily_limit} left (${data.mistral.calls_today} today)`}
               </p>
-              {data.insight?.primary_action && (
-                <p>
-                  Claimed:{" "}
-                  <span className="font-mono">
-                    {data.insight.primary_action.saving_eur} EUR
-                  </span>{" "}
-                  ({data.insight.primary_action.confidence}) -{" "}
-                  {data.insight.primary_action.what}
-                </p>
-              )}
             </DebugSection>
-            <DebugSection title={`Candidates (${candidates.length})`}>
-              {candidates.length === 0 ? (
+            <DebugSection title="Served advisory">
+              {data.insight === null ? (
                 <p className="text-muted-foreground">
-                  No candidates: no appliance with at least 0.5 kWh today and no
-                  battery discharge.
+                  No insight generated yet.
                 </p>
               ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-xs">
-                    <thead className="text-muted-foreground">
-                      <tr>
-                        <th className="pr-3">Label</th>
-                        <th className="pr-3">Load</th>
-                        <th className="pr-3">Window</th>
-                        <th className="pr-3">Saving</th>
-                        <th className="pr-3">Below</th>
-                        <th>Basis</th>
-                      </tr>
-                    </thead>
-                    <tbody className="font-mono">
-                      {candidates.map((candidate) => (
-                        <tr key={candidate.label} className="align-top">
-                          <td className="py-1 pr-3">{candidate.label}</td>
-                          <td className="py-1 pr-3">
-                            {candidate.load_kwh} kWh
-                          </td>
-                          <td className="py-1 pr-3">{candidate.window}</td>
-                          <td className="py-1 pr-3">
-                            {candidate.saving_eur} EUR
-                          </td>
-                          <td className="py-1 pr-3">
-                            {candidate.below_threshold ? "yes" : "no"}
-                          </td>
-                          <td className="py-1">{candidate.basis}</td>
-                        </tr>
+                <>
+                  {data.insight.primary_action ? (
+                    <p>
+                      Claimed:{" "}
+                      <span className="font-mono">
+                        {data.insight.primary_action.saving_eur} EUR
+                      </span>{" "}
+                      ({data.insight.primary_action.confidence}) -{" "}
+                      {data.insight.primary_action.what},{" "}
+                      {data.insight.primary_action.when}
+                    </p>
+                  ) : (
+                    <p className="text-muted-foreground">
+                      No primary action (no opportunity:{" "}
+                      {String(data.insight.no_opportunity ?? false)}).
+                    </p>
+                  )}
+                  {data.insight.warning && (
+                    <p>Warning: {data.insight.warning}</p>
+                  )}
+                  {data.insight.context_note && (
+                    <p>Context note: {data.insight.context_note}</p>
+                  )}
+                  {data.insight.error && (
+                    <p className="text-destructive">
+                      Last generation failed: {data.insight.error}
+                    </p>
+                  )}
+                  {(data.insight.supporting_facts ?? []).length > 0 && (
+                    <ul className="list-disc space-y-1 pl-4">
+                      {(data.insight.supporting_facts ?? []).map((fact) => (
+                        <li key={fact}>{fact}</li>
                       ))}
-                    </tbody>
-                  </table>
-                </div>
+                    </ul>
+                  )}
+                  <details>
+                    <summary className="cursor-pointer text-sm text-muted-foreground">
+                      Full advisory card JSON
+                    </summary>
+                    <pre className="mt-2 max-h-80 overflow-auto rounded-lg bg-muted p-3 font-mono text-xs leading-relaxed">
+                      {formatJson(data.insight)}
+                    </pre>
+                  </details>
+                </>
               )}
             </DebugSection>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <DebugSection title="Prices">
-                <p>
-                  current{" "}
-                  <span className="font-mono">
-                    {data.context.current_price ?? "—"}
-                  </span>{" "}
-                  EUR/kWh · cheapest window{" "}
-                  <span className="font-mono">
-                    {data.context.cheapest_window?.start_hour}-
-                    {data.context.cheapest_window?.end_hour} @{" "}
-                    {data.context.cheapest_window?.average_price}
-                  </span>
-                </p>
-                <p>
-                  today min/avg/max{" "}
-                  <span className="font-mono">
-                    {data.context.today_prices?.min}/
-                    {data.context.today_prices?.average}/
-                    {data.context.today_prices?.max}
-                  </span>{" "}
-                  · peaks above{" "}
-                  <span className="font-mono">
-                    {data.context.price_peak_threshold_eur}
-                  </span>
-                  :{" "}
-                  <span className="font-mono">
-                    {(data.context.today_prices?.peak_hours ?? []).join(", ") ||
-                      "none"}
-                  </span>
-                </p>
-                <p>
-                  tomorrow available:{" "}
-                  <span className="font-mono">
-                    {String(data.context.tomorrow_prices_available ?? false)}
-                  </span>
-                  {data.context.tomorrow_prices && (
-                    <>
-                      {" "}
-                      · min/avg/max{" "}
-                      <span className="font-mono">
-                        {data.context.tomorrow_prices.min}/
-                        {data.context.tomorrow_prices.average}/
-                        {data.context.tomorrow_prices.max}
-                      </span>
-                    </>
-                  )}
-                </p>
-                <p>
-                  guidance:{" "}
-                  {data.context.guidance ? (
-                    <span className="font-mono">
-                      {data.context.guidance.window} @{" "}
-                      {data.context.guidance.cheapest_window_average_eur} avg ·
-                      peak {data.context.guidance.peak_hour} @{" "}
-                      {data.context.guidance.peak_price_eur} · spread{" "}
-                      {data.context.guidance.spread_per_kwh_eur} EUR/kWh ·
-                      practical {String(data.context.guidance.practical)} ·
-                      gate: start {data.context.guidance.window_start_hour}h,
-                      left {data.context.guidance.hours_remaining}h, window{" "}
-                      {data.context.guidance.cheapest_window_average_eur} vs day{" "}
-                      {data.context.guidance.day_average_eur} · day's cheapest{" "}
-                      {data.context.guidance.day_cheapest_window} @{" "}
-                      {data.context.guidance.day_cheapest_average_eur}
-                    </span>
-                  ) : (
-                    "none (flat prices or below the spread threshold)"
-                  )}
-                </p>
-                <p>
-                  advisory:{" "}
-                  {data.context.advisory ? (
-                    <span className="font-mono">
-                      {data.context.advisory.type} · tomorrow{" "}
-                      {data.context.advisory.tomorrow_average_eur} EUR avg /{" "}
-                      {data.context.advisory.tomorrow_solar_kwh} kWh solar ·{" "}
-                      {data.context.advisory.compare_day}{" "}
-                      {data.context.advisory.compare_average_eur} EUR /{" "}
-                      {data.context.advisory.compare_solar_kwh} kWh · diff{" "}
-                      {data.context.advisory.price_difference_per_kwh} EUR/kWh
-                      {data.context.advisory.horizon_note
-                        ? ` · ${data.context.advisory.horizon_note}`
-                        : ""}
-                    </span>
-                  ) : (
-                    "none (no meaningful difference between tomorrow and the known days)"
-                  )}
-                </p>
-              </DebugSection>
-              <DebugSection title="Today">
-                <p className="font-mono text-xs">
-                  {JSON.stringify(data.context.today)}
-                </p>
-                <p className="font-mono text-xs">
-                  appliances {JSON.stringify(data.context.top_appliances ?? [])}
-                </p>
-                <p>
-                  battery{" "}
-                  <span className="font-mono">
-                    {data.context.battery ?? "no data"}
-                  </span>{" "}
-                  · CO2{" "}
-                  <span className="font-mono">
-                    {data.context.co2_intensity_g_per_kwh ?? "—"} g/kWh
-                  </span>
-                </p>
-                <p>
-                  <p>
-                    week outlook:{" "}
-                    {data.context.week_outlook ? (
-                      <span className="font-mono">
-                        {data.context.week_outlook.days
-                          .map(
-                            (day) =>
-                              `${day.weekday_short} ${day.solar_kwh}kWh ${day.condition} @ ${day.average_price_eur === null ? "no price" : day.average_price_eur}`,
-                          )
-                          .join(", ")}
-                        {data.context.week_outlook.best_solar_day &&
-                          ` · best: ${data.context.week_outlook.best_solar_day.weekday} ${data.context.week_outlook.best_solar_day.solar_kwh}kWh`}
-                        {data.context.week_outlook.poor_day &&
-                          ` · poor: ${data.context.week_outlook.poor_day.weekday} ${data.context.week_outlook.poor_day.solar_kwh}kWh ${data.context.week_outlook.poor_day.condition}`}
-                      </span>
-                    ) : (
-                      "none"
-                    )}
-                  </p>
-                  {data.context.solar_today}
-                  {data.context.solar_tomorrow
-                    ? ` · ${data.context.solar_tomorrow}`
-                    : ""}
-                </p>
-              </DebugSection>
-            </div>
+            <DebugSection
+              title={`Sections (${data.sections_context.sections.length})`}
+            >
+              <div className="space-y-3">
+                {data.sections_context.sections.map((section) => (
+                  <div key={section.id}>
+                    <p className="text-sm font-medium">
+                      {section.id}
+                      {section.mode ? ` (${section.mode})` : ""}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {section.guidance}
+                    </p>
+                    <pre className="mt-1 max-h-60 overflow-auto rounded-lg bg-muted p-3 font-mono text-xs leading-relaxed">
+                      {JSON.stringify(
+                        { facts: section.facts, days: section.days ?? null },
+                        null,
+                        2,
+                      )}
+                    </pre>
+                  </div>
+                ))}
+              </div>
+            </DebugSection>
             <details>
               <summary className="cursor-pointer text-sm text-muted-foreground">
                 System prompt

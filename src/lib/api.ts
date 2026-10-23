@@ -799,106 +799,52 @@ export interface InsightCandidate {
   basis: string
 }
 
-// The read-only insight debug payload: the exact context the summary
-// insight is built from, plus the composed system prompt and the last
-// generated insight for the verbatim saving comparison. Fetching it
-// never costs a Mistral call.
+// One section of the insight model's context: its stable id, its
+// composition facts and the guidance note stating how the model may
+// use them. The week section also carries its per-day rows.
+export interface InsightSectionDebug {
+  id: string
+  mode?: string
+  guidance: string
+  facts: Record<string, unknown>
+  days?: Record<string, unknown>[] | null
+}
+
+// The read-only insight debug payload: the exact sections context the
+// summary insight model receives (now_local, today_date and the
+// sections with their facts and guidance notes), plus the style brief
+// and the last served advisory card. Fetching it never costs a
+// Mistral call.
 export interface InsightDebugData {
   as_of: string
   signature: string
   system_prompt: string
   // The shared Mistral budget: limit, calls today, remaining.
   mistral: DebugMistral
-  context: {
-    now_local?: string
-    today?: Record<string, number | null>
-    top_appliances?: { name: string; kwh: number }[]
-    candidates?: InsightCandidate[]
-    battery?: string
-    co2_intensity_g_per_kwh?: number
-    solar_today?: string
-    solar_tomorrow?: string
-    current_price?: number | null
-    cheapest_window?: {
-      day?: string
-      start_hour?: string
-      end_hour?: string
-      average_price?: number
-    } | null
-    today_prices?: {
-      min?: number | null
-      average?: number | null
-      max?: number | null
-      peak_hours?: string[]
-    }
-    tomorrow_prices_available?: boolean
-    tomorrow_prices?: {
-      min?: number | null
-      average?: number | null
-      max?: number | null
-      peak_hours?: string[]
-    }
-    price_peak_threshold_eur?: number | null
-    guidance?: {
-      window: string
-      cheapest_window_average_eur: number
-      peak_hour: string | null
-      peak_price_eur: number
-      spread_per_kwh_eur: number
-      practical: boolean
-      window_start_hour: number
-      hours_remaining: number
-      day_average_eur: number | null
-      day_cheapest_window: string | null
-      day_cheapest_average_eur: number | null
-    } | null
-    week_outlook?: WeekOutlook | null
-    advisory?: {
-      type: "defer" | "advance"
-      triggered: boolean
-      tomorrow_average_eur: number | null
-      tomorrow_solar_kwh: number | null
-      compare_day: string
-      compare_average_eur: number | null
-      compare_solar_kwh: number | null
-      price_difference_per_kwh: number | null
-      horizon_note: string
-    } | null
+  sections_context: {
+    now_local: string
+    today_date: string
+    sections: InsightSectionDebug[]
   }
+  // The served advisory card, recomposed from the live facts on every
+  // request, with its regeneration state; null before the first
+  // generation.
   insight: {
-    signature: string
-    as_of: string
-    // The regeneration state, computed against the live signature:
-    // "fresh" or "reasoning".
-    state: "fresh" | "reasoning"
-    no_opportunity: boolean
-    candidates: InsightCandidate[]
-    guidance: {
-      window: string
-      cheapest_window_average_eur: number
-      peak_hour: string
-      peak_price_eur: number
-      spread_per_kwh_eur: number
-      line: string
-    } | null
-    advisory: {
-      type: "defer" | "advance"
-      triggered: boolean
-      tomorrow_average_eur: number | null
-      tomorrow_solar_kwh: number | null
-      compare_day: string
-      compare_average_eur: number | null
-      compare_solar_kwh: number | null
-      price_difference_per_kwh: number | null
-      horizon_note: string
-      line: string
-    } | null
-    primary_action: {
+    primary_action?: {
       what: string
       when: string
       saving_eur: number
       confidence: string
     } | null
+    warning?: string | null
+    context_note?: string | null
+    no_opportunity?: boolean
+    supporting_facts?: string[]
+    state: "fresh" | "reasoning" | "error"
+    insight_as_of: string | null
+    generated_at: string | null
+    stale: boolean
+    error: string | null
   } | null
 }
 
