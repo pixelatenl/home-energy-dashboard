@@ -43,6 +43,9 @@ function SavedEarnedCard() {
   );
   const { data, status } = useUsageBreakdown(anchor);
   const net = data === null ? null : netFigures(data);
+  // The no-savings day: words in the headline slot instead of a
+  // figure (savedHeadline holds the text rule; this drives layout).
+  const noSavings = net !== null && net.savedEur !== null && net.savedEur < 0;
 
   const loading = status === "loading" && data === null;
 
@@ -61,7 +64,7 @@ function SavedEarnedCard() {
           {/* The title and the big figure anchor the top; the two
             fixed sub-lines spread to the bottom, so the card fills
             its grid cell without a bottom gap. */}
-          <div className="flex flex-col gap-1">
+          <div className={noSavings ? "flex flex-1 flex-col gap-1" : "flex flex-col gap-1"}>
             <CardTitle className="flex items-center gap-1.5 text-title-foreground">
               <Recycle className="size-5 shrink-0" aria-hidden="true" />
               Saved and earned
@@ -70,12 +73,13 @@ function SavedEarnedCard() {
               makes the headline number pop - the single deliberate
               money-card exception to the neutral headline rule. The
               no-savings day reads as words, not a figure: the title's
-              size in a regular muted weight, so a pay-first day never
-              headlines as a negative amount. */}
+              size in a regular muted weight, centered in the space
+              the big figure would have filled, so a pay-first day
+              never headlines as a negative amount. */}
             <CardTitle
               className={
-                net !== null && net.savedEur !== null && net.savedEur < 0
-                  ? "text-lg font-normal text-muted-foreground"
+                noSavings
+                  ? "flex flex-1 items-center justify-center text-lg font-normal text-muted-foreground"
                   : `${STAT_HEADLINE} text-green-300`
               }
             >
