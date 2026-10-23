@@ -61,7 +61,7 @@ interface SolarProductionChartProps {
   dayWindow?: DaylightWindow | null;
 }
 
-// The Solar Production chart, the page's first content block: PV
+// The Solar production chart, the page's first content block: PV
 // production per hour (day and week periods, bars for a day and a
 // production curve for a week) or per day (month and year, daily
 // bars), on a full-period axis. The day view's axis narrows to the
@@ -206,7 +206,7 @@ function SolarProductionChart({
       <Card>
         <PanelHeader
           icon={Sun}
-          title="Solar Production"
+          title="Solar production"
           description={`${periodLabel(period)} - PV production per ${hourly ? "hour" : "day"}`}
         />
         <CardContent>
@@ -232,7 +232,7 @@ function SolarProductionChart({
     <Card>
       <PanelHeader
         icon={Sun}
-        title="Solar Production"
+        title="Solar production"
         description={`${periodLabel(period)} - PV production per ${hourly ? "hour" : "day"}`}
       />
       <CardContent>

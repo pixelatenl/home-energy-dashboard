@@ -2,7 +2,7 @@ import type { ReturnPricing, SolarProductionPoint } from "@/lib/api"
 import { periodEnd, periodStart, type Period } from "./period.ts"
 import { localDateOf, localHourOf } from "./time.ts"
 
-// Pure logic for the Solar Production chart: the slot model that
+// Pure logic for the Solar production chart: the slot model that
 // places the API's interval series on a full-period axis, the peak
 // label, and the interval price derivation. No React; everything is
 // testable with plain data.
