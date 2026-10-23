@@ -1,5 +1,5 @@
 // One context snapshot per /api/summary request: the materialized fields
-// the AI insight is based on - day totals from energy_delta, prices past
+// the insight is based on - day totals from energy_delta, prices past
 // and forecast, the PV forecast and the battery state - plus the stable
 // signature over them. The insight gating (cache, throttle, stale
 // markers) is driven by this snapshot, so the kiosk can always compare

@@ -1,4 +1,4 @@
-# The AI advisory card — specification
+# The Your Advisor card — specification
 
 This document keeps the advisory card's purpose statement, its content
 classes and its rendering and visual rules. The advisory pipeline

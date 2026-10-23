@@ -8,14 +8,14 @@ export interface AiContextValue {
 }
 
 // Window event through which the header refresh button regenerates every
-// AI insight at once; each useAiContext instance re-fetches with force.
+// insight at once; each useAiContext instance re-fetches with force.
 export const AI_REFRESH_EVENT = "ai-insights-refresh"
 
 export function triggerAiRefresh() {
   window.dispatchEvent(new Event(AI_REFRESH_EVENT))
 }
 
-// Fetches an AI insight once on mount via the given (30-minute-cached) API
+// Fetches an insight once on mount via the given (30-minute-cached) API
 // function, and re-fetches with force when the global refresh event fires.
 // State is only updated after the await, so this is safe to call from
 // effects.

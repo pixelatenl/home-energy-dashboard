@@ -1,4 +1,4 @@
-// The AI Advisory card core (contract v2.0). One facts layer in, four
+// The Your Advisor card core (contract v2.0). One facts layer in, four
 // deterministic surfaces out: the model context (sections), the model
 // output validation, and the served SummaryInsight payload.
 //

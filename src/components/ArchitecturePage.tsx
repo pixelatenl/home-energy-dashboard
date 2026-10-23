@@ -50,7 +50,7 @@ const LAYERS = [
     name: "Frontend",
     role: "Own dashboard",
     points: [
-      "React app (Vite, pnpm) served by the API server; consumes only the own API and shows live energy flow, forecasts, prices, and AI insights.",
+      "React app (Vite, pnpm) served by the API server; consumes only the own API and shows live energy flow, forecasts, prices, and insights.",
     ],
   },
 ]

@@ -763,7 +763,7 @@ export async function getSummary() {
       data.battery_empty_in_min = Math.round(minutes / 5) * 5;
     }
   }
-  // Timestamp of this summary cache fill; the AI insight reports it as
+  // Timestamp of this summary cache fill; the insight reports it as
   // the moment its text is based on.
   data.summary_as_of = new Date().toISOString();
   summaryCache = { fetchedAt: Date.now(), data };

@@ -78,7 +78,7 @@ const ENDPOINTS: EndpointSpec[] = [
     key: "summary",
     label: "GET /api/summary",
     description:
-      "Today, this week and this month headline metrics, with the context signature, the AI insight and the remaining Mistral budget",
+      "Today, this week and this month headline metrics, with the context signature, the insight and the remaining Mistral budget",
     params: [],
     run: () => fetchSummary(),
   },
@@ -266,7 +266,7 @@ function EndpointCard({
   );
 }
 
-// The read-only AI insight traceability panel: the exact sections
+// The read-only insight traceability panel: the exact sections
 // context the summary insight model receives - now_local, today_date
 // and every section with its composition facts and its guidance note -
 // plus the last served advisory card and the composed system prompt,

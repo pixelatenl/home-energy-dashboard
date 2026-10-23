@@ -364,7 +364,7 @@ export async function getPriceContextData() {
         (entry) => entry.key.slice(0, 10) === nextDateKey(tomorrowKey, 1)
       ).length > 0,
     cheapestBlock: summary.cheapest_block,
-    // Per-day cheapest windows and the remaining peak, for the AI insight
+    // Per-day cheapest windows and the remaining peak, for the insight
     // context signature.
     cheapestByDay: {
       today: cheapestFromEntries(todayEntries, currentKey, 3),

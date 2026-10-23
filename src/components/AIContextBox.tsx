@@ -4,7 +4,7 @@ import SkeletonReveal from "@/components/SkeletonReveal";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Sparkles } from "lucide-react";
 
-// AI insight box shared by the weather, prices and battery widgets:
+// Insight box shared by the weather, prices and battery widgets:
 // the advisory panel's own surface in miniature - the dark-to-warm
 // AI gradient under the app's glass pane (blur, saturation, top
 // seam), the nested inset rounding and the card elevation, no
@@ -39,7 +39,7 @@ function AIContextBox({ text, error, loading }: AiContextValue) {
       <SkeletonReveal loading={loading} skeleton={skeleton}>
         {limitReached ? (
           <p className="text-xs text-muted-foreground">
-            AI insight paused (daily AI limit reached); it resumes after
+            Insights paused (daily AI limit reached); it resumes after
             midnight UTC
           </p>
         ) : null}
@@ -52,7 +52,7 @@ function AIContextBox({ text, error, loading }: AiContextValue) {
       <div className="glass-card glass-inset min-h-24 rounded-inset bg-gradient-to-bl from-[#0d0805] via-[#241610] to-[#4a2c14] p-4 text-muted-foreground shadow-card">
         <span className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
           <Sparkles className="size-3.5" aria-hidden="true" />
-          AI insight
+          Insights
         </span>
         <p className="mt-2 text-sm leading-relaxed">
           {/* The server may compose prices at payload precision (EUR

@@ -20,11 +20,11 @@ import { triggerDataRefresh, useRefetchOnWake } from "@/lib/useDataRefresh"
 
 // The dashboard hub: the stats grid - four cards per row, every
 // widget at the same height, the Saved and earned card leading and
-// one slot held open for a future card - with the AI advisory beside
+// one slot held open for a future card - with the Your Advisor panel beside
 // the prices where the live hero used to be. The live energy flow
 // itself moved to its own page at /live.
 // The greeting header is bare; the insight provenance chip and the
-// refresh control live in the AI advisory card's own header.
+// refresh control live in the Your Advisor card's own header.
 function TodayPage() {
   // Ticks once a minute so the greeting follows the local time of day.
   const [nowTick, setNowTick] = useState(() => Date.now())
@@ -119,7 +119,7 @@ function TodayPage() {
         <TodayBatteryCard />
       </div>
 
-      {/* The AI advisory where the live hero used to be, beside the
+      {/* The Your Advisor panel where the live hero used to be, beside the
           prices widget; it carries its own provenance chip and the
           dashboard's only refresh control in its header (the owner
           decision of 22 October: the monologue-based advisory area

@@ -191,7 +191,7 @@ function FlowLegend() {
 // line on a secondary 0-100 percent axis. Hovering a slot shows a tooltip
 // with that hour's flow, its money figures and the SOC. Rendered in the
 // same muted strip background and height as the 5 day forecast's hourly
-// chart, so the charts and AI insights align across the two cards.
+// chart, so the charts and insights align across the two cards.
 function FlowChart({
   flow,
   socSeries,
@@ -252,7 +252,7 @@ function FlowChart({
 
   return (
     // Same strip background and height as the 5 day forecast's hourly
-    // chart, so the two cards' charts and AI insights align.
+    // chart, so the two cards' charts and insights align.
     <div className="rounded-inset bg-muted/30 p-4 h-64">
       <div className="flex gap-2">
         {/* The y-axis labels, on the gridlines. */}

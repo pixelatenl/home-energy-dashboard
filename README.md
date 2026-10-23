@@ -32,7 +32,7 @@ src/
 ├── lib/           # hooks, period/time logic, flow model, API client, formatters
 └── main.tsx       # app entry point
 server/            # Express API server (see "Local data server")
-docs/              # advisory-spec.md (the AI advisory's source of truth) and spec.md
+docs/              # advisory-spec.md (Your Advisor's source of truth) and spec.md
 tests/             # unit tests (node:test)
 deploy/            # systemd unit and deploy script for the mini PC
 ```
@@ -41,7 +41,7 @@ The app uses react-router-dom with path-based routes. The tabs are Today (the hu
 
 ## Pages and layout
 
-The Today hub opens with a full-width grid of eight stat cards over two rows: the Live power card (a rotating circle alternating the live grid draw with the renewable grid share), Saved and earned, From the grid, Home usage, Solar forecast, Solar today (with a Self usage chip), Battery status and Battery today. Every card is one navigation target (the card-link pattern): the metric cards open today in the Usage, Solar or Battery tab, the solar and battery cards open today in their pages, and Live power opens the live energy flow page. Each card carries an info tooltip in its top-right corner with the figure's definition, and the cards share a fixed composition so their height never changes during the day. Below the stats, the AI advisory panel (see "AI advisory") sits beside the prices widget. The Solar today and Battery today charts render as their own compact cards beneath the flow hero on the /live page.
+The Today hub opens with a full-width grid of eight stat cards over two rows: the Live power card (a rotating circle alternating the live grid draw with the renewable grid share), Saved and earned, From the grid, Home usage, Solar forecast, Solar today (with a Self usage chip), Battery status and Battery today. Every card is one navigation target (the card-link pattern): the metric cards open today in the Usage, Solar or Battery tab, the solar and battery cards open today in their pages, and Live power opens the live energy flow page. Each card carries an info tooltip in its top-right corner with the figure's definition, and the cards share a fixed composition so their height never changes during the day. Below the stats, the Your Advisor panel (see "Your Advisor") sits beside the prices widget. The Solar today and Battery today charts render as their own compact cards beneath the flow hero on the /live page.
 
 The /live page carries the live energy flow hero alone, with a Back to today link at its bottom. The flow draws the snapshot from `/api/summary` as four nodes (Sun left, Home center, Grid right, with Battery below Home), each with its icon, name and live figure; each active flow shows its watt value in a pill-shaped chip on its arrow. The arrows keep their strict colors and every arrow hides below 25 W. The Home node's figure is the sum of the visible incoming arrows, so the diagram always balances visually. The diagram is built as data (nodes and edges arrays) with rendering as a separate pass, so a future illustrated house view can swap the render pass without touching the data logic.
 
@@ -80,7 +80,7 @@ cp .env.example .env
 | `HA_URL` / `HA_TOKEN` | Home Assistant REST API for the Zonneplan price forecast |
 | `ZONNEPLAN_PRICE_ENTITY` | The quarter-hourly tariff forecast entity |
 | `ZONNEPLAN_PRICES_TOMORROW_STATUS_ENTITY` | The tomorrow-prices publication status entity |
-| `MISTRAL_API_KEY` | Mistral API key for the AI insights |
+| `MISTRAL_API_KEY` | Mistral API key for the insights |
 | `MISTRAL_DAILY_CALL_LIMIT` | Optional; shared daily Mistral call budget (default 100) |
 | `MISTRAL_SUMMARY_MIN_INTERVAL_MINUTES` | Optional; minimum interval between summary regenerations (default 5) |
 | `BATTERY_CAPACITY_KWH` | Optional; usable battery capacity for the charge/discharge time estimates (unset hides them) |
@@ -106,8 +106,8 @@ The API server listens on port 5273 and the Vite dev server on 5173; the fronten
 - `GET /api/totals/hourly?hours=N` - per-entity hourly kWh sums (default 24 hours)
 - `GET /api/series/hourly?hours=N` - average and max power per entity per hour (default 24 hours)
 - `GET /api/current` - latest measurement per entity
-- `GET /api/summary` - today, this week and this month headline metrics, the context snapshot's `as_of` and `signature`, the AI advisory with its regeneration `state` (see "AI advisory"), `remaining_calls` in the shared Mistral budget, and `server_version` (git hash plus process start time, so a stale process is recognizable)
-- `GET /api/insight/daily` - the AI advisory served on its own (the same insight `/api/summary` embeds)
+- `GET /api/summary` - today, this week and this month headline metrics, the context snapshot's `as_of` and `signature`, the Your Advisor insight with its regeneration `state` (see "Your Advisor"), `remaining_calls` in the shared Mistral budget, and `server_version` (git hash plus process start time, so a stale process is recognizable)
+- `GET /api/insight/daily` - the Your Advisor insight served on its own (the same insight `/api/summary` embeds)
 - `GET /api/insight/debug` - read-only traceability for the advisory: the exact context payload, the server-computed action candidates with their exact savings, the price statistics, the composed system prompt and the last generated insight. Composing the context never calls the model.
 - `GET /api/appliances?range=today|week|month|year&period=day|week|month|year&date=YYYY-MM-DD` - per-appliance kWh, cost, latest power and hourly breakdown from the smart plug counters; optional `period`/`date` anchor the window to a concrete period
 - `GET /api/usage/breakdown?period=day|week|month|year&date=YYYY-MM-DD` - the household usage category breakdown for a period: measured categories, the heat pump estimate (marked "Est."), the remainder bucket, the previous period for comparison, the measured/estimated split, the grid statistics and the per-slot chart series
@@ -127,7 +127,7 @@ The API server listens on port 5273 and the Vite dev server on 5173; the fronten
 
 The frontend consumes these through the typed client in `src/lib/api.ts`.
 
-### AI advisory
+### Your Advisor
 
 The advisory card is the hub's single deciding AI voice (the weather, prices and battery boxes are explaining voices; they only contextualize their own widget). Its architecture separates four layers so insight and data cannot disagree:
 
@@ -230,7 +230,7 @@ The battery (Anker SOLIX Solarbank Max AC) appears in three places: the compact 
 
 The Battery tab's current-state block (the SOC gauge, the charge/discharge status and the time-to-full/empty estimate, the latter when `BATTERY_CAPACITY_KWH` is configured) renders only while the selected period contains now. The flow chart shows hourly charge and discharge kWh with the SOC line on a secondary 0-100 percent axis on a day, one bar pair per day on week and month, one per month on a year. The totals render as mode-aware stat rows: energy mode Charged/Discharged/Net, cost mode Charge cost/Discharge value/Arbitrage - both dimensions ride the payload, so the mode toggle restyles without a refetch. Money figures are priced bottom-up at each hour's dynamic price with a last-known fallback; a money figure is null when any flowing interval lacks its price, never a silent 0.
 
-The battery AI insight box (`GET /api/battery/context`) comments on the charge state, today's use and a charging/discharging tip; it follows the same caching, throttling and shared daily Mistral call cap as the other insight boxes.
+The battery insight box (`GET /api/battery/context`) comments on the charge state, today's use and a charging/discharging tip; it follows the same caching, throttling and shared daily Mistral call cap as the other insight boxes.
 
 ### Solar panel score
 

@@ -1,4 +1,4 @@
-// AI insights for the dashboard widgets: compact context builders for the
+// Insights for the dashboard widgets: compact context builders for the
 // weather and prices widgets, a shared Mistral client with per-insight
 // response caching, a per-insight 30-minute upstream throttle and one shared
 // daily call cap. The summary insight is generated through the advisory core

@@ -1,4 +1,4 @@
-// Scenario runner for the AI Advisory core (contract v2.0) and the
+// Scenario runner for the Your Advisor core (contract v2.0) and the
 // advisory monologue. Reads fixtures/*.json - each carrying { name, facts,
 // now, stub } where stub is the model output ({ warning, contextNote }
 // and optionally { narratives } keyed by monologue section) - and runs the

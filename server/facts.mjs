@@ -1,5 +1,5 @@
 // The advisory facts layer (contract section 2): one consolidation of the
-// computed facts the AI Advisory card consumes. Thin and additive - it
+// computed facts the Your Advisor card consumes. Thin and additive - it
 // calls the existing builders in context.mjs and shapes their outputs into
 // the facts object the advisory core takes (contract section 3), including
 // every null encoding: a missing or thin input is null, never a guess, and

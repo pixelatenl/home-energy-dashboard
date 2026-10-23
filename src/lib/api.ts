@@ -239,10 +239,10 @@ export interface SummaryData {
   // The moment the underlying summary data was built (same value as
   // summary_as_of, exposed under the name the API contract uses).
   as_of: string
-  // Stable hash over the materialized context fields the AI insight is
+  // Stable hash over the materialized context fields the insight is
   // based on.
   signature: string
-  // The cached AI insight served with the summary.
+  // The cached insight served with the summary.
   insight: SummaryInsight
   // The advisory monologue sections (Stage 4): served only while the
   // server switch EMS_ADVISORY_MONOLOGUE is on, so absent or null on
@@ -252,7 +252,7 @@ export interface SummaryData {
   remaining_calls: number
 }
 
-// The AI insight embedded in /api/summary: the structured decision
+// The insight embedded in /api/summary: the structured decision
 // payload (the only format) plus the metadata the kiosk needs to
 // judge freshness. The guidance, advisory and outlook objects are
 // served from the live snapshot extras at request time.
@@ -400,7 +400,7 @@ let summaryInFlight: Promise<SummaryData> | null = null
 // Fetches /api/summary. Concurrent non-force callers share one
 // in-flight request, so the kiosk refetch (several widgets poll this
 // endpoint) never multiplies into a burst. With force, a fresh request
-// is made that asks the server to regenerate the AI insight once
+// is made that asks the server to regenerate the insight once
 // regardless of the context signature.
 export function fetchSummary(force = false): Promise<SummaryData> {
   if (!force && summaryInFlight) {
@@ -732,7 +732,7 @@ export interface DailyInsight {
 
 let dailyInsightInFlight: Promise<DailyInsight> | null = null
 
-// Fetches the daily AI insight. There is no long-lived client cache:
+// Fetches the daily insight. There is no long-lived client cache:
 // refreshes ride the 5-minute panel cycle, and concurrent callers share
 // one in-flight request. With force, a fresh request is made that asks the
 // server to regenerate once regardless of the context signature.
@@ -1035,7 +1035,7 @@ export function fetchWeatherHourly(
 const CONTEXT_CACHE_MS = 30 * 60 * 1000
 let contextCache: { fetchedAt: number; value: WeatherContext } | null = null
 
-// Fetches the AI insight at most once every 30 minutes; the module-level
+// Fetches the insight at most once every 30 minutes; the module-level
 // cache means remounts and day selections never trigger a new request.
 // With force, the cache is bypassed and the server is asked to regenerate.
 export function fetchWeatherContext(force = false): Promise<WeatherContext> {
@@ -1063,7 +1063,7 @@ export function fetchCheapestBlock(hours = 3): Promise<CheapestBlock | null> {
 let priceContextCache: { fetchedAt: number; value: PriceContext } | null =
   null
 
-// Fetches the price AI insight at most once every 30 minutes; the
+// Fetches the price insight at most once every 30 minutes; the
 // module-level cache means remounts never trigger a new request. With
 // force, the cache is bypassed and the server is asked to regenerate.
 export function fetchPriceContext(force = false): Promise<PriceContext> {
@@ -1085,7 +1085,7 @@ export function fetchPriceContext(force = false): Promise<PriceContext> {
 let batteryContextCache: { fetchedAt: number; value: BatteryContext } | null =
   null
 
-// Fetches the battery AI insight at most once every 30 minutes. With
+// Fetches the battery insight at most once every 30 minutes. With
 // force, the cache is bypassed and the server is asked to regenerate.
 export function fetchBatteryContext(force = false): Promise<BatteryContext> {
   if (

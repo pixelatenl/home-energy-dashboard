@@ -118,7 +118,7 @@ function MonologueCard({
 
   const refreshTitle = refreshDisabled
     ? "Daily AI budget exhausted; the insight refreshes tomorrow"
-    : "Regenerate all AI insights and refresh widget data now";
+    : "Regenerate all insights and refresh widget data now";
 
   // The first-paint placeholder: the same warm brown AI panel in
   // skeleton form, in exactly the grid position and shape the loaded
@@ -135,7 +135,7 @@ function MonologueCard({
     >
       <p className="flex items-center gap-2 font-heading text-lg font-medium text-muted-foreground">
         <Sparkles className="size-6" aria-hidden="true" />
-        AI advisory
+        Your Advisor
       </p>
       <div className="mt-2 space-y-2">
         {[0, 1, 2, 3, 4].map((index) => (
@@ -162,7 +162,7 @@ function MonologueCard({
           itself. */}
       <p className="flex items-center gap-2 font-heading text-lg font-medium text-muted-foreground">
         <Sparkles className="size-6" aria-hidden="true" />
-        AI advisory
+        Your Advisor
         <span className="ml-auto flex shrink-0 items-center gap-2">
           {reasoning && (
             <span
