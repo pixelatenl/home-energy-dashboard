@@ -465,7 +465,7 @@ function SolarProductionChart({
                         fill="none"
                         stroke={DISCHARGING_COLOR}
                         strokeOpacity={0.55}
-                        strokeWidth={1.5}
+                        strokeWidth={2.5}
                         vectorEffect="non-scaling-stroke"
                       />
                     ) : (
