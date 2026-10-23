@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { pricedGridFigures } from "../server/queries.mjs";
-import { netFigures } from "../src/lib/usageNet.ts";
+import { netFigures, savedHeadline } from "../src/lib/usageNet.ts";
 import type { UsageBreakdown } from "../src/lib/api.ts";
 
 // An hour map: bucket start ms -> kWh.
@@ -136,5 +136,27 @@ describe("netFigures: the with-and-without comparison", () => {
     assert.ok(Math.abs(net.netKwh - 7.15) < 1e-9);
     assert.equal(net.netCostEur, null);
     assert.equal(net.savedEur, null);
+  });
+});
+
+describe("savedHeadline: the card's headline text", () => {
+  it("reads a dash without price data", () => {
+    assert.equal(savedHeadline(null), "\u2014");
+  });
+
+  it("reads 'No savings today' on a negative day", () => {
+    assert.equal(savedHeadline(-0.26), "No savings today");
+  });
+
+  it("reads 'No savings today' on any negative value, however small", () => {
+    assert.equal(savedHeadline(-0.001), "No savings today");
+  });
+
+  it("formats zero as a plain EUR figure", () => {
+    assert.equal(savedHeadline(0), "\u20ac0.00");
+  });
+
+  it("formats a positive figure as a plain EUR amount", () => {
+    assert.equal(savedHeadline(12.34), "\u20ac12.34");
   });
 });

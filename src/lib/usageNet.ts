@@ -38,3 +38,18 @@ export function netFigures(data: UsageBreakdown): NetFigures {
     selfSuppliedKwh: data.total.kwh - netKwh,
   }
 }
+
+// The "Saved and earned" headline text: a dash without price data,
+// an honest "No savings today" instead of a negative amount (a
+// battery-charging day without discharge is a pay-first day - the
+// real amount stays visible in the Usage tab), otherwise the plain
+// EUR figure.
+export function savedHeadline(savedEur: number | null): string {
+  if (savedEur === null) {
+    return "\u2014";
+  }
+  if (savedEur < 0) {
+    return "No savings today";
+  }
+  return `\u20ac${savedEur.toFixed(2)}`;
+}

@@ -9,7 +9,7 @@ import { HUB_LINKS } from "@/lib/hubLinks";
 import { todayInAmsterdam } from "@/lib/time";
 import { useUsageBreakdown } from "@/lib/useUsageBreakdown";
 import { STAT_HEADLINE } from "@/lib/statCard";
-import { netFigures } from "@/lib/usageNet";
+import { netFigures, savedHeadline } from "@/lib/usageNet";
 
 function formatKwh(value: number): string {
   return `${value.toFixed(1)} kWh`;
@@ -19,15 +19,6 @@ function formatKwh(value: number): string {
 // summary shows, for today.
 const SAVED_TOOLTIP =
   "Saved and earned today: what self-supplied solar and battery power plus the feed-in credit are worth versus importing everything. The cost of today's household usage if all of it were imported at dynamic hourly prices, minus the net grid cost actually paid. The average is today's volume-weighted grid price.";
-
-// Net figures carry their own sign: positive reads plain, only a
-// negative (net-exporter) day shows the minus.
-function netEurLabel(value: number | null): string {
-  if (value === null) {
-    return "\u2014";
-  }
-  return `${value < 0 ? "\u2212" : ""}\u20ac${Math.abs(value).toFixed(2)}`;
-}
 
 // The stats hub's "Saved and earned" card: the Usage panel's saved
 // figure (docs/spec.md section 7.1) for today - the all-imported
@@ -79,7 +70,7 @@ function SavedEarnedCard() {
               makes the headline number pop - the single deliberate
               money-card exception to the neutral headline rule. */}
             <CardTitle className={`${STAT_HEADLINE} text-green-300`}>
-              {net === null ? "\u2014" : netEurLabel(net.savedEur)}
+              {net === null ? "\u2014" : savedHeadline(net.savedEur)}
             </CardTitle>
           </div>
           <div className="flex flex-col gap-1">
