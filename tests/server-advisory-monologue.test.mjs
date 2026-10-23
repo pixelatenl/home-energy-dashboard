@@ -4,12 +4,18 @@ import { describe, it } from "node:test";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { generateInsightMonologue, getMistralBudget } from "../server/ai.mjs";
-
 // The monologue switch (EMS_ADVISORY_MONOLOGUE) is read once at
 // startup: the default import carries the switch off, and a
 // query-string import re-evaluates the adapter with the environment
 // set, giving a switched-on instance of the same module.
+// The server import chain loads dotenv (the developer's .env), and
+// dotenv never overrides a variable already in the environment -
+// so pinning the switch to off here keeps the default-import
+// assertions hermetic on a machine whose .env enables the monologue.
+process.env.EMS_ADVISORY_MONOLOGUE = "";
+const { generateInsightMonologue, getMistralBudget } = await import(
+  "../server/ai.mjs"
+);
 
 const adapter = await import("../server/advisory-adapter.mjs");
 
