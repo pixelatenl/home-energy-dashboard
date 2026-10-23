@@ -68,8 +68,17 @@ function SavedEarnedCard() {
             </CardTitle>
             {/* Saved is money by definition; the light green accent
               makes the headline number pop - the single deliberate
-              money-card exception to the neutral headline rule. */}
-            <CardTitle className={`${STAT_HEADLINE} text-green-300`}>
+              money-card exception to the neutral headline rule. The
+              no-savings day reads as words, not a figure: the title's
+              size in a regular muted weight, so a pay-first day never
+              headlines as a negative amount. */}
+            <CardTitle
+              className={
+                net !== null && net.savedEur !== null && net.savedEur < 0
+                  ? "text-lg font-normal text-muted-foreground"
+                  : `${STAT_HEADLINE} text-green-300`
+              }
+            >
               {net === null ? "\u2014" : savedHeadline(net.savedEur)}
             </CardTitle>
           </div>
