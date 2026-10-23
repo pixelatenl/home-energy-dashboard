@@ -409,7 +409,7 @@ function PricesWidget() {
         <Skeleton className="h-5 w-72" />
       </div>
       <CardContent className="space-y-4">
-        <div className="grid gap-3 sm:grid-cols-3">
+        <div className="grid grid-cols-3 gap-3">
           {[0, 1, 2].map((index) => (
             <div key={index} className="flex flex-col gap-1">
               <Skeleton className="h-4 w-16" />
@@ -458,7 +458,7 @@ function PricesWidget() {
           )}
           {status === "ok" && summary && (
             <>
-              <div className="grid gap-3 sm:grid-cols-3">
+              <div className="grid grid-cols-3 gap-3">
                 <div>
                   <p className="text-xs text-muted-foreground">Now</p>
                   <p className="text-3xl font-semibold tabular-nums">
