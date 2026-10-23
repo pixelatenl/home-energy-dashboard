@@ -26,8 +26,8 @@ const SAVED_TOOLTIP =
 // home page stat cards' composition. The same usage breakdown
 // endpoint and the same netFigures derivation the Usage panel uses,
 // anchored to the current day, so the number always agrees with the
-// Usage tab. Saved is money by definition; the light green accent
-// makes the headline number pop. Like the other metric cards the
+// Usage tab. Saved is money by definition; the green accent (the
+// data-viz palette's green, one tint lighter for text) makes the headline number pop. Like the other metric cards the
 // composition is fixed - title and headline at the top, then
 // exactly two sub-lines at the bottom: the derivation and the
 // average price, each a muted dash until its figure exists, so the
@@ -69,18 +69,21 @@ function SavedEarnedCard() {
               <Recycle className="size-5 shrink-0" aria-hidden="true" />
               Saved and earned
             </CardTitle>
-            {/* Saved is money by definition; the light green accent
-              makes the headline number pop - the single deliberate
+            {/* Saved is money by definition; the green accent makes
+              the headline number pop - the single deliberate
               money-card exception to the neutral headline rule. The
-              no-savings day reads as words, not a figure: the title's
-              size in a regular muted weight, centered in the space
-              the big figure would have filled, so a pay-first day
-              never headlines as a negative amount. */}
+              green is the data-viz palette's own green (the price
+              bars' cheap end, the battery's discharge bars) at one
+              tint step lighter for text. The no-savings day reads as
+              words, not a figure: the title's size in a regular
+              muted weight, centered in the space the big figure
+              would have filled, so a pay-first day never headlines
+              as a negative amount. */}
             <CardTitle
               className={
                 noSavings
                   ? "flex flex-1 items-center justify-center text-lg font-normal text-muted-foreground"
-                  : `${STAT_HEADLINE} text-green-300`
+                  : `${STAT_HEADLINE} text-[hsl(140_40%_65%)]`
               }
             >
               {net === null ? "\u2014" : savedHeadline(net.savedEur)}
