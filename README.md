@@ -32,7 +32,7 @@ src/
 ├── lib/           # hooks, period/time logic, flow model, API client, formatters
 └── main.tsx       # app entry point
 server/            # Express API server (see "Local data server")
-docs/              # advisory-spec.md (Your Advisor's source of truth) and spec.md
+docs/              # advisory-contract.md, advisory-spec.md (Your Advisor's sources of truth) and spec.md
 tests/             # unit tests (node:test)
 deploy/            # systemd unit and deploy script for the mini PC
 ```
@@ -129,16 +129,16 @@ The frontend consumes these through the typed client in `src/lib/api.ts`.
 
 ### Your Advisor
 
-The advisory card is the hub's single deciding AI voice (the weather, prices and battery boxes are explaining voices; they only contextualize their own widget). Its architecture separates four layers so insight and data cannot disagree:
+The advisory is the hub's single deciding AI voice (the weather, prices and battery boxes are explaining voices; they only contextualize their own widget). It is a per-section monologue - day labels as the only structural element, continuous narrative paragraphs, fallback sentences when a section fails validation - composed from one facts layer so insight and data cannot disagree:
 
-- The server computes every number exactly: the action candidates (an appliance with at least 0.5 kWh today against the cheapest remaining window, or a battery discharge), their savings, the timing guidance (the cheapest remaining window), the day-ahead advisory and the week outlook from the merged price and forecast data. The deterministic rows are composed server-side and rendered verbatim; the model never writes them, so no number can be fabricated.
-- The Mistral model only narrates at most three sentences within guardrails: the primary action line, an optional warning and an optional context note. Its output is validated against the server's context (saving verbatim from a candidate, no tomorrow-price claims before the publication status entity confirms them); on failure the server fails soft and serves the previous text.
-- The frontend renders a deterministic skeleton: glass rows with day chips, a saving or window value chip, the tomorrow row, optional later days (chronological), and a muted notes zone. Money figures travel raw in the payload and are formatted at display time.
-- `GET /api/insight/debug` proves the loop: the claim, the candidates and the context side by side.
+- The server computes every number exactly: the action candidates (an appliance with at least 0.5 kWh today against the cheapest remaining window, or a battery discharge), their savings, the timing guidance (the cheapest remaining window), the day-ahead advisory and the week outlook from the merged price and forecast data. The model never computes or invents a number, so no number can be fabricated.
+- The Mistral model authors only the monologue section prose: it weaves the served figures verbatim, figure-verbatim validates each section's narrative against that section's own fact set, a rejection retries once with the readable rejection reasons as feedback, and a second rejection serves the section's deterministic fallback sentences. The horizon note and the positive and negative weather-derived advice lines are server-owned and never model-written.
+- The frontend renders one block per served section in payload order: the day label chip at the top-left and the narrative (or the joined fallback sentences) as one continuous paragraph beneath it - no row titles, no muted notes, no confidence. Money figures travel raw in the payload and are formatted at display time.
+- `GET /api/insight/debug` proves the loop: the exact sections context, the candidates and the last generated insight side by side.
 
-The advisory is cached and regenerated on a context signature change (see "Context snapshot and signature"). Beyond the per-widget 30-minute interval, the summary insight has its own shorter minimum interval (`MISTRAL_SUMMARY_MIN_INTERVAL_MINUTES`, default 5) and a proactive warm-up: when the signature changes, `/api/summary` answers immediately with the cached advisory in state `reasoning` while the regeneration runs in the background, so the card keeps itself in line with the live data without a manual refresh. The insight `state` is `fresh`, `reasoning` or `error`; the card shows a pulsing Reasoning chip while regenerating, and the provenance chip and the force-refresh control live in the advisory card's header (`?force=1` bypasses the interval but never the daily limit, and still counts). `docs/advisory-spec.md` is the source of truth for every behavioral rule.
+The advisory is cached and regenerated on a context signature change (see "Context snapshot and signature"). Beyond the per-widget 30-minute interval, the summary insight has its own shorter minimum interval (`MISTRAL_SUMMARY_MIN_INTERVAL_MINUTES`, default 5) and a proactive warm-up: when the signature changes, `/api/summary` answers immediately with the cached advisory in state `reasoning` while the regeneration runs in the background, so the advisory keeps itself in line with the live data without a manual refresh. The insight `state` is `fresh`, `reasoning` or `error`; the panel shows a pulsing Reasoning chip while regenerating, and the provenance chip and the force-refresh control live in the Your Advisor header (`?force=1` bypasses the interval but never the daily limit, and still counts). `docs/advisory-contract.md` is the source of truth for the advisory's contract, `docs/advisory-spec.md` for its behavioral rules.
 
-All insight widgets share one daily Mistral call budget (`MISTRAL_DAILY_CALL_LIMIT`, default 100; retries also count). Every call decision is logged as one line with the widget, the signature, the reason and the outcome. The API key, prompts and context are never logged.
+All insight widgets share one daily Mistral call budget (`MISTRAL_DAILY_CALL_LIMIT`, default 100; retries also count). The summary path's model calls are the monologue sections only - the legacy card narrative is retired and draws none. Every call decision is logged as one line with the widget, the signature, the reason and the outcome. The API key, prompts and context are never logged.
 
 ### Export earnings model
 
@@ -212,7 +212,8 @@ Every response carries:
 
 - `as_of` - the ISO timestamp of the underlying summary data (the 5-minute cache fill the snapshot was built from)
 - `signature` - the stable hash over the materialized context fields
-- `insight` - the cached advisory (the primary action with its saving and confidence, the supporting facts, the warning and context note, the no-opportunity marker, the server-computed candidates, and the live guidance/advisory/outlook objects composed from the current snapshot, never from the cache) with its own `insight_as_of`, its regeneration `state` and `generated_at`
+- `insight` - the advisory card composed from the current snapshot (the primary action with its saving and confidence, the supporting facts, the no-opportunity marker, the server-computed candidates, and the live guidance/advisory/outlook objects, never from the cache) with its own `insight_as_of`, its regeneration `state` and `generated_at`; its legacy narrative fields (`warning`, `context_note`) serve null
+- `monologue` - while `EMS_ADVISORY_MONOLOGUE` is on: the monologue sections with their labels, narratives and fallback sentences (the deterministic sentences served when a section's narrative failed validation)
 - `remaining_calls` - the remaining calls in the shared daily Mistral budget
 - `server_version` - the git hash and process start time
 
@@ -221,8 +222,8 @@ Every response carries:
 The dashboard runs for months in a browser tab on a wall panel, so the frontend treats the tab as long-lived:
 
 - `/api/summary` is refetched every 5 minutes for the lifetime of the tab (matching the server's 5-minute summary cache), and immediately when the window regains focus or the network connection comes back online (the `online` event) - the two moments a throttled or reconnected tab must catch up. Concurrent refetches share one in-flight request.
-- The advisory card shows its provenance chip (the insight's own data moment, or an honest "No insight yet") and a pulsing Reasoning chip whenever a regeneration is in flight, so staleness is visible at a distance without a manual refresh.
-- The force-refresh control regenerates the advisory and refreshes the widget data, but is disabled when the shared daily budget is exhausted or the signature has not changed since the insight was generated.
+- The advisory panel shows its provenance chip (the insight's own data moment, or an honest "No insight yet") and a pulsing Reasoning chip whenever a regeneration is in flight, so staleness is visible at a distance without a manual refresh.
+- The regenerate control in the Your Advisor header regenerates all AI insights and refreshes widget data; it is disabled when the shared daily budget is exhausted or the signature is unchanged since the insight was generated.
 
 ### Battery
 
