@@ -132,6 +132,32 @@ test("a percentage with a space before the percent sign matches its served form"
   );
 });
 
+test("validateNarrativeFigures: a computed difference is rejected with the compute-ban hint", () => {
+  const facts = { day_average: "€0.16", window_average: "€0.13" };
+  const verdict = validateNarrativeFigures(
+    "The day average of €0.16 sits above the window average of €0.13, a gap of €0.03.",
+    facts
+  );
+  assert.equal(verdict.ok, false);
+  assert.ok(
+    verdict.problems.some((p) =>
+      p.includes('amount "€0.03" matches no served amount in this section') &&
+      p.includes("never compute a difference or total")
+    ),
+    `expected the compute-ban hint, got: ${verdict.problems.join(" | ")}`
+  );
+});
+
+test("the percentage rejection keeps its own hint line byte-identical", () => {
+  const facts = { battery_level: "5%" };
+  const verdict = validateNarrativeFigures("The battery is at 45 %.", facts);
+  assert.equal(verdict.ok, false);
+  // The percent hint predates the currency compute-ban and stays untouched.
+  assert.deepEqual(verdict.problems, [
+    'percentage "45 %" matches no served percentage in this section (write percentages exactly as served, for example "5%" without a space)',
+  ]);
+});
+
 // ---------------------------------------------------------------------------
 // Membership: the section's own served strings only.
 // ---------------------------------------------------------------------------
@@ -733,14 +759,14 @@ test("a TODAY section prompt carries only its own facts, never another section's
 test("buildSectionPrompt appends the rejection reasons as retry feedback, nothing else", () => {
   const today = section("today");
   const reasons = [
-    'amount "€0.51" matches no served amount in this section (amounts carry the currency marker exactly as served)',
+    'amount "€0.51" matches no served amount in this section (amounts carry the currency marker exactly as served; never compute a difference or total; state the amounts side by side exactly as served)',
     "contains an exclamation mark; model sentences are warm but factual",
   ];
   const prompt = buildSectionPrompt(today, reasons);
   assert.ok(prompt.startsWith(MONOLOGUE_STYLE_BRIEF));
   assert.ok(prompt.endsWith(
     "Your previous attempt was rejected for these reasons: " +
-      'amount "€0.51" matches no served amount in this section (amounts carry the currency marker exactly as served); ' +
+      'amount "€0.51" matches no served amount in this section (amounts carry the currency marker exactly as served; never compute a difference or total; state the amounts side by side exactly as served); ' +
       "contains an exclamation mark; model sentences are warm but factual. " +
       "Write the section again, correcting exactly these issues; every figure must be a verbatim copy of a served fact of this section."
   ));
@@ -1063,7 +1089,7 @@ test("the retry's model call receives the previous rejection reasons as prompt f
   );
   assert.ok(
     todayPrompts[1].includes(
-      'amount "€0.51" matches no served amount in this section (amounts carry the currency marker exactly as served)'
+      'amount "€0.51" matches no served amount in this section (amounts carry the currency marker exactly as served; never compute a difference or total; state the amounts side by side exactly as served)'
     )
   );
   assert.ok(
@@ -1076,7 +1102,7 @@ test("the retry's model call receives the previous rejection reasons as prompt f
 test("buildSectionPrompt deduplicates identical rejection reasons, preserving order", () => {
   const today = section("today");
   const r1 =
-    'amount "€0.51" matches no served amount in this section (amounts carry the currency marker exactly as served)';
+    'amount "€0.51" matches no served amount in this section (amounts carry the currency marker exactly as served; never compute a difference or total; state the amounts side by side exactly as served)';
   const r2 = "contains an exclamation mark; model sentences are warm but factual";
   const prompt = buildSectionPrompt(today, [r1, r2, r1, r2, r1]);
   assert.equal(
@@ -1104,7 +1130,7 @@ test("the retry feedback line deduplicates the reasons of one failed attempt", a
   await generateMonologue(buildSections(facts, NOW), facts, NOW, stub);
   assert.equal(todayPrompts.length, 2);
   const reason =
-    'amount "€0.51" matches no served amount in this section (amounts carry the currency marker exactly as served)';
+    'amount "€0.51" matches no served amount in this section (amounts carry the currency marker exactly as served; never compute a difference or total; state the amounts side by side exactly as served)';
   assert.equal(
     todayPrompts[1].split(reason).length - 1,
     1,

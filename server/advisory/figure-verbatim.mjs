@@ -170,7 +170,7 @@ export function validateNarrativeFigures(narrative, facts) {
     const named = {
       range: `time range "${token.raw}" matches no served window in this section`,
       time: `time "${token.raw}" matches no served time in this section`,
-      currency: `amount "${token.raw}" matches no served amount in this section (amounts carry the currency marker exactly as served)`,
+      currency: `amount "${token.raw}" matches no served amount in this section (amounts carry the currency marker exactly as served; never compute a difference or total; state the amounts side by side exactly as served)`,
       kwh: `kWh figure "${token.raw}" matches no served kWh figure in this section`,
       percent: `percentage "${token.raw}" matches no served percentage in this section (write percentages exactly as served, for example "5%" without a space)`,
       number: `figure "${token.raw}" matches no served figure in this section`,
