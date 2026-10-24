@@ -12,10 +12,7 @@ import {
   localHourLabel,
 } from "./time.mjs";
 import { guardNonFiniteText, guardTomorrowPrice } from "./advisory/narrative-guards.mjs";
-import {
-  generateAdvisoryCard,
-  validateModelOutput,
-} from "./advisory/advisory-core.mjs";
+import { generateAdvisoryCard } from "./advisory/advisory-core.mjs";
 import { MONOLOGUE_STYLE_BRIEF } from "./advisory/advisory-monologue.mjs";
 import {
   ADVISORY_MONOLOGUE_ENABLED,
@@ -846,14 +843,12 @@ export async function getSummaryInsight(snapshot, options = {}) {
   // Serves a result with its regeneration state: "fresh" (the cached
   // insight matches the live signature), "reasoning" (the signatures
   // differ and a regeneration is in flight) or "error" (no cached
-  // insight at all). The stale field is the deprecated mirror of
-  // state === "reasoning", kept one release for the debug panel and old
-  // payload comparisons; remove it in the C25 cleanup.
+  // insight at all). The state field is the truth; the deprecated
+  // stale mirror went with the stop pass.
   const serve = (result, state, error = null) => ({
     ...result,
     asOf,
     state,
-    stale: state === "reasoning",
     error,
   });
   const empty = (error, state = "error") => ({
@@ -861,7 +856,6 @@ export async function getSummaryInsight(snapshot, options = {}) {
     generatedAt: null,
     asOf,
     state,
-    stale: state === "reasoning",
     error,
   });
   const degrade = (error) =>
@@ -884,11 +878,11 @@ export async function getSummaryInsight(snapshot, options = {}) {
       return degrade("throttled");
     }
     // The advisory core path: the summary insight is produced by the
-    // core's generateAdvisoryCard with the adapter's facts and style
-    // brief - the core is the only pipeline. Only the validated
-    // narrative is cached; the card is recomposed from the live facts
-    // on every serve by the adapter, so the same signature, budget,
-    // warm-up and in-flight machinery keeps driving regeneration.
+    // core's generateAdvisoryCard from the adapter's facts - the core
+    // is the only pipeline. Only the validated narrative is cached; the
+    // card is recomposed from the live facts on every serve by the
+    // adapter, so the same signature, budget, warm-up and in-flight
+    // machinery keeps driving regeneration.
     if (advisory === null) {
       // Every caller routes through the adapter; a missing request is
       // a wiring fault, served fail-soft like a generation failure.
@@ -900,74 +894,13 @@ export async function getSummaryInsight(snapshot, options = {}) {
       );
       return degrade("ai_unavailable");
     }
-    // The modelStub wraps the existing callMistral: every call draws
-    // from the shared daily budget, respects the summary minimum
-    // interval and is logged through the same one-line accounting.
-    // A transport-level failure is recorded out of band - the core
-    // treats a failed stub as an empty narrative, which must never be
-    // cached as a fresh insight.
-    let stubFailure = null;
-    let stubCalls = 0;
-    const modelStub = async (modelContext) => {
-      stubCalls += 1;
-      if (dailyLimitReached()) {
-        logMistral("summary", signature, reason, "skipped_daily_limit");
-        stubFailure = "daily_limit_reached";
-        return { warning: null, contextNote: null };
-      }
-      summaryLastCallAt = Date.now();
-      recordApiCall();
-      let parsed = null;
-      try {
-        parsed = parseInsightJson(
-          await callMistral(advisory.styleBrief, modelContext)
-        );
-      } catch (err) {
-        logMistral("summary", signature, reason, `error:${shortError(err)}`);
-        stubFailure = "ai_unavailable";
-        return { warning: null, contextNote: null };
-      }
-      if (parsed === null || typeof parsed !== "object") {
-        logMistral(
-          "summary",
-          signature,
-          reason,
-          "error:model returned invalid JSON"
-        );
-        stubFailure = "model returned invalid JSON";
-        return { warning: null, contextNote: null };
-      }
-      // The core validates after the stub returns; running the same
-      // pure check here only logs the rejection reasons in the
-      // existing throttled logging style.
-      const candidate = {
-        warning:
-          typeof parsed.warning === "string" && parsed.warning.trim() !== ""
-            ? parsed.warning
-            : null,
-        contextNote:
-          typeof parsed.contextNote === "string" &&
-          parsed.contextNote.trim() !== ""
-            ? parsed.contextNote
-            : null,
-      };
-      const verdict = validateModelOutput(candidate, modelContext.sections);
-      if (!verdict.ok) {
-        logMistral(
-          "summary",
-          signature,
-          reason,
-          stubCalls === 1 ? "validation_failed_retry" : "validation_failed"
-        );
-        console.warn(
-          `Advisory core rejected the model output: ${verdict.reasons.join(
-            "; "
-          )}`
-        );
-      }
-      return parsed;
-    };
-    let card = null;
+    // The legacy card model call is retired (stop pass): the stub is a
+    // deterministic null-stub - no Mistral call, no budget accounting,
+    // no retry. generateAdvisoryCard keeps running as the single
+    // sanitization funnel: it composes the deterministic card from the
+    // facts and serves warning and context_note as honest nulls.
+    const modelStub = async () => ({ warning: null, contextNote: null });
+    let card;
     try {
       card = await generateAdvisoryCard(
         advisory.facts,
@@ -978,12 +911,6 @@ export async function getSummaryInsight(snapshot, options = {}) {
       logMistral("summary", signature, reason, `error:${shortError(err)}`);
       return degrade("ai_unavailable");
     }
-    // A transport-level failure is never served as an empty narrative:
-    // the previous insight stays in place, fail soft.
-    if (stubFailure !== null) {
-      return degrade(stubFailure);
-    }
-    logMistral("summary", signature, reason, "ok");
     const result = {
       narrative: { warning: card.warning, contextNote: card.context_note },
       generatedAt: new Date().toISOString(),

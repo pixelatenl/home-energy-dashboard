@@ -6,6 +6,8 @@ Version 2.0, 20 October 2026. This document is the source of truth for the Your 
 
 **Stage 4 frontend note (owner decision of 22 October 2026).** The legacy advisory card is retired from the frontend: it no longer renders, and its files are deleted. The monologue area is the dashboard's sole advisory surface, titled "Your Advisor", carrying the regenerate control in its header. The API keeps serving the advisory payload unchanged; the frontend simply renders the monologue.
 
+**Stop-pass note (24 October 2026).** The legacy card model call is retired permanently: `getSummaryInsight`'s generate path hands `generateAdvisoryCard` a deterministic null-stub, so the card path makes no Mistral call, draws no budget and runs no validation retry. The model now authors only monologue section prose; the `warning` and `contextNote` slots are retired with this pass and the payload's narrative fields serve honest nulls (the field names are unchanged). The summary route's only model consumer is the monologue seam.
+
 ## 1. Purpose
 
 The Your Advisor card helps the household interpret the energy data on screen and act on it: what is happening today, what happened today after the evening pivot, what might happen tomorrow, and what the rest of the five-day forecast holds. It states when to run large appliances, when prices are cheapest, whether off-peak prices are low or high, and how to avoid cost by shifting usage. It is honest by construction: every number is server-computed, and the model writes prose only.
