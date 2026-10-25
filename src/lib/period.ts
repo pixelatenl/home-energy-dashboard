@@ -1,8 +1,12 @@
 // Pure period logic for the analytical pages: day/week/month/year
 // periods anchored on a calendar day, labels, stepping, data
-// boundaries and URL (de)serialisation. No React, no local timezone
-// effects: all calendar math runs on UTC midnights, and "now" is
-// always passed in by the caller.
+// boundaries and URL (de)serialisation. No React: all calendar math
+// runs on UTC midnights, "today" and the midnight boundaries resolve
+// in Europe/Amsterdam through lib/time (the timezone the data uses,
+// regardless of the device locale), and "now" is always passed in by
+// the caller.
+
+import { amsterdamDayStartMs, localDateOf } from "./time.ts"
 
 export type PeriodKind = "day" | "week" | "month" | "year"
 
@@ -47,19 +51,18 @@ function daysInMonth(year: number, monthIndex: number): number {
 }
 
 // Local calendar day of `now` as YYYY-MM-DD; the anchor used when URL
-// params are missing or invalid.
+// params are missing or invalid. Resolved in Europe/Amsterdam - the
+// data's timezone - never in the device timezone, so a viewer outside
+// Amsterdam gets the same "today" anchor.
 export function todayString(now: Date): string {
-  const month = `${now.getMonth() + 1}`.padStart(2, "0")
-  const day = `${now.getDate()}`.padStart(2, "0")
-  return `${now.getFullYear()}-${month}-${day}`
+  return localDateOf(now.toISOString())
 }
 
 // Local midnight of a calendar day, as a boundary for elapsed-time
 // fractions (periods are calendar-local; DST shifts are part of the
-// real elapsed time).
+// real elapsed time). Amsterdam-anchored, like the daily buckets.
 function localMidnight(day: string): Date {
-  const [year, month, date] = day.split("-").map(Number)
-  return new Date(year, month - 1, date)
+  return new Date(amsterdamDayStartMs(day))
 }
 
 // ---- Period boundaries ----
