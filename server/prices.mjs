@@ -9,6 +9,7 @@ import {
   localDateKey,
   localDayStartUtcMs,
   localHourKey,
+  localHourLabel,
   nextDateKey,
 } from "./time.mjs";
 
@@ -25,6 +26,15 @@ const HORIZON_DAYS = 2;
 
 function roundPrice(value) {
   return Math.round(value * 1_000_000) / 1_000_000;
+}
+
+// The UTC hour bucket of an instant: its floor to the hour in ms. The
+// merged curve is keyed by this bucket, not by the wall-clock hour:
+// on a DST fall-back day UTC 00:00 (02:00 CEST) and UTC 01:00 (02:00
+// CET) share the wall-clock key "T02", so a wall-clock key would
+// silently overwrite one of the two tariffs and serve 24 hours.
+function hourBucketMs(date) {
+  return Math.floor(date.getTime() / 3_600_000) * 3_600_000;
 }
 
 const curveCache = new Map(); // days -> { fetchedAt, data }
@@ -55,9 +65,100 @@ export function getHaFetchInfo() {
   };
 }
 
+// Pure merge of the database rows and the HA quarter-hourly forecast
+// into the hourly curve, keyed by the UTC hour bucket so the two
+// 02:00 tariffs of a DST fall-back day stay distinct. `now` gates the
+// completed database hours, `currentHourMs` the forecast's past
+// blocks, and the date keys the window. Entries are sorted by ts and
+// hold { key (UTC hour start ms), ts (Date), price, source }. Day
+// filtering stays wall-clock based (localDateKey is date-derived and
+// collision-free). Exported for tests.
+export function mergePriceCurve({
+  now,
+  currentHourMs,
+  todayKey,
+  tomorrowKey,
+  windowEndKey,
+  dbRows,
+  forecast,
+}) {
+  const byKey = new Map(); // UTC hour start ms -> entry
+
+  // (a) Database rows, authoritative for completed hours only.
+  for (const row of dbRows) {
+    const ts = row.ts instanceof Date ? row.ts : new Date(row.ts);
+    if (row.price_eur === null || ts.getTime() + 3_600_000 > now.getTime()) {
+      continue; // not a completed hour yet, or no price
+    }
+    const key = hourBucketMs(ts);
+    byKey.set(key, {
+      key,
+      ts: new Date(key),
+      price: row.price_eur,
+      source: "db",
+    });
+  }
+
+  // (b) HA quarter-hourly forecast, averaged per hour, for the current
+  // and future hours in the window.
+  let haHasTomorrow = false;
+  if (Array.isArray(forecast)) {
+    const buckets = new Map(); // UTC hour start ms -> { sum, count }
+    for (const block of forecast) {
+      const amount = Number(block?.price_tax_included?.amount);
+      const startDate = block?.start_date;
+      if (!Number.isFinite(amount) || !startDate) {
+        continue;
+      }
+      const start = new Date(startDate);
+      if (Number.isNaN(start.getTime())) {
+        continue;
+      }
+      const key = hourBucketMs(start);
+      const datePart = localDateKey(new Date(key));
+      if (datePart === tomorrowKey) {
+        haHasTomorrow = true;
+      }
+      if (key < currentHourMs || datePart >= windowEndKey) {
+        continue; // past block, or outside the requested window
+      }
+      const bucket = buckets.get(key) ?? { sum: 0, count: 0 };
+      bucket.sum += amount;
+      bucket.count += 1;
+      buckets.set(key, bucket);
+    }
+    for (const [key, bucket] of buckets) {
+      byKey.set(key, {
+        key,
+        ts: new Date(key),
+        price: bucket.sum / bucket.count / HA_AMOUNT_DIVISOR,
+        source: "ha",
+      });
+    }
+  }
+
+  const entries = [...byKey.values()].sort(
+    (a, b) => a.ts.getTime() - b.ts.getTime()
+  );
+  return { entries, haHasTomorrow };
+}
+
+// The price entry of the hour containing `nowMs`, by timestamp
+// containment: unambiguous during the repeated wall-clock hour of a
+// DST transition day, where two entries share the same local "02:00".
+export function currentPriceEntry(entries, nowMs) {
+  return (
+    entries.find(
+      (entry) =>
+        nowMs >= entry.ts.getTime() &&
+        nowMs < entry.ts.getTime() + 3_600_000
+    ) ?? null
+  );
+}
+
 // Merged hourly curve for a window of `days` calendar days starting today.
-// Data shape: { entries, todayKey, tomorrowKey, currentKey, tomorrowAvailable,
-// tomorrowStatusAvailable }
+// Data shape: { entries, todayKey, tomorrowKey, currentHourMs,
+// tomorrowAvailable, tomorrowStatusAvailable }
 // where entries are sorted by ts and hold { key, ts (Date), price, source }.
 async function loadCurve(days) {
   const hit = curveCache.get(days);
@@ -73,7 +174,7 @@ async function loadCurve(days) {
   const windowStartMs = localDayStartUtcMs(todayKey);
   const windowEndKey = nextDateKey(todayKey, days);
   const windowEndMs = localDayStartUtcMs(windowEndKey);
-  const currentKey = localHourKey(now);
+  const currentHourMs = hourBucketMs(now);
 
   const [dbRows, haState, tomorrowState] = await Promise.all([
     dbHourlyPrices(windowStartMs, windowEndMs).catch(() => []),
@@ -92,66 +193,16 @@ async function loadCurve(days) {
     haFetchInfo.lastSuccessAt = new Date();
   }
 
-  const byKey = new Map(); // hourKey -> entry
+  const { entries, haHasTomorrow } = mergePriceCurve({
+    now,
+    currentHourMs,
+    todayKey,
+    tomorrowKey,
+    windowEndKey,
+    dbRows,
+    forecast: haState?.attributes?.forecast,
+  });
 
-  // (a) Database rows, authoritative for completed hours only.
-  for (const row of dbRows) {
-    const ts = row.ts instanceof Date ? row.ts : new Date(row.ts);
-    if (row.price_eur === null || ts.getTime() + 3_600_000 > now.getTime()) {
-      continue; // not a completed hour yet, or no price
-    }
-    byKey.set(localHourKey(ts), {
-      key: localHourKey(ts),
-      ts,
-      price: row.price_eur,
-      source: "db",
-    });
-  }
-
-  // (b) HA quarter-hourly forecast, averaged per hour, for the current and
-  // future hours in the window.
-  let haHasTomorrow = false;
-  const forecast = haState?.attributes?.forecast;
-  if (Array.isArray(forecast)) {
-    const buckets = new Map(); // hourKey -> { sum, count }
-    for (const block of forecast) {
-      const amount = Number(block?.price_tax_included?.amount);
-      const startDate = block?.start_date;
-      if (!Number.isFinite(amount) || !startDate) {
-        continue;
-      }
-      const start = new Date(startDate);
-      if (Number.isNaN(start.getTime())) {
-        continue;
-      }
-      const key = localHourKey(start);
-      if (key.slice(0, 10) === tomorrowKey) {
-        haHasTomorrow = true;
-      }
-      if (key < currentKey || key.slice(0, 10) >= windowEndKey) {
-        continue; // past block, or outside the requested window
-      }
-      const bucket = buckets.get(key) ?? { sum: 0, count: 0 };
-      bucket.sum += amount;
-      bucket.count += 1;
-      buckets.set(key, bucket);
-    }
-    for (const [key, bucket] of buckets) {
-      const datePart = key.slice(0, 10);
-      const hourPart = Number(key.slice(11, 13));
-      const ts = new Date(localDayStartUtcMs(datePart) + hourPart * 3_600_000);
-      byKey.set(key, {
-        key,
-        ts,
-        price: bucket.sum / bucket.count / HA_AMOUNT_DIVISOR,
-        source: "ha",
-      });
-    }
-  }
-
-  const entries = [...byKey.values()].sort(
-    (a, b) => a.ts.getTime() - b.ts.getTime()
-  );
   const statusAvailable =
     typeof tomorrowState?.state === "string" &&
     tomorrowState.state.toLowerCase() === "available";
@@ -160,7 +211,7 @@ async function loadCurve(days) {
     entries,
     todayKey,
     tomorrowKey,
-    currentKey,
+    currentHourMs,
     tomorrowAvailable: statusAvailable || haHasTomorrow,
     // Whether the Zonneplan publication status entity itself confirms
     // that tomorrow's prices are published (independent of any forecast
@@ -184,11 +235,12 @@ function dayStats(hours) {
   };
 }
 
-// Cheapest run of `size` consecutive hourly buckets starting from the
-// current hour, by average price. Returns null when the horizon has fewer
+// Cheapest run of `size` consecutive hourly buckets starting from
+// `fromMs` (the current hour's start, or -Infinity to admit every
+// entry), by average price. Returns null when the horizon has fewer
 // than `size` contiguous hours.
-function cheapestFromEntries(entries, currentKey, size) {
-  const future = entries.filter((entry) => entry.key >= currentKey);
+function cheapestFromEntries(entries, fromMs, size) {
+  const future = entries.filter((entry) => entry.ts.getTime() >= fromMs);
   let best = null;
   for (let i = 0; i + size <= future.length; i++) {
     const window = future.slice(i, i + size);
@@ -228,13 +280,13 @@ function toHourEntry(entry) {
 
 // GET /api/prices response body.
 export async function getPriceSummary(days) {
-  const { entries, todayKey, tomorrowKey, currentKey, tomorrowAvailable } =
+  const { entries, todayKey, tomorrowKey, currentHourMs, tomorrowAvailable } =
     await loadCurve(days);
   const todayEntries = entries.filter(
-    (entry) => entry.key.slice(0, 10) === todayKey
+    (entry) => localDateKey(entry.ts) === todayKey
   );
   const tomorrowEntries = entries.filter(
-    (entry) => entry.key.slice(0, 10) === tomorrowKey
+    (entry) => localDateKey(entry.ts) === tomorrowKey
   );
   const todayHours = todayEntries.map(toHourEntry);
   const tomorrowHours = tomorrowEntries.map(toHourEntry);
@@ -246,7 +298,7 @@ export async function getPriceSummary(days) {
       hours: tomorrowHours,
       ...dayStats(tomorrowHours),
     },
-    cheapest_block: cheapestFromEntries(entries, currentKey, 3),
+    cheapest_block: cheapestFromEntries(entries, currentHourMs, 3),
     // The day's actual cheapest window, whole-day (an empty key admits
     // every hour): the single source the advisory card and the prices
     // widget both consume, so the two surfaces can never disagree
@@ -257,8 +309,8 @@ export async function getPriceSummary(days) {
 
 // GET /api/prices/cheapest response body: the block only, or null.
 export async function getCheapestBlock(size) {
-  const { entries, currentKey } = await loadCurve(HORIZON_DAYS);
-  return cheapestFromEntries(entries, currentKey, size);
+  const { entries, currentHourMs } = await loadCurve(HORIZON_DAYS);
+  return cheapestFromEntries(entries, currentHourMs, size);
 }
 
 // Compact data for the AI price insight: current price, per-day stats with
@@ -270,29 +322,39 @@ export async function getPriceContextData() {
     entries,
     todayKey,
     tomorrowKey,
-    currentKey,
+    currentHourMs,
     tomorrowStatusAvailable,
   } = await loadCurve(HORIZON_DAYS);
-  const currentEntry =
-    entries.find((entry) => entry.key === currentKey) ?? null;
+  // The current hour's entry by timestamp containment, so the repeated
+  // wall-clock hour of a DST transition day cannot select the wrong
+  // tariff.
+  const currentEntry = currentPriceEntry(entries, currentHourMs);
   const todayEntries = entries.filter(
-    (entry) => entry.key.slice(0, 10) === todayKey
+    (entry) => localDateKey(entry.ts) === todayKey
   );
   const tomorrowEntries = entries.filter(
-    (entry) => entry.key.slice(0, 10) === tomorrowKey
+    (entry) => localDateKey(entry.ts) === tomorrowKey
   );
   let peak = null;
   let low = null;
   for (const entry of todayEntries) {
     if (!peak || entry.price > peak.price) {
-      peak = { hour: Number(entry.key.slice(11, 13)), price: entry.price };
+      peak = {
+        hour: Number(localHourKey(entry.ts).slice(11, 13)),
+        price: entry.price,
+      };
     }
     if (!low || entry.price < low.price) {
-      low = { hour: Number(entry.key.slice(11, 13)), price: entry.price };
+      low = {
+        hour: Number(localHourKey(entry.ts).slice(11, 13)),
+        price: entry.price,
+      };
     }
   }
   // Highest price among the remaining hours, for the AI context signature.
-  const remainingEntries = entries.filter((entry) => entry.key >= currentKey);
+  const remainingEntries = entries.filter(
+    (entry) => entry.key >= currentHourMs
+  );
   const remainingMaxPrice =
     remainingEntries.length > 0
       ? Math.max(...remainingEntries.map((entry) => entry.price))
@@ -302,7 +364,7 @@ export async function getPriceContextData() {
   // advisory card states honestly once the today window no longer
   // commands.
   const remainingTodayEntries = todayEntries.filter(
-    (entry) => entry.key >= currentKey
+    (entry) => entry.key >= currentHourMs
   );
   const remainingAverageEur =
     remainingTodayEntries.length > 0
@@ -327,7 +389,7 @@ export async function getPriceContextData() {
   const peakHourLabels = (rows) =>
     rows
       .filter((entry) => entry.price > peakThreshold)
-      .map((entry) => `${entry.key.slice(11, 13)}:00`);
+      .map((entry) => localHourLabel(entry.ts));
   return {
     priceData: {
       current_price: currentEntry ? currentEntry.price : null,
@@ -361,7 +423,7 @@ export async function getPriceContextData() {
     // horizon honestly - cheapest day known so far.
     dayAfterPricesAvailable:
       entries.filter(
-        (entry) => entry.key.slice(0, 10) === nextDateKey(tomorrowKey, 1)
+        (entry) => localDateKey(entry.ts) === nextDateKey(tomorrowKey, 1)
       ).length > 0,
     cheapestBlock: summary.cheapest_block,
     // Per-day cheapest windows and the remaining peak, for the insight
