@@ -85,6 +85,35 @@ export function amsterdamSlotHourOf(dateKey: string, index: number): number {
   )
 }
 
+// The true hour count of an Amsterdam local day: 25 on a fall-back
+// day, 23 on a spring-forward day, 24 otherwise.
+export function amsterdamDayHourCount(dateKey: string): number {
+  return (
+    (amsterdamDayStartMs(dateKeyPlus(dateKey, 1)) -
+      amsterdamDayStartMs(dateKey)) /
+    3_600_000
+  )
+}
+
+// The chronological hour index of an instant within the Amsterdam
+// local day `dateKey`: 0 at local midnight through 24 in the repeated
+// hour of a fall-back day. Unlike the wall-clock hour this is unique
+// and ordered on every day of the year.
+export function amsterdamHourIndexOf(
+  nowTick: number,
+  dateKey: string,
+): number {
+  return Math.floor((nowTick - amsterdamDayStartMs(dateKey)) / 3_600_000)
+}
+
+// DST-true elapsed hours since Amsterdam local midnight: like
+// amsterdamNow's fraction, but the fall-back day's repeated hour
+// counts, so a "Now" marker never runs ahead of the day's bars.
+export function amsterdamElapsedHoursOf(nowTick: number): number {
+  const { date } = amsterdamNow(nowTick)
+  return (nowTick - amsterdamDayStartMs(date)) / 3_600_000
+}
+
 // Local hour fraction (e.g. 13.5 for 13:30) of an ISO timestamp.
 export function localHourFractionOf(iso: string): number {
   const parts = partsIn(new Date(iso), {

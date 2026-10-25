@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  amsterdamDayHourCount,
   amsterdamDayStartMs,
+  amsterdamElapsedHoursOf,
+  amsterdamHourIndexOf,
   amsterdamSlotHourOf,
   dateKeyPlus,
   localDateOf,
@@ -77,5 +80,40 @@ describe("amsterdamSlotHourOf: the wall hour of a chronological slot", () => {
   it("matches the clock on ordinary days", () => {
     assert.equal(amsterdamSlotHourOf("2026-07-15", 3), 3);
     assert.equal(amsterdamSlotHourOf("2026-03-29", 2), 3);
+  });
+});
+
+describe("amsterdamDayHourCount: the true length of a local day", () => {
+  it("is 25 on the fall-back day, 23 on the spring-forward day", () => {
+    assert.equal(amsterdamDayHourCount("2026-10-25"), 25);
+    assert.equal(amsterdamDayHourCount("2026-03-29"), 23);
+    assert.equal(amsterdamDayHourCount("2026-07-15"), 24);
+  });
+});
+
+describe("amsterdamHourIndexOf and amsterdamElapsedHoursOf: DST-true positions", () => {
+  it("counts the repeated 02:00 hour of the fall-back day", () => {
+    // 00:30Z is 02:30 CEST, chronological slot 2.
+    assert.equal(
+      amsterdamHourIndexOf(Date.parse("2026-10-25T00:30:00Z"), "2026-10-25"),
+      2,
+    );
+    // 01:30Z is 02:30 CET, the repeated hour: chronological slot 3,
+    // where the wall-clock hour would have pointed back at slot 2.
+    assert.equal(
+      amsterdamHourIndexOf(Date.parse("2026-10-25T01:30:00Z"), "2026-10-25"),
+      3,
+    );
+    assert.equal(
+      amsterdamElapsedHoursOf(Date.parse("2026-10-25T01:30:00Z")),
+      3.5,
+    );
+  });
+
+  it("matches the wall clock on ordinary days", () => {
+    assert.equal(
+      amsterdamElapsedHoursOf(Date.parse("2026-07-15T13:30:00Z")),
+      15.5,
+    );
   });
 });

@@ -28,9 +28,11 @@ import { STAT_HEADLINE } from "@/lib/statCard";
 import { useSummary } from "@/lib/useSummary";
 import { useDataRefreshListener } from "@/lib/useDataRefresh";
 import {
+  amsterdamDayHourCount,
+  amsterdamElapsedHoursOf,
+  amsterdamHourIndexOf,
   amsterdamNow,
   todayInAmsterdam,
-  localHourFractionOf,
 } from "@/lib/time";
 
 // The compact "today" chart cards of the stats hub: actual hourly
@@ -57,9 +59,13 @@ const BATTERY_TODAY_TOOLTIP =
 // battery's muted amber/green pair for charge and discharge (the
 // flow diagram's shared battery palette).
 
-// The now marker's x position for the full-day 0-24h axis.
-function nowXOf(nowFraction: number): number {
-  return (Math.min(Math.max(nowFraction, 0), 24) / 24) * TODAY_CHART_W;
+// The now marker's x position for the full-day axis, sized by the
+// day's true hour count (25 on a fall-back day, 23 in spring).
+function nowXOf(elapsedHours: number, hourCount: number): number {
+  return (
+    (Math.min(Math.max(elapsedHours, 0), hourCount) / hourCount) *
+    TODAY_CHART_W
+  );
 }
 
 // The live output sentence beneath the main stat value: "Now
@@ -79,15 +85,21 @@ function NowProducing({ watts }: { watts: number | null }) {
   );
 }
 
-// The now marker's x position updates once a minute so the charts
-// follow the clock; amsterdamNow resolves the local fraction of day.
-function useNowFraction(): number {
+// The Amsterdam-anchored now for the today charts: the local date key
+// plus the DST-true elapsed hours since local midnight - unlike the
+// wall-clock fraction, the repeated 02:00 hour of a fall-back day
+// counts, so the marker never runs ahead of the day's bars.
+function useAmsterdamDayNow(): { dateKey: string; elapsedHours: number } {
   const [nowTick, setNowTick] = useState(() => Date.now());
   useEffect(() => {
     const id = setInterval(() => setNowTick(Date.now()), 60_000);
     return () => clearInterval(id);
   }, []);
-  return amsterdamNow(nowTick).fraction;
+  const now = amsterdamNow(nowTick);
+  return {
+    dateKey: now.date,
+    elapsedHours: amsterdamElapsedHoursOf(nowTick),
+  };
 }
 
 // The solar chart's legend: the produced line's yellow against the
@@ -151,7 +163,8 @@ function TodayBatteryLegend() {
 function TodaySolarChart({
   actual,
   forecast,
-  nowFraction,
+  dateKey,
+  elapsedHours,
   producedKwh,
   selfConsumptionPct,
   pvW,
@@ -159,7 +172,10 @@ function TodaySolarChart({
 }: {
   actual: PvFlowHour[];
   forecast: WeatherHour[] | null;
-  nowFraction: number;
+  // The charted day's date key, for the DST-true hour bins.
+  dateKey: string;
+  // Elapsed hours since local midnight, DST-true.
+  elapsedHours: number;
   producedKwh: number | null;
   // The share of today's solar the home used on site, moved here
   // from the home usage stat card; carried in the header's chip.
@@ -169,31 +185,51 @@ function TodaySolarChart({
   // True while the first summary load has not landed yet.
   loading: boolean;
 }) {
-  // kWh per local hour, both series on the same scale.
-  const actualByHour = new Array<number>(24).fill(0);
+  // The day's true hour count: 25 on a fall-back day, 23 in spring.
+  const hourCount = amsterdamDayHourCount(dateKey);
+  // kWh per chronological hour slot since local midnight, both series
+  // on the same scale: on a fall-back day the two 02:00 hours are two
+  // distinct bins, unlike wall-clock hour bins which would sum them.
+  const actualByHour = new Array<number>(hourCount).fill(0);
   for (const hour of actual) {
-    actualByHour[localHourFractionOf(hour.ts) | 0] += hour.kwh;
+    const index = amsterdamHourIndexOf(Date.parse(hour.ts), dateKey);
+    if (index >= 0 && index < hourCount) {
+      actualByHour[index] += hour.kwh;
+    }
   }
-  const forecastByHour = new Array<number>(24).fill(0);
+  // The forecast's hours are local wall-clock strings in feed order,
+  // so each hour of the day takes the next chronological slot (the
+  // two 02:00 entries of a fall-back day land in slots 2 and 3).
+  const forecastByHour = new Array<number>(hourCount).fill(0);
+  let forecastDate: string | null = null;
+  let forecastSlot = 0;
   for (const hour of forecast ?? []) {
-    forecastByHour[Number(hour.hour.slice(11, 13))] =
-      hour.estimated_pv_wh / 1000;
+    const date = hour.hour.slice(0, 10);
+    if (date !== forecastDate) {
+      forecastDate = date;
+      forecastSlot = 0;
+    } else {
+      forecastSlot += 1;
+    }
+    if (forecastSlot < hourCount) {
+      forecastByHour[forecastSlot] = hour.estimated_pv_wh / 1000;
+    }
   }
   const maxKwh = Math.max(...actualByHour, ...forecastByHour, 0.1);
   const y = (kwh: number) =>
     TODAY_CHART_H - (kwh / maxKwh) * (TODAY_CHART_H - 4) - 2;
   // Stepped area under the actual production line, closed at the base.
   const stepPoints: string[] = [];
-  for (let hour = 0; hour < 24; hour += 1) {
-    const left = (hour / 24) * TODAY_CHART_W;
-    const right = ((hour + 1) / 24) * TODAY_CHART_W;
+  for (let hour = 0; hour < hourCount; hour += 1) {
+    const left = (hour / hourCount) * TODAY_CHART_W;
+    const right = ((hour + 1) / hourCount) * TODAY_CHART_W;
     const top = y(actualByHour[hour]);
     stepPoints.push(`${left},${top} ${right},${top}`);
   }
   const areaPoints = `0,${TODAY_CHART_H} ${stepPoints.join(" ")} ${TODAY_CHART_W},${TODAY_CHART_H}`;
   // Forecast curve through the hour midpoints, dashed.
   const forecastPoints = forecastByHour
-    .map((kwh, hour) => `${((hour + 0.5) / 24) * TODAY_CHART_W},${y(kwh)}`)
+    .map((kwh, hour) => `${((hour + 0.5) / hourCount) * TODAY_CHART_W},${y(kwh)}`)
     .join(" ");
   const hasForecast = forecast !== null && forecast.length > 0;
   const hasActual = actual.some((hour) => hour.kwh > 0);
@@ -291,8 +327,8 @@ function TodaySolarChart({
                   />
                 )}
                 <line
-                  x1={nowXOf(nowFraction)}
-                  x2={nowXOf(nowFraction)}
+                  x1={nowXOf(elapsedHours, hourCount)}
+                  x2={nowXOf(elapsedHours, hourCount)}
                   y1={0}
                   y2={TODAY_CHART_H}
                   stroke="white"
@@ -316,23 +352,35 @@ function TodaySolarChart({
 // colors, on the same full-day axis.
 function TodayBatteryChart({
   flow,
-  nowFraction,
+  dateKey,
+  elapsedHours,
   chargedKwh,
   dischargedKwh,
   loading,
 }: {
   flow: BatteryFlowHour[];
-  nowFraction: number;
+  // The charted day's date key, for the DST-true hour bins.
+  dateKey: string;
+  // Elapsed hours since local midnight, DST-true.
+  elapsedHours: number;
   chargedKwh: number | null;
   dischargedKwh: number | null;
   // True while the first summary load has not landed yet.
   loading: boolean;
 }) {
   const zeroY = TODAY_CHART_H / 2;
-  const slot = TODAY_CHART_W / 24;
+  // The day's true hour count: 25 on a fall-back day, 23 in spring.
+  const hourCount = amsterdamDayHourCount(dateKey);
+  const slot = TODAY_CHART_W / hourCount;
+  // Chronological hour slots since local midnight: on a fall-back day
+  // the two 02:00 hours are two distinct bins, unlike wall-clock hour
+  // bins which would sum them into one doubled bar.
   const byHour = new Map<number, { in: number; out: number }>();
   for (const hour of flow) {
-    const key = localHourFractionOf(hour.ts) | 0;
+    const key = amsterdamHourIndexOf(Date.parse(hour.ts), dateKey);
+    if (key < 0 || key >= hourCount) {
+      continue;
+    }
     const entry = byHour.get(key) ?? { in: 0, out: 0 };
     entry.in += hour.in_kwh;
     entry.out += hour.out_kwh;
@@ -432,8 +480,8 @@ function TodayBatteryChart({
                   </g>
                 ))}
                 <line
-                  x1={nowXOf(nowFraction)}
-                  x2={nowXOf(nowFraction)}
+                  x1={nowXOf(elapsedHours, hourCount)}
+                  x2={nowXOf(elapsedHours, hourCount)}
                   y1={0}
                   y2={TODAY_CHART_H}
                   stroke="white"
@@ -459,7 +507,7 @@ function TodayBatteryChart({
 // header refresh button.
 export function TodaySolarCard() {
   const { summary, status } = useSummary();
-  const nowFraction = useNowFraction();
+  const { dateKey, elapsedHours } = useAmsterdamDayNow();
 
   // The solar forecast curve for the compact solar chart: the hourly
   // weather endpoint's estimated PV per hour; null keeps the chart on
@@ -489,7 +537,8 @@ export function TodaySolarCard() {
     <TodaySolarChart
       actual={summary?.pv_flow_hourly ?? []}
       forecast={forecastHours}
-      nowFraction={nowFraction}
+      dateKey={dateKey}
+      elapsedHours={elapsedHours}
       producedKwh={summary?.today.pv_kwh ?? null}
       selfConsumptionPct={summary?.today.self_consumption_pct ?? null}
       pvW={summary?.flow.pv_w ?? null}
@@ -501,11 +550,12 @@ export function TodaySolarCard() {
 // The battery card: its own summary slice, no forecast needed.
 export function TodayBatteryCard() {
   const { summary, status } = useSummary();
-  const nowFraction = useNowFraction();
+  const { dateKey, elapsedHours } = useAmsterdamDayNow();
   return (
     <TodayBatteryChart
       flow={summary?.battery_flow_hourly ?? []}
-      nowFraction={nowFraction}
+      dateKey={dateKey}
+      elapsedHours={elapsedHours}
       chargedKwh={summary?.today.battery_charged_kwh ?? null}
       dischargedKwh={summary?.today.battery_discharged_kwh ?? null}
       loading={status === "loading" && summary === null}
