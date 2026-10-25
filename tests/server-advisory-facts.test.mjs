@@ -86,9 +86,12 @@ function snapshotFixture({
             }
           : null,
       },
+      // A fixed June date keeps the hardcoded +02:00 offset true all
+      // year: a window anchored on today reads an hour off once
+      // Amsterdam returns to CET.
       dayCheapestWindow: {
-        start: `${todayKey}T09:00:00+02:00`,
-        end: `${todayKey}T12:00:00+02:00`,
+        start: "2027-06-15T09:00:00+02:00",
+        end: "2027-06-15T12:00:00+02:00",
         average_price: 0.24,
       },
       remainingAverageEur: 0.35,
