@@ -25,7 +25,7 @@ import {
 import { niceStep } from "@/lib/chartScale";
 import { barPath } from "@/lib/barPath";
 import { DISCHARGING_COLOR } from "@/lib/flowDiagram";
-import { dateKeyPlus, localHourOf } from "@/lib/time";
+import { amsterdamHourIndexOf, dateKeyPlus } from "@/lib/time";
 
 // The chart's geometry, the per-slot chart's idiom: the viewBox height
 // equals the rendered height (h-56 = 224px), so one viewBox unit is
@@ -124,14 +124,29 @@ function SolarProductionChart({
   const valueY = (value: number): number =>
     BASE - Math.min(value / axisMax, 1) * (BASE - TOP);
 
-  // The day view's now marker: the current local hour, on the current
-  // day period only, and only while it falls inside the axis - on a
-  // daylight window that means while the sun is up.
-  const nowHour =
-    isCurrent && hourly && period.kind === "day" && data !== null
-      ? // eslint-disable-next-line react/purity
-        localHourOf(new Date().toISOString())
-      : null;
+  // The day view's now marker: the current slot, on the current day
+  // period only, and only while it falls inside the axis - on a
+  // daylight window that means while the sun is up. Selected by
+  // timestamp containment where a real ts is available (the series
+  // points), falling back to the DST-true elapsed hour since local
+  // midnight - never the wall-clock hour, which is ambiguous during
+  // the repeated 02:00 hour of a fall-back day.
+  const nowHour = (() => {
+    if (!(isCurrent && hourly && period.kind === "day" && data !== null)) {
+      return null;
+    }
+    // eslint-disable-next-line react/purity
+    const nowMs = Date.now();
+    const contained = slots.find(
+      (slot) =>
+        slot.point !== null &&
+        nowMs >= Date.parse(slot.point.ts) &&
+        nowMs < Date.parse(slot.point.ts) + 3_600_000,
+    );
+    return contained !== undefined
+      ? contained.index
+      : amsterdamHourIndexOf(nowMs, period.date);
+  })();
   const nowVisible =
     nowHour !== null && nowHour >= dayStart && nowHour < dayStart + slotCount;
 

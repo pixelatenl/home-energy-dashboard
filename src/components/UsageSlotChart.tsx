@@ -155,12 +155,19 @@ function UsageSlotChart({
   const priceY = (price: number): number =>
     BASE - ((price - priceMin) / priceScale) * (BASE - TOP);
 
-  // The now marker: the current local hour, on the current day
-  // period only.
-  const nowHour =
+  // The now marker: the current slot, on the current day period only,
+  // selected by timestamp containment against the slots' real hourly
+  // instants. Unambiguous during the repeated 02:00 hour of a DST
+  // fall-back day, where two slots share the wall-clock hour.
+  const nowSlotIndex =
     isCurrent && unit === "hour" && data !== null
-      ? localHourOf(new Date().toISOString())
-      : null;
+      ? slots.findIndex((slot) => {
+          const start = Date.parse(slot.ts);
+          // eslint-disable-next-line react/purity
+          const nowMs = Date.now();
+          return nowMs >= start && nowMs < start + 3_600_000;
+        })
+      : -1;
 
   const hovered = hoveredIndex !== null ? (slots[hoveredIndex] ?? null) : null;
   const title =
@@ -355,10 +362,10 @@ function UsageSlotChart({
                           vectorEffect="non-scaling-stroke"
                         />
                       )}
-                    {nowHour !== null && (
+                    {nowSlotIndex >= 0 && (
                       <line
-                        x1={(nowHour + 0.5) * slotWidth}
-                        x2={(nowHour + 0.5) * slotWidth}
+                        x1={(nowSlotIndex + 0.5) * slotWidth}
+                        x2={(nowSlotIndex + 0.5) * slotWidth}
                         y1={TOP}
                         y2={HEIGHT}
                         stroke="currentColor"
