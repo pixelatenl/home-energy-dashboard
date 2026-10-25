@@ -429,13 +429,13 @@ export async function getPriceContextData() {
     // Per-day cheapest windows and the remaining peak, for the insight
     // context signature.
     cheapestByDay: {
-      today: cheapestFromEntries(todayEntries, currentKey, 3),
-      tomorrow: cheapestFromEntries(tomorrowEntries, currentKey, 3),
+      today: cheapestFromEntries(todayEntries, currentHourMs, 3),
+      tomorrow: cheapestFromEntries(tomorrowEntries, currentHourMs, 3),
     },
-    // The day's actual cheapest window, whole-day (an empty key admits
+    // The day's actual cheapest window, whole-day (-Infinity admits
     // every hour): the honest reference when the remaining window is a
     // late remnant and the card states the passed cheap hours.
-    dayCheapestWindow: cheapestFromEntries(todayEntries, "", 3),
+    dayCheapestWindow: cheapestFromEntries(todayEntries, -Infinity, 3),
     remainingMaxPrice,
     // Today's remaining-hours average (now until local midnight).
     remainingAverageEur,
