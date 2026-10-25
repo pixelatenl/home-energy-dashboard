@@ -76,6 +76,15 @@ export function localHourOf(iso: string): number {
   return Number(partValue(parts, "hour"))
 }
 
+// The wall-clock hour (0-23) of chronological hour slot `index` of an
+// Amsterdam local day: on the fall-back day both slots 2 and 3 read
+// 02, which is the truth of that 25-hour day.
+export function amsterdamSlotHourOf(dateKey: string, index: number): number {
+  return localHourOf(
+    new Date(amsterdamDayStartMs(dateKey) + index * 3_600_000).toISOString(),
+  )
+}
+
 // Local hour fraction (e.g. 13.5 for 13:30) of an ISO timestamp.
 export function localHourFractionOf(iso: string): number {
   const parts = partsIn(new Date(iso), {

@@ -17,6 +17,8 @@ import { useAiContext } from "@/lib/useAiContext";
 import { useDataRefreshListener } from "@/lib/useDataRefresh";
 import {
   amsterdamNow,
+  amsterdamSlotHourOf,
+  dateKeyPlus,
   localDateOf,
   localHourOf,
   localTimeOf,
@@ -90,14 +92,21 @@ function PriceTooltip({
 function PriceBars({
   hours,
   average,
-  nowFraction,
+  nowMs,
   block,
+  dateKey,
   scale,
 }: {
   hours: PreparedHour[];
   average: number | null;
-  nowFraction: number | null;
-  block: { startHour: number; endHour: number } | null;
+  // The current instant in ms, or null: selects the "Now" marker's
+  // slot by timestamp containment. A real timestamp is unambiguous
+  // during the repeated 02:00 hour of a DST fall-back day, where two
+  // slots share the wall-clock hour.
+  nowMs: number | null;
+  block: CheapestBlock | null;
+  // The charted day's date key, for the axis labels' wall hours.
+  dateKey: string;
   // Shared min/max across charts, so a euro has the same bar height and
   // color everywhere; falls back to the chart's own range when omitted.
   scale?: { min: number; max: number } | null;
@@ -109,7 +118,11 @@ function PriceBars({
   // all start below it.
   const top = 32;
   const base = height - 16;
-  const slot = width / 24;
+  // Chronological slot axis: one slot per entry of the day in order,
+  // 25 on a DST fall-back day (the 02 label appears twice, which is
+  // correct for a tariff chart), so the two 02:00 bars never overlap.
+  const slotCount = Math.max(1, hours.length);
+  const slot = width / slotCount;
   const prices = hours
     .map((hour) => hour.price)
     .filter((price): price is number => price !== null);
@@ -119,23 +132,42 @@ function PriceBars({
   const scaleMax = max > 0 ? max : 0.05;
   const y = (price: number) => base - (price / scaleMax) * (base - top);
 
+  // The slot whose real hour contains `ms`, by timestamp containment.
+  const slotIndexOf = (ms: number): number =>
+    hours.findIndex((hour) => {
+      const start = Date.parse(hour.ts);
+      return ms >= start && ms < start + 3_600_000;
+    });
+  const nowIndex = nowMs === null ? -1 : slotIndexOf(nowMs);
+  // The cheapest window's slot range: the slots containing the block's
+  // start and its last instant (block.end is exclusive).
+  const blockRange = block
+    ? (() => {
+        const startIndex = slotIndexOf(Date.parse(block.start));
+        const endIndex = slotIndexOf(Date.parse(block.end) - 1);
+        return startIndex >= 0 && endIndex >= 0
+          ? { startIndex, endIndex }
+          : null;
+      })()
+    : null;
+
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const handleMouseMove = (event: MouseEvent<HTMLDivElement>) => {
     const rect = event.currentTarget.getBoundingClientRect();
-    const index = Math.floor(((event.clientX - rect.left) / rect.width) * 24);
-    setHoveredIndex(index >= 0 && index < 24 ? index : null);
+    const index = Math.floor(
+      ((event.clientX - rect.left) / rect.width) * slotCount,
+    );
+    setHoveredIndex(index >= 0 && index < slotCount ? index : null);
   };
   const hoveredHour =
-    hoveredIndex !== null
-      ? (hours.find(
-          (hour) => hour.hour === hoveredIndex && hour.price !== null,
-        ) ?? null)
+    hoveredIndex !== null && hours[hoveredIndex]?.price !== null
+      ? (hours[hoveredIndex] ?? null)
       : null;
   // Horizontal anchor for the tooltip, clamped so it stays inside the chart.
   const tooltipLeftPercent =
     hoveredHour === null
       ? 0
-      : Math.min(Math.max(((hoveredHour.hour + 0.5) / 24) * 100, 10), 90);
+      : Math.min(Math.max(((hoveredIndex! + 0.5) / slotCount) * 100, 10), 90);
 
   return (
     <div>
@@ -151,7 +183,7 @@ function PriceBars({
           role="img"
           aria-label="Hourly electricity prices"
         >
-          {hours.map((hour) => {
+          {hours.map((hour, index) => {
             if (hour.price === null) {
               return null;
             }
@@ -159,7 +191,7 @@ function PriceBars({
             return (
               <rect
                 key={hour.ts}
-                x={hour.hour * slot + slot * 0.15}
+                x={index * slot + slot * 0.15}
                 y={y(hour.price)}
                 width={slot * 0.7}
                 height={barHeight}
@@ -191,11 +223,11 @@ function PriceBars({
               vectorEffect="non-scaling-stroke"
             />
           )}
-          {block && (
+          {blockRange && (
             <rect
-              x={block.startHour * slot + 2}
+              x={blockRange.startIndex * slot + 2}
               y={top}
-              width={(block.endHour - block.startHour) * slot - 4}
+              width={(blockRange.endIndex - blockRange.startIndex + 1) * slot - 4}
               height={height - top - 2}
               rx={6}
               fill="none"
@@ -204,14 +236,14 @@ function PriceBars({
               vectorEffect="non-scaling-stroke"
             />
           )}
-          {/* The Now marker pins to the current hour's bar center -
-              "now" in the hourly price context is that hour's price,
-              so it jumps one bar at each hour boundary instead of
-              gliding through it. */}
-          {nowFraction !== null && (
+          {/* The Now marker pins to the current slot's bar center,
+              selected by timestamp containment - "now" in the hourly
+              price context is that hour's price, so it jumps one bar
+              at each hour boundary instead of gliding through it. */}
+          {nowIndex >= 0 && (
             <line
-              x1={((Math.floor(nowFraction) + 0.5) / 24) * width}
-              x2={((Math.floor(nowFraction) + 0.5) / 24) * width}
+              x1={((nowIndex + 0.5) / slotCount) * width}
+              x2={((nowIndex + 0.5) / slotCount) * width}
               y1={top}
               y2={height}
               stroke="currentColor"
@@ -221,21 +253,21 @@ function PriceBars({
             />
           )}
         </svg>
-        {nowFraction !== null && (
+        {nowIndex >= 0 && (
           <span
             className="pointer-events-none absolute top-0 -translate-x-1/2 text-[10px] text-subtle-foreground"
             style={{
-              left: `${((Math.floor(nowFraction) + 0.5) / 24) * 100}%`,
+              left: `${((nowIndex + 0.5) / slotCount) * 100}%`,
             }}
           >
             Now
           </span>
         )}
-        {block && (
+        {blockRange && (
           <span
             className="pointer-events-none absolute top-4 -translate-x-1/2 whitespace-nowrap text-[10px] text-subtle-foreground"
             style={{
-              left: `${((block.startHour + block.endHour) / 2 / 24) * 100}%`,
+              left: `${((blockRange.startIndex + blockRange.endIndex + 1) / 2 / slotCount) * 100}%`,
             }}
           >
             Cheapest remaining window
@@ -251,17 +283,21 @@ function PriceBars({
       </div>
       {/* The hour labels sit centered under their bars - the label 12
           beneath the 12th bar, the price of that hour - not at the
-          slot boundary where the hour starts. */}
+          slot boundary where the hour starts. On a 25-hour DST day
+          the labels follow the chronological slots, so 02 appears
+          twice and later hours shift by one. */}
       <div className="relative mt-1 h-4 text-xs text-subtle-foreground tabular-nums">
-        {[0, 3, 6, 9, 12, 15, 18, 21].map((hour) => (
-          <span
-            key={hour}
-            className="absolute top-0 -translate-x-1/2"
-            style={{ left: `${((hour + 0.5) / 24) * 100}%` }}
-          >
-            {String(hour).padStart(2, "0")}
-          </span>
-        ))}
+        {[0, 3, 6, 9, 12, 15, 18, 21]
+          .filter((index) => index < slotCount)
+          .map((index) => (
+            <span
+              key={index}
+              className="absolute top-0 -translate-x-1/2"
+              style={{ left: `${((index + 0.5) / slotCount) * 100}%` }}
+            >
+              {String(amsterdamSlotHourOf(dateKey, index)).padStart(2, "0")}
+            </span>
+          ))}
       </div>
     </div>
   );
@@ -304,11 +340,9 @@ function PriceChartLegend() {
 }
 
 // Block trimmed to one chart day: only when start and end fall on the same
-// date as the chart.
-function blockForDate(
-  block: CheapestBlock | null,
-  dateKey: string,
-): { startHour: number; endHour: number } | null {
+// date as the chart. The block's own timestamps ride through; PriceBars
+// resolves their slots by timestamp containment.
+function blockForDate(block: CheapestBlock | null, dateKey: string) {
   if (!block) {
     return null;
   }
@@ -318,10 +352,7 @@ function blockForDate(
   ) {
     return null;
   }
-  return {
-    startHour: localHourOf(block.start),
-    endHour: localHourOf(block.end),
-  };
+  return block;
 }
 
 function blockLabel(block: CheapestBlock): string {
@@ -363,15 +394,20 @@ function PricesWidget() {
   useDataRefreshListener(load);
 
   const today = todayInAmsterdam();
-  const tomorrow = localDateOf(
-    new Date(nowTick + 24 * 3_600_000).toISOString(),
-  );
+  // Calendar-safe: adding 24 hours to now would keep yesterday's date
+  // through the early hours of a 25-hour DST day.
+  const tomorrow = dateKeyPlus(today, 1);
   const now = amsterdamNow(nowTick);
   const todayHours = summary ? prepareHours(summary.hours, today) : [];
   const tomorrowHours = summary ? prepareHours(summary.hours, tomorrow) : [];
+  // The current tariff by timestamp containment against the day's
+  // real hourly entries: unambiguous during the repeated 02:00 hour
+  // of a fall-back day, where two entries share the wall-clock hour.
   const currentPrice =
-    todayHours.find((hour) => hour.hour === Math.floor(now.fraction))?.price ??
-    null;
+    todayHours.find((hour) => {
+      const start = Date.parse(hour.ts);
+      return nowTick >= start && nowTick < start + 3_600_000;
+    })?.price ?? null;
   const peak = todayHours.reduce<PreparedHour | null>((best, hour) => {
     if (hour.price === null) {
       return best;
@@ -494,8 +530,9 @@ function PricesWidget() {
                 <PriceBars
                   hours={todayHours}
                   average={summary.today.average}
-                  nowFraction={now.date === today ? now.fraction : null}
+                  nowMs={now.date === today ? nowTick : null}
                   block={blockForDate(block, today)}
+                  dateKey={today}
                   scale={sharedScale}
                 />
                 {block && (
@@ -532,8 +569,9 @@ function PricesWidget() {
                     <PriceBars
                       hours={tomorrowHours}
                       average={summary.tomorrow.average}
-                      nowFraction={null}
+                      nowMs={null}
                       block={blockForDate(block, tomorrow)}
+                      dateKey={tomorrow}
                       scale={sharedScale}
                     />
                   ) : (

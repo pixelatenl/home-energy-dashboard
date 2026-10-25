@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { amsterdamDayStartMs, localDateOf } from "../src/lib/time.ts";
+import {
+  amsterdamDayStartMs,
+  amsterdamSlotHourOf,
+  dateKeyPlus,
+  localDateOf,
+} from "../src/lib/time.ts";
 
 // The frontend twin of the server's local-day helper: identical
 // Europe/Amsterdam semantics, so daily bucket instants compare the
@@ -48,5 +53,29 @@ describe("amsterdamDayStartMs: the localDayStartUtcMs twin", () => {
     for (const day of days) {
       assert.equal(localDateOf(new Date(amsterdamDayStartMs(day)).toISOString()), day);
     }
+  });
+});
+
+describe("dateKeyPlus: the evening before both DST transitions", () => {
+  it("steps onto the 25-hour fall-back day", () => {
+    assert.equal(dateKeyPlus("2026-10-24", 1), "2026-10-25");
+  });
+
+  it("steps onto the 23-hour spring-forward day", () => {
+    assert.equal(dateKeyPlus("2026-03-28", 1), "2026-03-29");
+  });
+});
+
+describe("amsterdamSlotHourOf: the wall hour of a chronological slot", () => {
+  it("reads 02 for both repeated slots of the fall-back day", () => {
+    assert.equal(amsterdamSlotHourOf("2026-10-25", 2), 2);
+    assert.equal(amsterdamSlotHourOf("2026-10-25", 3), 2);
+    assert.equal(amsterdamSlotHourOf("2026-10-25", 4), 3);
+    assert.equal(amsterdamSlotHourOf("2026-10-25", 24), 23);
+  });
+
+  it("matches the clock on ordinary days", () => {
+    assert.equal(amsterdamSlotHourOf("2026-07-15", 3), 3);
+    assert.equal(amsterdamSlotHourOf("2026-03-29", 2), 3);
   });
 });
