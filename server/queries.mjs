@@ -1838,66 +1838,79 @@ async function heatPumpKwhPerActiveDay(fromMs, toMs) {
 // estimate with its "Est." class. Every slot of the period is
 // emitted, including the ones without data yet: they sit on the axis
 // without a bar.
-export async function getUsageSlots(fromMs, toMs) {
-  const map = await resolveEntityMap();
-  const days = windowDays(fromMs, toMs);
-  const unit = slotUnitForDays(days);
-  const bothBatteryMissing =
-    map.batteryCharging === null && map.batteryDischarging === null;
 
-  // The entities: the five grid/PV/battery counters plus the
-  // registry's plug counters.
-  const ids = [];
-  for (const role of COUNTER_ROLES) {
-    const id = map[role];
-    if (id !== null) {
-      ids.push(id);
+// The slot key of an hourly data point (bucket or price row start, in
+// ms). Hour slots key by the UTC hour start: unique across a DST
+// fall-back day's two 02:00 hours, which the wall-clock
+// "${dateKey}T${hour}" key would merge into one slot. Day and month
+// slots key by the local calendar, which is date-based and safe.
+export function usageSlotKey(unit, tsMs) {
+  if (unit !== "hour") {
+    const dateKey = localDateKey(new Date(tsMs));
+    return unit === "day" ? dateKey : dateKey.slice(0, 7);
+  }
+  return Math.floor(tsMs / 3_600_000) * 3_600_000;
+}
+
+// The slot keys to emit, in order. Pure, so the DST behaviour is
+// testable. Hour slots (single-day windows): one key per actual hour
+// of the local day, from localDayStartUtcMs(startKey) up to the next
+// day's local midnight in 3_600_000 steps - 25 keys on a fall-back
+// day, 23 on a spring-forward day. Day and month slots stay
+// calendar-keyed.
+export function usageSlotKeys(startKey, endKey, unit) {
+  if (unit === "hour") {
+    const keys = [];
+    const endMs = localDayStartUtcMs(nextDateKey(endKey, 1));
+    for (
+      let ms = localDayStartUtcMs(startKey);
+      ms < endMs;
+      ms += 3_600_000
+    ) {
+      keys.push(ms);
     }
+    return keys;
   }
-  const plugRows = await pool.query(
-    `SELECT id, ha_entity_id FROM entity WHERE ha_entity_id = ANY($1::text[])`,
-    [USAGE_CATEGORIES.flatMap((category) => category.entities)]
-  );
-  const plugIdToCategory = new Map();
-  for (const row of plugRows.rows) {
-    for (const category of USAGE_CATEGORIES) {
-      if (category.entities.includes(row.ha_entity_id)) {
-        plugIdToCategory.set(row.id, category);
-      }
+  if (unit === "day") {
+    // Every calendar day of the window: days without data sit on
+    // the axis without a bar, so an in-progress month still shows
+    // its full span.
+    const keys = [];
+    let day = startKey;
+    while (day <= endKey) {
+      keys.push(day);
+      day = nextDateKey(day, 1);
     }
+    return keys;
   }
-  for (const id of plugIdToCategory.keys()) {
-    ids.push(id);
+  const year = Number(startKey.slice(0, 4));
+  const keys = [];
+  for (let month = 1; month <= 12; month += 1) {
+    keys.push(`${year}-${String(month).padStart(2, "0")}`);
   }
+  return keys;
+}
 
-  const { rows } =
-    ids.length > 0
-      ? await pool.query(
-          `SELECT date_trunc('hour', ts) AS hour, entity_id, sum(delta_kwh) AS kwh
-             FROM energy_delta
-            WHERE entity_id = ANY($1::smallint[])
-              AND ts >= $2::timestamptz
-              AND ts < $3::timestamptz
-            GROUP BY 1, 2
-            ORDER BY 1`,
-          [ids, new Date(fromMs), new Date(toMs)]
-        )
-      : { rows: [] };
-
-  // Per-hour accumulation, keyed by local slot. Hour slots use
-  // "YYYY-MM-DDTHH", day slots the local date key, month slots
-  // "YYYY-MM".
+// Pure slot-series builder behind getUsageSlots: the hourly usage rows
+// and price rows in, the per-slot series out. Exported for tests.
+export function buildUsageSlots({
+  fromMs,
+  toMs,
+  unit,
+  rows,
+  priceRows,
+  map,
+  plugIdToCategory,
+  bothBatteryMissing,
+  heatPumpPerDay,
+}) {
+  // Per-hour accumulation, keyed by slot (usageSlotKey). Hour slots
+  // key by the UTC hour start, day slots the local date key, month
+  // slots "YYYY-MM".
   const hours = new Map();
   for (const row of rows) {
     const bucketMs = row.hour.getTime();
-    const dateKey = localDateKey(new Date(bucketMs));
-    const hourIndex = localHourIndex(new Date(bucketMs));
-    const slotKey =
-      unit === "hour"
-        ? `${dateKey}T${String(hourIndex).padStart(2, "0")}`
-        : unit === "day"
-          ? dateKey
-          : dateKey.slice(0, 7);
+    const slotKey = usageSlotKey(unit, bucketMs);
     const kwh = Number(row.kwh ?? 0);
     let entry = hours.get(slotKey);
     if (entry === undefined) {
@@ -1932,57 +1945,24 @@ export async function getUsageSlots(fromMs, toMs) {
     }
   }
 
-  // The slot keys to emit, in order.
-  const startKey = localDateKey(new Date(fromMs));
-  const endKey = localDateKey(new Date(toMs - 1));
-  const keys = [];
-  if (unit === "hour") {
-    for (let hour = 0; hour < 24; hour += 1) {
-      keys.push(`${startKey}T${String(hour).padStart(2, "0")}`);
-    }
-  } else if (unit === "day") {
-    // Every calendar day of the window: days without data sit on
-    // the axis without a bar, so an in-progress month still shows
-    // its full span.
-    let day = startKey;
-    while (day <= endKey) {
-      keys.push(day);
-      day = nextDateKey(day, 1);
-    }
-  } else {
-    const year = Number(startKey.slice(0, 4));
-    for (let month = 1; month <= 12; month += 1) {
-      keys.push(`${year}-${String(month).padStart(2, "0")}`);
-    }
-  }
-
-  // The heat pump estimate per day, for day and month slots.
-  const heatPumpPerDay =
-    unit === "day" || unit === "month"
-      ? await heatPumpKwhPerActiveDay(fromMs, toMs)
-      : new Map();
-
   // Prices per slot: the average of the slot's non-null hourly
   // prices.
-  const priceRows = await dbHourlyPrices(fromMs, toMs);
   const priceSums = new Map();
   for (const row of priceRows) {
     if (row.price_eur === null) {
       continue;
     }
-    const tsMs = row.ts.getTime();
-    const dateKey = localDateKey(new Date(tsMs));
-    const slotKey =
-      unit === "hour"
-        ? `${dateKey}T${String(localHourIndex(new Date(tsMs))).padStart(2, "0")}`
-        : unit === "day"
-          ? dateKey
-          : dateKey.slice(0, 7);
+    const slotKey = usageSlotKey(unit, row.ts.getTime());
     const entry = priceSums.get(slotKey) ?? { sum: 0, count: 0 };
     entry.sum += Number(row.price_eur);
     entry.count += 1;
     priceSums.set(slotKey, entry);
   }
+
+  // The slot keys to emit, in order.
+  const startKey = localDateKey(new Date(fromMs));
+  const endKey = localDateKey(new Date(toMs - 1));
+  const keys = usageSlotKeys(startKey, endKey, unit);
 
   const series = keys.map((key) => {
     const entry = hours.get(key);
@@ -2041,6 +2021,73 @@ export async function getUsageSlots(fromMs, toMs) {
   return { unit, series };
 }
 
+export async function getUsageSlots(fromMs, toMs) {
+  const map = await resolveEntityMap();
+  const days = windowDays(fromMs, toMs);
+  const unit = slotUnitForDays(days);
+  const bothBatteryMissing =
+    map.batteryCharging === null && map.batteryDischarging === null;
+
+  // The entities: the five grid/PV/battery counters plus the
+  // registry's plug counters.
+  const ids = [];
+  for (const role of COUNTER_ROLES) {
+    const id = map[role];
+    if (id !== null) {
+      ids.push(id);
+    }
+  }
+  const plugRows = await pool.query(
+    `SELECT id, ha_entity_id FROM entity WHERE ha_entity_id = ANY($1::text[])`,
+    [USAGE_CATEGORIES.flatMap((category) => category.entities)]
+  );
+  const plugIdToCategory = new Map();
+  for (const row of plugRows.rows) {
+    for (const category of USAGE_CATEGORIES) {
+      if (category.entities.includes(row.ha_entity_id)) {
+        plugIdToCategory.set(row.id, category);
+      }
+    }
+  }
+  for (const id of plugIdToCategory.keys()) {
+    ids.push(id);
+  }
+
+  const { rows } =
+    ids.length > 0
+      ? await pool.query(
+          `SELECT date_trunc('hour', ts) AS hour, entity_id, sum(delta_kwh) AS kwh
+             FROM energy_delta
+            WHERE entity_id = ANY($1::smallint[])
+              AND ts >= $2::timestamptz
+              AND ts < $3::timestamptz
+            GROUP BY 1, 2
+            ORDER BY 1`,
+          [ids, new Date(fromMs), new Date(toMs)]
+        )
+      : { rows: [] };
+
+  // The heat pump estimate per day, for day and month slots.
+  const heatPumpPerDay =
+    unit === "day" || unit === "month"
+      ? await heatPumpKwhPerActiveDay(fromMs, toMs)
+      : new Map();
+
+  const priceRows = await dbHourlyPrices(fromMs, toMs);
+
+  return buildUsageSlots({
+    fromMs,
+    toMs,
+    unit,
+    rows,
+    priceRows,
+    map,
+    plugIdToCategory,
+    bothBatteryMissing,
+    heatPumpPerDay,
+  });
+}
+
 // The local date keys of one "YYYY-MM" month key.
 function keysOfMonth(monthKey) {
   const [year, month] = monthKey.split("-").map(Number);
@@ -2053,18 +2100,17 @@ function keysOfMonth(monthKey) {
 }
 
 // The UTC ISO instant of a slot key's local start, for the frontend's
-// labeling.
+// labeling. Hour slot keys are already UTC hour-start milliseconds.
 function slotKeyToIso(key, unit) {
   if (unit === "hour") {
-    const dateKey = key.slice(0, 10);
-    const hour = Number(key.slice(11, 13));
-    return new Date(localDayStartUtcMs(dateKey) + hour * 3_600_000).toISOString();
+    return new Date(key).toISOString();
   }
   if (unit === "day") {
     return new Date(localDayStartUtcMs(key)).toISOString();
   }
   return new Date(localDayStartUtcMs(`${key}-01`)).toISOString();
 }
+
 
 // Days in the calendar month of a "YYYY-MM-DD" key, for prorating the
 // monthly non-heating gas baseline to a per-day share.
