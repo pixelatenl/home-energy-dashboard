@@ -24,7 +24,14 @@ import {
   DISCHARGING_COLOR,
 } from "@/lib/flowDiagram";
 import { useSummary } from "@/lib/useSummary";
-import { localDateOf, localHourFractionOf, localHourOf } from "@/lib/time";
+import {
+  amsterdamDayHourCount,
+  amsterdamDayStartMs,
+  amsterdamHourIndexOf,
+  amsterdamSlotHourOf,
+  localDateOf,
+  localHourOf,
+} from "@/lib/time";
 import { useMode } from "@/lib/mode";
 import { periodEnd, periodLabel, periodStart, type Period } from "@/lib/period";
 import { niceStep } from "@/lib/chartScale";
@@ -192,39 +199,56 @@ function FlowLegend() {
 // with that hour's flow, its money figures and the SOC. Rendered in the
 // same muted strip background and height as the 5 day forecast's hourly
 // chart, so the charts and insights align across the two cards.
+// Bars and the SOC line place by chronological hour slot since local
+// midnight, sized by the day's true hour count: on a DST fall-back day
+// the two 02:00 hours are two distinct slots, and the SOC line never
+// runs ahead of the bars after the transition.
 function FlowChart({
   flow,
   socSeries,
+  dateKey,
 }: {
   flow: BatteryFlowInterval[];
   socSeries: BatterySocPoint[];
+  // The charted day's date key.
+  dateKey: string;
 }) {
+  // The day's true hour count: 25 on a fall-back day, 23 in spring.
+  const hourCount = amsterdamDayHourCount(dateKey);
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const handleMouseMove = (event: MouseEvent<HTMLDivElement>) => {
     const rect = event.currentTarget.getBoundingClientRect();
-    const index = Math.floor(((event.clientX - rect.left) / rect.width) * 24);
-    setHoveredIndex(index >= 0 && index < 24 ? index : null);
+    const index = Math.floor(
+      ((event.clientX - rect.left) / rect.width) * hourCount,
+    );
+    setHoveredIndex(index >= 0 && index < hourCount ? index : null);
   };
+  // Each flow interval's chronological slot index since local midnight.
+  const flowByIndex = new Map<number, BatteryFlowInterval>();
+  for (const hour of flow) {
+    flowByIndex.set(amsterdamHourIndexOf(Date.parse(hour.ts), dateKey), hour);
+  }
   const hoveredFlow =
-    hoveredIndex !== null
-      ? (flow.find((hour) => localHourOf(hour.ts) === hoveredIndex) ?? null)
-      : null;
+    hoveredIndex !== null ? (flowByIndex.get(hoveredIndex) ?? null) : null;
   const hoveredSoc =
     hoveredIndex !== null
-      ? (socSeries.findLast((point) => localHourOf(point.ts) === hoveredIndex)
-          ?.soc_pct ?? null)
+      ? (socSeries.findLast(
+          (point) =>
+            amsterdamHourIndexOf(Date.parse(point.ts), dateKey) ===
+            hoveredIndex,
+        )?.soc_pct ?? null)
       : null;
   // Horizontal anchor for the tooltip, clamped so it stays inside the chart.
   const tooltipLeftPercent =
     hoveredIndex === null
       ? 0
-      : Math.min(Math.max(((hoveredIndex + 0.5) / 24) * 100, 10), 90);
+      : Math.min(Math.max(((hoveredIndex + 0.5) / hourCount) * 100, 10), 90);
 
   const width = 960;
   const height = 150;
   const top = 8;
   const bottom = height - 8;
-  const slot = width / 24;
+  const slot = width / hourCount;
   const zeroY = top + (bottom - top) / 2;
   const maxFlow = Math.max(
     flow.reduce((max, hour) => Math.max(max, hour.in_kwh, hour.out_kwh), 0),
@@ -236,18 +260,19 @@ function FlowChart({
     (value) => yFor(value) >= top && yFor(value) <= bottom,
   );
   const socY = (soc: number) => bottom - (soc / 100) * (bottom - top);
+  // The SOC line's x: the DST-true elapsed hours since local midnight.
+  const socX = (ts: string) =>
+    ((Date.parse(ts) - amsterdamDayStartMs(dateKey)) / 3_600_000 / hourCount) *
+    width;
   const socPoints = socSeries
-    .map(
-      (point) =>
-        `${(localHourFractionOf(point.ts) / 24) * width},${socY(point.soc_pct)}`,
-    )
+    .map((point) => `${socX(point.ts)},${socY(point.soc_pct)}`)
     .join(" ");
   // Subtle accent fill under the SOC line, closed at the chart bottom.
   const socAreaPoints =
     socSeries.length > 1
-      ? `${(localHourFractionOf(socSeries[0].ts) / 24) * width},${bottom} ${socPoints} ${
-          (localHourFractionOf(socSeries[socSeries.length - 1].ts) / 24) * width
-        },${bottom}`
+      ? `${socX(socSeries[0].ts)},${bottom} ${socPoints} ${socX(
+          socSeries[socSeries.length - 1].ts,
+        )},${bottom}`
       : null;
 
   return (
@@ -301,7 +326,10 @@ function FlowChart({
               <polygon points={socAreaPoints} fill={SOC_COLOR} opacity={0.08} />
             )}
             {flow.map((hour) => {
-              const hourSlot = localHourOf(hour.ts);
+              const hourSlot = amsterdamHourIndexOf(Date.parse(hour.ts), dateKey);
+              if (hourSlot < 0 || hourSlot >= hourCount) {
+                return null;
+              }
               return (
                 <g key={hour.ts}>
                   {hour.in_kwh > 0 && (
@@ -366,7 +394,7 @@ function FlowChart({
           </svg>
           {hoveredFlow !== null && (
             <FlowTooltip
-              label={`${String(hoveredIndex).padStart(2, "0")}:00`}
+              label={`${String(localHourOf(hoveredFlow.ts)).padStart(2, "0")}:00`}
               inKwh={hoveredFlow.in_kwh}
               outKwh={hoveredFlow.out_kwh}
               inCostEur={hoveredFlow.in_cost_eur}
@@ -384,15 +412,17 @@ function FlowChart({
             <Clock className="size-3" aria-hidden="true" />
             00
           </span>
-          {[3, 6, 9, 12, 15, 18, 21].map((hour) => (
-            <span
-              key={hour}
-              className="absolute top-0 -translate-x-1/2"
-              style={{ left: `${(hour / 24) * 100}%` }}
-            >
-              {String(hour).padStart(2, "0")}
-            </span>
-          ))}
+          {[3, 6, 9, 12, 15, 18, 21]
+            .filter((index) => index < hourCount)
+            .map((index) => (
+              <span
+                key={index}
+                className="absolute top-0 -translate-x-1/2"
+                style={{ left: `${(index / hourCount) * 100}%` }}
+              >
+                {String(amsterdamSlotHourOf(dateKey, index)).padStart(2, "0")}
+              </span>
+            ))}
         </div>
       </div>
       <FlowLegend />
@@ -849,7 +879,13 @@ function BatteryPanel({
           <div>
             {hasChartData ? (
               flow.resolution === "hour" ? (
-                <FlowChart flow={flow.series} socSeries={flow.soc_series} />
+                // Hour resolution is the day period's; the anchor day is
+                // the charted day for the chronological slot axis.
+                <FlowChart
+                  flow={flow.series}
+                  socSeries={flow.soc_series}
+                  dateKey={period.date}
+                />
               ) : (
                 <PeriodFlowChart flow={flow.series} period={period} />
               )
