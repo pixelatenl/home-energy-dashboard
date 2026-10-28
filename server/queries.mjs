@@ -1451,6 +1451,21 @@ export const USAGE_CATEGORIES = [
     label: "Washing machine",
     entities: ["sensor.garage_washing_machine_cumulative_energy"],
   },
+  {
+    key: "office",
+    label: "Office",
+    entities: ["sensor.office_office_cumulative_energy"],
+  },
+  {
+    key: "game_pc",
+    label: "Game PC",
+    entities: ["sensor.bedroom_game_pc_cumulative_energy"],
+  },
+  {
+    key: "tv_audio",
+    label: "TV and audio",
+    entities: ["sensor.living_room_tv_and_audio_living_cumulative_energy"],
+  },
 ];
 
 // The heat pump carries the "Est." class: it is estimated, never
