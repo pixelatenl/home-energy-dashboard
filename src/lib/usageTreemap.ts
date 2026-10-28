@@ -8,10 +8,10 @@ import type { Mode } from "@/lib/mode"
 
 // Estimated categories under this share of the period's primary
 // metric collapse into one "Other" tile, so unreadable sliver tiles
-// never appear. Measured categories are exempt: they always render
-// (the Small plugs floor below is their only readability rule). The
-// 2 percent floor aligns with the smallest tile that still fits a
-// label and value on a laptop panel (docs/spec.md section 5.2).
+// never appear. Measured categories are exempt: the tile floor below
+// is their only readability rule. The 2 percent floor aligns with
+// the smallest tile that still fits a label and value on a laptop
+// panel (docs/spec.md section 5.2).
 export const OTHER_SHARE_THRESHOLD = 0.02
 
 // "Other" only renders when its own share reaches this floor: a
@@ -20,12 +20,13 @@ export const OTHER_SHARE_THRESHOLD = 0.02
 // total).
 export const OTHER_MIN_SHARE = 0.01
 
-// The readability floor for measured categories: they always render
-// (the collapse threshold above applies to estimates only), but a
-// measured category under this share of the period's primary metric
-// is an unreadable sliver, so those merge into one "Small plugs"
-// tile whose tooltip enumerates the merged plugs.
-export const SMALL_PLUGS_SHARE_FLOOR = 0.001
+// The tile floor for measured categories: a measured category needs
+// at least this share of the period's primary metric to become its
+// own tile. Below it the category produces no tile at all; the Rest
+// of your home card lists the aggregate of those categories as its
+// "Other appliances" row, so the card picks up exactly what the
+// treemap leaves out (docs/spec.md section 5.2).
+export const MEASURED_TILE_SHARE_FLOOR = 0.005
 
 // The primary metric in each mode: kWh in energy mode, cost in cost
 // mode. The secondary metric is always the other one. Tiles, captions
@@ -51,16 +52,8 @@ export function formatMetric(value: number, mode: Mode): string {
     : `€${value.toFixed(2)}`
 }
 
-// One merged member of the "small_plugs" tile: the plug's own label
-// and values, so the tooltip can enumerate what the tile contains.
-export interface TileMember {
-  label: string
-  primary: number
-  secondary: number | null
-}
-
-// One rendered tile: a category (or a collapsed bucket) with the
-// values the tile, caption and tooltip show.
+// One rendered tile: a category (or the collapsed "Other" bucket)
+// with the values the tile, caption and tooltip show.
 export interface TreemapTile {
   key: string
   label: string
@@ -70,16 +63,14 @@ export interface TreemapTile {
   secondary: number | null
   share: number
   previousPrimary: number
-  // Only the "small_plugs" merge sets this; regular tiles leave it
-  // undefined.
-  members?: TileMember[]
 }
 
 // The tile model from one period's breakdown in one mode: the known
 // categories - everything measured plus the heat pump estimate - in
-// the API's order. Measured categories always render: each as its
-// own tile, or, under the Small plugs floor, as one merged tile.
-// The under-2-percent collapse applies to estimated categories only,
+// the API's order. Measured categories become their own tile only
+// above the measured tile floor; below it they produce no tile and
+// smallMeasuredPlugs hands them to the Rest of your home card. The
+// under-2-percent collapse applies to estimated categories only,
 // which today is the heat pump. The remainder is NOT a tile
 // (docs/spec.md section 5.2: the Rest of your home card owns it);
 // tile shares are the true share of the period total. Returns an
@@ -100,7 +91,6 @@ export function buildTiles(
       ? category.previous_kwh
       : (category.previous_cost_eur ?? 0)
   const kept: TreemapTile[] = []
-  const smallPlugs: UsageBreakdownCategory[] = []
   const smallEstimates: UsageBreakdownCategory[] = []
   for (const category of data.categories) {
     if (category.class === "remainder") {
@@ -118,8 +108,10 @@ export function buildTiles(
       smallEstimates.push(category)
       continue
     }
-    if (!isEstimate && share < SMALL_PLUGS_SHARE_FLOOR) {
-      smallPlugs.push(category)
+    if (!isEstimate && share < MEASURED_TILE_SHARE_FLOOR) {
+      // No tile: the Rest of your home card's Other appliances row
+      // lists this category (smallMeasuredPlugs applies the same
+      // floor).
       continue
     }
     kept.push({
@@ -131,32 +123,6 @@ export function buildTiles(
       secondary: secondaryOf(category, mode),
       share,
       previousPrimary: previousPrimaryOf(category),
-    })
-  }
-  if (smallPlugs.length > 0) {
-    const primary = smallPlugs.reduce((sum, c) => sum + primaryOf(c, mode), 0)
-    const secondaryValues = smallPlugs.map((c) => secondaryOf(c, mode))
-    const secondary = secondaryValues.some((v) => v === null)
-      ? null
-      : (secondaryValues as number[]).reduce((sum, v) => sum + v, 0)
-    const previousPrimary = smallPlugs.reduce(
-      (sum, c) => sum + previousPrimaryOf(c),
-      0
-    )
-    kept.push({
-      key: "small_plugs",
-      label: "Small plugs",
-      color: colorOf("small_plugs"),
-      isEstimate: false,
-      primary,
-      secondary,
-      share: primary / totalPrimary,
-      previousPrimary,
-      members: smallPlugs.map((c) => ({
-        label: c.label,
-        primary: primaryOf(c, mode),
-        secondary: secondaryOf(c, mode),
-      })),
     })
   }
   if (smallEstimates.length > 0) {
@@ -192,6 +158,68 @@ export interface TileRect {
   y: number
   w: number
   h: number
+}
+
+// The aggregate of the measured categories that fall under the tile
+// floor: the Rest of your home card's "Other appliances" row reads
+// exactly this, from the same payload and the same floor buildTiles
+// applies, so the treemap and the card can never disagree about what
+// renders where. Returns null when the period has no primary total or
+// no measured category is under the floor (the card omits the row).
+export interface SmallMeasuredPlug {
+  label: string
+  kwh: number
+}
+
+export interface SmallMeasuredPlugs {
+  primary: number
+  secondary: number | null
+  share: number
+  // The merged categories in the API's order, for the row's tooltip.
+  members: SmallMeasuredPlug[]
+}
+
+export function smallMeasuredPlugs(
+  data: UsageBreakdown,
+  mode: Mode
+): SmallMeasuredPlugs | null {
+  const totalPrimary =
+    mode === "energy" ? data.total.kwh : (data.total.cost_eur ?? 0)
+  if (totalPrimary <= 0) {
+    return null
+  }
+  let primary = 0
+  let secondarySum = 0
+  let hasNullSecondary = false
+  const members: SmallMeasuredPlug[] = []
+  for (const category of data.categories) {
+    if (category.class === "remainder" || category.class === "Est.") {
+      continue
+    }
+    const categoryPrimary = primaryOf(category, mode)
+    if (categoryPrimary <= 0) {
+      continue
+    }
+    if (categoryPrimary / totalPrimary < MEASURED_TILE_SHARE_FLOOR) {
+      primary += categoryPrimary
+      const categorySecondary = secondaryOf(category, mode)
+      if (categorySecondary === null) {
+        hasNullSecondary = true
+      } else {
+        secondarySum += categorySecondary
+      }
+      members.push({ label: category.label, kwh: category.kwh })
+    }
+  }
+  if (primary <= 0) {
+    return null
+  }
+  return {
+    primary,
+    secondary: hasNullSecondary ? null : secondarySum,
+    share: primary / totalPrimary,
+    members,
+  }
 }
 
 // The squarified treemap layout (Bruls, Huizing and van Wijk): the

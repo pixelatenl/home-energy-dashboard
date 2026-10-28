@@ -19,9 +19,8 @@ const USAGE_CATEGORY_COLORS: Record<string, string> = {
   heat_pump: "#8f4a4a",
   remainder: "#8a7f70",
   other: "#6b6157",
-  // The merged bucket for measured plugs under the Small plugs
-  // readability floor: a neutral warm gray, muted next to the
-  // per-category hues.
+  // The Rest of your home card's measured Other appliances row: the
+  // aggregate of the plug categories under the treemap's tile floor.
   small_plugs: "#75695e",
 }
 

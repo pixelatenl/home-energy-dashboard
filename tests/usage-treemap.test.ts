@@ -3,9 +3,11 @@ import { describe, it } from "node:test";
 import type { UsageBreakdown } from "../src/lib/api.ts";
 import {
   buildTiles,
+  MEASURED_TILE_SHARE_FLOOR,
   OTHER_SHARE_THRESHOLD,
   primaryOf,
   secondaryOf,
+  smallMeasuredPlugs,
   squarify,
 } from "../src/lib/usageTreemap.ts";
 
@@ -197,7 +199,7 @@ describe("buildTiles: the tile model", () => {
     assert.equal(tiles.some((t) => t.key === "heat_pump2"), false);
   });
 
-  it("always renders measured categories regardless of share", () => {
+  it("renders measured categories above the tile floor, no estimate collapse applied to them", () => {
     const data = breakdownFixture({
       categories: [
         { key: "remainder", label: "Remainder", kwh: 97, cost_eur: 48.5, class: "remainder" },
@@ -206,15 +208,16 @@ describe("buildTiles: the tile model", () => {
       ],
     });
     const tiles = buildTiles(data, "energy", COLOR);
+    // 1.5 of 100 is under the estimate collapse threshold (2
+    // percent) but above the measured tile floor, so both render.
     assert.deepEqual(
       tiles.map((t) => t.key).sort(),
       ["dishwasher", "dryer"]
     );
     assert.equal(tiles.some((t) => t.key === "other"), false);
-    assert.equal(tiles.some((t) => t.key === "small_plugs"), false);
   });
 
-  it("merges measured plugs under the Small plugs floor into one tile with members", () => {
+  it(`produces no tile for measured categories under the ${MEASURED_TILE_SHARE_FLOOR} floor`, () => {
     const data = breakdownFixture({
       categories: [
         { key: "remainder", label: "Remainder", kwh: 96.91, cost_eur: 48.455, class: "remainder" },
@@ -224,33 +227,68 @@ describe("buildTiles: the tile model", () => {
       ],
     });
     const tiles = buildTiles(data, "energy", COLOR);
-    assert.deepEqual(
-      tiles.map((t) => t.key).sort(),
-      ["dishwasher", "small_plugs"]
-    );
-    const smallPlugs = tiles.find((t) => t.key === "small_plugs")!;
-    assert.equal(smallPlugs.label, "Small plugs");
-    assert.equal(smallPlugs.color, COLOR("small_plugs"));
-    assert.equal(smallPlugs.primary, 0.09);
-    assert.equal(smallPlugs.members?.length, 2);
-    assert.deepEqual(
-      smallPlugs.members!.map((m) => m.label),
-      ["Game PC", "TV and audio"]
-    );
-    assert.equal(smallPlugs.members![0].primary, 0.05);
-    assert.equal(smallPlugs.members![0].secondary, 0.025);
+    assert.deepEqual(tiles.map((t) => t.key), ["dishwasher"]);
   });
 
-  it("renders the measured day set: own tiles, Small plugs below the floor, in both modes", () => {
+  it("aggregates the sub-floor measured plugs for the Rest of your home card", () => {
     const data = breakdownFixture({
-      totalKwh: 14.6,
-      totalCost: 7.3,
       categories: [
-        { key: "remainder", label: "Remainder", kwh: 13.38, cost_eur: 6.69, class: "remainder" },
+        { key: "remainder", label: "Remainder", kwh: 96.91, cost_eur: 48.455, class: "remainder" },
+        { key: "dishwasher", label: "Dishwasher", kwh: 3, cost_eur: 1.5 },
+        { key: "game_pc", label: "Game PC", kwh: 0.05, cost_eur: 0.025 },
+        { key: "tv_audio", label: "TV and audio", kwh: 0.04, cost_eur: 0.02 },
+      ],
+    });
+    const plugs = smallMeasuredPlugs(data, "energy");
+    assert.notEqual(plugs, null);
+    assert.equal(plugs!.primary, 0.09);
+    assert.equal(plugs!.secondary, 0.045);
+    assert.ok(Math.abs(plugs!.share - 0.0009) < 1e-12);
+    // The members feed the row's tooltip: one entry per merged plug,
+    // in the API's order, with the plug's kWh for the period.
+    assert.deepEqual(
+      plugs!.members.map((m) => `${m.label} ${m.kwh} kWh`),
+      ["Game PC 0.05 kWh", "TV and audio 0.04 kWh"]
+    );
+    // Estimates and the remainder never join the aggregate.
+    const estimateData = breakdownFixture({
+      categories: [
+        { key: "remainder", label: "Remainder", kwh: 90, cost_eur: 45, class: "remainder" },
+        { key: "heat_pump", label: "Heat pump", kwh: 0.05, cost_eur: 0.025, class: "Est." },
+      ],
+    });
+    assert.equal(smallMeasuredPlugs(estimateData, "energy"), null);
+    // Nothing under the floor: the card omits the row.
+    const noneData = breakdownFixture({
+      categories: [
+        { key: "remainder", label: "Remainder", kwh: 50, cost_eur: 25, class: "remainder" },
+        { key: "dishwasher", label: "Dishwasher", kwh: 50, cost_eur: 25 },
+      ],
+    });
+    assert.equal(smallMeasuredPlugs(noneData, "energy"), null);
+    // No primary total: no row either.
+    const emptyData = breakdownFixture({
+      totalKwh: 0,
+      totalCost: 0,
+      categories: [
+        { key: "remainder", label: "Remainder", kwh: 0, cost_eur: 0, class: "remainder" },
+      ],
+    });
+    assert.equal(smallMeasuredPlugs(emptyData, "energy"), null);
+  });
+
+  it("renders the measured day set in both modes: tiles above the floor, card aggregate below", () => {
+    const data = breakdownFixture({
+      totalKwh: 15,
+      totalCost: 7.5,
+      categories: [
+        { key: "remainder", label: "Remainder", kwh: 13.76, cost_eur: 6.88, class: "remainder" },
         { key: "dishwasher", label: "Dishwasher", kwh: 1.1, cost_eur: 0.55 },
         { key: "office", label: "Office", kwh: 0.1, cost_eur: 0.05 },
-        { key: "game_pc", label: "Game PC", kwh: 0.006, cost_eur: 0.003 },
-        { key: "tv_audio", label: "TV and audio", kwh: 0.014, cost_eur: 0.007 },
+        { key: "game_pc", label: "Game PC", kwh: 0.015, cost_eur: 0.0075 },
+        { key: "tv_audio", label: "TV and audio", kwh: 0.015, cost_eur: 0.0075 },
+        { key: "dryer", label: "Dryer", kwh: 0.005, cost_eur: 0.0025 },
+        { key: "washing_machine", label: "Washing machine", kwh: 0.005, cost_eur: 0.0025 },
       ],
     });
     for (const mode of ["energy", "cost"] as const) {
@@ -259,16 +297,49 @@ describe("buildTiles: the tile model", () => {
       assert.equal(keys.includes("dishwasher"), true, mode);
       assert.equal(keys.includes("office"), true, mode);
       assert.equal(keys.includes("game_pc"), false, mode);
-      assert.equal(keys.includes("tv_audio"), false, mode);
       assert.equal(keys.includes("other"), false, mode);
-      const smallPlugs = tiles.find((t) => t.key === "small_plugs")!;
-      assert.notEqual(smallPlugs, undefined, mode);
+      // The card's Other appliances row picks up exactly the dropped
+      // ones, and its members enumerate them for the tooltip.
+      const plugs = smallMeasuredPlugs(data, mode);
+      assert.notEqual(plugs, null, mode);
       assert.deepEqual(
-        smallPlugs.members!.map((m) => m.label),
-        ["Game PC", "TV and audio"],
+        plugs!.members.map((m) => m.label),
+        ["Game PC", "TV and audio", "Dryer", "Washing machine"],
+        mode
+      );
+      assert.ok(
+        Math.abs(plugs!.primary - (mode === "energy" ? 0.04 : 0.02)) < 1e-9,
+        mode
+      );
+      // Treemap tiles plus the Other appliances aggregate plus the
+      // remainder equal the period total.
+      const tileSum = tiles.reduce((sum, t) => sum + t.primary, 0);
+      const remainder = mode === "energy" ? 13.76 : 6.88;
+      assert.ok(
+        Math.abs(tileSum + plugs!.primary + remainder -
+          (mode === "energy" ? 15 : 7.5)) < 1e-9,
         mode
       );
     }
+  });
+
+  it("moves office into the Other appliances aggregate when it drops below the floor", () => {
+    const data = breakdownFixture({
+      totalKwh: 15,
+      totalCost: 7.5,
+      categories: [
+        { key: "remainder", label: "Remainder", kwh: 13.66, cost_eur: 6.83, class: "remainder" },
+        { key: "dishwasher", label: "Dishwasher", kwh: 1.1, cost_eur: 0.55 },
+        { key: "office", label: "Office", kwh: 0.02, cost_eur: 0.01 },
+        { key: "game_pc", label: "Game PC", kwh: 0.015, cost_eur: 0.0075 },
+        { key: "tv_audio", label: "TV and audio", kwh: 0.015, cost_eur: 0.0075 },
+      ],
+    });
+    const tiles = buildTiles(data, "energy", COLOR);
+    assert.deepEqual(tiles.map((t) => t.key), ["dishwasher"]);
+    const plugs = smallMeasuredPlugs(data, "energy");
+    assert.notEqual(plugs, null);
+    assert.ok(Math.abs(plugs!.primary - 0.05) < 1e-9);
   });
 
   it("omits an under-floor estimate and returns no tiles when nothing else is known", () => {

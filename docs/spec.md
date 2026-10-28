@@ -253,16 +253,17 @@ your home card (section 7.2) owns it completely.
   terracotta, washing machine plum, heat pump brick), fixed per key -
   muted, warm-leaning tones that sit with the dashboard's warm
   dark-brown glass aesthetic.
-- Within the known set, measured categories always render: each is
-  its own tile, except plugs under 0.1 percent of the period's
-  primary total, which merge into one "Small plugs" tile (neutral
-  warm gray) whose tooltip enumerates the merged plugs. The
-  under-2-percent collapse applies to estimated categories only
-  (today the heat pump): those collapse into one "Other" tile (darker
-  neutral) - 2 percent is the smallest share that still fits a label
-  and value on a laptop panel. "Other" appears only when its own
-  share reaches 1 percent (a smaller bucket would be an unreadable
-  sliver and is omitted from the treemap).
+- Within the known set, measured categories render as their own tile
+  only when their share of the period's primary total reaches 0.5
+  percent; below that floor they produce no tile, and the Rest of
+  your home card (section 7.2) lists their aggregate as its measured
+  "Other appliances" row. The under-2-percent collapse applies to
+  estimated categories only (today the heat pump): those collapse
+  into one "Other" tile (darker neutral) - 2 percent is the smallest
+  share that still fits a label and value on a laptop panel.
+  "Other" appears only when its own share reaches 1 percent (a
+  smaller bucket would be an unreadable sliver and is omitted from
+  the treemap).
 - When the known set is zero or near zero - no metered appliance and
   no estimate - the treemap shows an empty state instead, pointing
   at the Rest of your home card.
@@ -455,8 +456,17 @@ stays available). The strip is the predecessor of the U6 widget 1.
 - Header line: the remainder for the period and its share of the
   period total - the same figures as the treemap's gray remainder
   tile, from the same payload numbers. The panel header's
-  description carries the one-line basis note: household
+  description carries the one-line basis note: the unmeasured
+  background, plus small measured appliances; household
   consumption, grid export excluded.
+- A measured "Other appliances" row, when any measured category
+  falls under the treemap's tile floor (section 5.2): the aggregate
+  of those categories, its kWh (or cost in cost mode) and its share
+  of the period at one decimal, tagged with the "Meas." badge in its
+  own muted warm gray to stand apart from the modeled rows. It renders
+  last, after the modeled bars, as the card's smallest item; its
+  info tooltip enumerates the merged categories with their kWh for
+  the period. Omitted when nothing falls under the floor.
 - One horizontal bar per modeled device: the estimate times the
   window's days, with its percentage of the remainder (shares
   against the remainder, not the period total) and its basis note.
@@ -470,7 +480,8 @@ stays available). The strip is the predecessor of the U6 widget 1.
   plus the unexplained share equal 100 percent of the remainder
   (or, when the model over-explains a low-usage period, 100 percent
   of the modeled sum with no unexplained bar).
-- One-line footnote: every category is measured except the heat
+- One-line footnote: other appliances is measured usage below the
+  treemap's tile floor; every category is measured except the heat
   pump (Est.); the base load is data-derived, the other bars are
   home-model averages.
 - Cost mode costs every modeled figure flat at the window's average

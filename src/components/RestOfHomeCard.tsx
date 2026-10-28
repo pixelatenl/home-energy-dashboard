@@ -1,9 +1,12 @@
 import { Lamp } from "lucide-react";
+import InfoTooltip from "@/components/InfoTooltip";
 import SectionHeader from "@/components/SectionHeader";
 import SkeletonReveal from "@/components/SkeletonReveal";
 import { Skeleton } from "@/components/ui/skeleton";
+import { usageCategoryColor } from "@/lib/applianceColors";
 import type { UsageBreakdown } from "@/lib/api";
 import type { Mode } from "@/lib/mode";
+import { formatMetric, smallMeasuredPlugs } from "@/lib/usageTreemap";
 
 // The model bars' neutral: they are estimates, not categories.
 const MODEL_BAR_COLOR = "#94a3b8";
@@ -28,13 +31,18 @@ interface RestOfHomeCardProps {
 
 // The Usage tab's right column, card 2 (docs/spec.md section 7): the
 // remainder - the period's usage no category accounts for - split by
-// the home model's per-day device estimates. Bar shares are against
-// the remainder, not the period total; the header's share matches the
-// treemap's remainder tile. Every modeled number carries the "model"
-// label with its basis note; the final bar is the unexplained part.
-// Cost mode costs every modeled figure flat at the window's average
-// price; without price rows the cost figures read unavailable, never
-// zero.
+// the home model's per-day device estimates, plus the measured
+// plugs too small for the treemap aggregated into one clearly
+// tagged measured row that renders last, as the smallest item.
+// Bar shares are against the remainder, not the period total (the
+// Other appliances row's share is of the period); the header's
+// share matches the treemap's remainder tile. Every modeled number
+// carries the "model" label with its basis note, the Other
+// appliances row carries the "Meas." badge and a tooltip that
+// enumerates its merged categories; the final modeled bar is the
+// unexplained part. Cost mode costs every modeled figure flat at
+// the window's average price; without price rows the cost figures
+// read unavailable, never zero.
 function RestOfHomeCard({ data, status, mode }: RestOfHomeCardProps) {
   // The whole section's loading reveal: the skeleton mirrors the
   // section header's two lines, the remainder stat line and the
@@ -73,7 +81,7 @@ function RestOfHomeCard({ data, status, mode }: RestOfHomeCardProps) {
         <SectionHeader
           icon={Lamp}
           title="Rest of your home"
-          description="Per-day model averages of the unmeasured background; household consumption, grid export excluded"
+          description="The unmeasured background, plus small measured appliances; household consumption, grid export excluded"
         />
         <div className="mt-2 flex flex-1 flex-col">
           {data === null ? (
@@ -125,6 +133,23 @@ function RestOfHomeBody({ data, mode }: { data: UsageBreakdown; mode: Mode }) {
       : remainderCost === null || modeledCost === null
         ? "\u2014"
         : formatEur(round2(remainderCost - modeledCost));
+
+  // The measured plugs under the treemap's tile floor, aggregated:
+  // the same payload and the same floor buildTiles applies, so the
+  // card picks up exactly what the treemap leaves out. The row is
+  // omitted when nothing falls under the floor. It renders last, as
+  // the card's smallest item; its tooltip enumerates the merged
+  // categories with their kWh for the period.
+  const smallPlugs = smallMeasuredPlugs(data, mode);
+  // One decimal: the row's share of the period is small by
+  // definition, an integer percent would almost always read 0.
+  const smallPlugsPct = smallPlugs === null ? 0 : smallPlugs.share * 100;
+  const smallPlugsTooltip =
+    smallPlugs === null
+      ? ""
+      : smallPlugs.members
+          .map((member) => `${member.label} ${member.kwh.toFixed(3)} kWh`)
+          .join(", ");
 
   return (
     <>
@@ -203,9 +228,43 @@ function RestOfHomeBody({ data, mode }: { data: UsageBreakdown; mode: Mode }) {
             </div>
           </div>
         )}
+        {smallPlugs !== null && (
+          <div>
+            <div className="flex items-baseline justify-between gap-2 text-xs">
+              <span className="flex items-center gap-1.5">
+                <span>Other appliances</span>
+                <span
+                  className="shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium leading-none text-white"
+                  style={{ backgroundColor: usageCategoryColor("small_plugs") }}
+                  title="Measured appliance usage below the treemap's tile floor"
+                >
+                  Meas.
+                </span>
+                <InfoTooltip text={smallPlugsTooltip} />
+              </span>
+              <span className="shrink-0 tabular-nums">
+                {formatMetric(smallPlugs.primary, mode)} &middot;{" "}
+                {smallPlugsPct.toFixed(1)}% of the period
+              </span>
+            </div>
+            <div className="mt-1.5 h-2 rounded-full bg-muted">
+              <div
+                className="h-2 rounded-full transition-[width] duration-300 ease-out"
+                style={{
+                  width: `${Math.min(100, smallPlugsPct)}%`,
+                  backgroundColor: usageCategoryColor("small_plugs"),
+                }}
+              />
+            </div>
+            <p className="mt-1 text-[10px] leading-tight text-subtle-foreground">
+              Measured appliances too small for the treemap
+            </p>
+          </div>
+        )}
       </div>
       <p className="mt-4 border-t pt-3 text-xs text-muted-foreground">
-        Every category is measured except the heat pump (Est.); the base load is
+        Other appliances is measured usage below the treemap's tile floor; every
+        category is measured except the heat pump (Est.); the base load is
         data-derived, the other bars are home-model averages.
       </p>
     </>

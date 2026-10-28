@@ -37,8 +37,9 @@ interface UsageTreemapProps {
 // household usage. Tile area encodes the mode's primary metric, each
 // tile also shows the secondary metric and its share of the total,
 // the heat pump carries its "Est." badge, and under-threshold
-// estimates collapse into "Other" while every measured category
-// always renders (sub-floor plugs as the "Small plugs" tile). Tiles are keyed by category and
+// estimates collapse into "Other" while measured categories above
+// the tile floor always render; the sub-floor plugs move to the
+// Rest of your home card's Other appliances row. Tiles are keyed by category and
 // transition their positions, so switching period or mode animates
 // instead of remounting (no flicker). The tooltip follows
 // docs/spec.md section 5.3.
@@ -261,15 +262,6 @@ function UsageTreemap({
                       )}
                     </div>
                   )}
-                  {hovered.members?.map((member) => (
-                    <div
-                      key={member.label}
-                      className="text-xs text-muted-foreground tabular-nums"
-                    >
-                      {member.label}{" "}
-                      {formatMetric(member.primary, mode)}
-                    </div>
-                  ))}
                   <div className="text-xs text-muted-foreground tabular-nums">
                     Previous {period.kind}:{" "}
                     {formatMetric(hovered.previousPrimary, mode)}
