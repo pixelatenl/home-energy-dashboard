@@ -462,7 +462,7 @@ stays available). The strip is the predecessor of the U6 widget 1.
 - A measured "Other appliances" row, when any measured category
   falls under the treemap's tile floor (section 5.2): the aggregate
   of those categories, its kWh (or cost in cost mode) and its share
-  of the period at one decimal, tagged with the "Meas." badge in its
+  of the period at one decimal, tagged with the "measured" badge in its
   own muted warm gray to stand apart from the modeled rows. It renders
   last, after the modeled bars, as the card's smallest item; its
   info tooltip enumerates the merged categories with their kWh for

@@ -38,7 +38,7 @@ interface RestOfHomeCardProps {
 // Other appliances row's share is of the period); the header's
 // share matches the treemap's remainder tile. Every modeled number
 // carries the "model" label with its basis note, the Other
-// appliances row carries the "Meas." badge and a tooltip that
+// appliances row carries the "measured" badge and a tooltip that
 // enumerates its merged categories; the final modeled bar is the
 // unexplained part. Cost mode costs every modeled figure flat at
 // the window's average price; without price rows the cost figures
@@ -238,7 +238,7 @@ function RestOfHomeBody({ data, mode }: { data: UsageBreakdown; mode: Mode }) {
                   style={{ backgroundColor: usageCategoryColor("small_plugs") }}
                   title="Measured appliance usage below the treemap's tile floor"
                 >
-                  Meas.
+                  measured
                 </span>
                 <InfoTooltip text={smallPlugsTooltip} />
               </span>
