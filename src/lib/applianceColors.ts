@@ -19,6 +19,10 @@ const USAGE_CATEGORY_COLORS: Record<string, string> = {
   heat_pump: "#8f4a4a",
   remainder: "#8a7f70",
   other: "#6b6157",
+  // The merged bucket for measured plugs under the Small plugs
+  // readability floor: a neutral warm gray, muted next to the
+  // per-category hues.
+  small_plugs: "#75695e",
 }
 
 export function usageCategoryColor(key: string): string {

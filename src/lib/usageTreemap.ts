@@ -6,8 +6,10 @@
 import type { UsageBreakdown, UsageBreakdownCategory } from "@/lib/api"
 import type { Mode } from "@/lib/mode"
 
-// Categories under this share of the period's primary metric collapse
-// into one "Other" tile, so unreadable sliver tiles never appear. The
+// Estimated categories under this share of the period's primary
+// metric collapse into one "Other" tile, so unreadable sliver tiles
+// never appear. Measured categories are exempt: they always render
+// (the Small plugs floor below is their only readability rule). The
 // 2 percent floor aligns with the smallest tile that still fits a
 // label and value on a laptop panel (docs/spec.md section 5.2).
 export const OTHER_SHARE_THRESHOLD = 0.02
@@ -17,6 +19,13 @@ export const OTHER_SHARE_THRESHOLD = 0.02
 // from the treemap (the totals caption still carries the period
 // total).
 export const OTHER_MIN_SHARE = 0.01
+
+// The readability floor for measured categories: they always render
+// (the collapse threshold above applies to estimates only), but a
+// measured category under this share of the period's primary metric
+// is an unreadable sliver, so those merge into one "Small plugs"
+// tile whose tooltip enumerates the merged plugs.
+export const SMALL_PLUGS_SHARE_FLOOR = 0.001
 
 // The primary metric in each mode: kWh in energy mode, cost in cost
 // mode. The secondary metric is always the other one. Tiles, captions
@@ -42,8 +51,16 @@ export function formatMetric(value: number, mode: Mode): string {
     : `€${value.toFixed(2)}`
 }
 
-// One rendered tile: a category (or the collapsed "Other" bucket)
-// with the values the tile, caption and tooltip show.
+// One merged member of the "small_plugs" tile: the plug's own label
+// and values, so the tooltip can enumerate what the tile contains.
+export interface TileMember {
+  label: string
+  primary: number
+  secondary: number | null
+}
+
+// One rendered tile: a category (or a collapsed bucket) with the
+// values the tile, caption and tooltip show.
 export interface TreemapTile {
   key: string
   label: string
@@ -53,16 +70,21 @@ export interface TreemapTile {
   secondary: number | null
   share: number
   previousPrimary: number
+  // Only the "small_plugs" merge sets this; regular tiles leave it
+  // undefined.
+  members?: TileMember[]
 }
 
 // The tile model from one period's breakdown in one mode: the known
 // categories - everything measured plus the heat pump estimate - in
-// the API's order, with the under-threshold ones collapsed into
-// "Other" at the end. The remainder is NOT a tile (docs/spec.md
-// section 5.2: the Rest of your home card owns it); tile shares are
-// the true share of the period total. Returns an empty array when the
-// period has no primary total or no known category clears the
-// collapse floor (the component's empty state).
+// the API's order. Measured categories always render: each as its
+// own tile, or, under the Small plugs floor, as one merged tile.
+// The under-2-percent collapse applies to estimated categories only,
+// which today is the heat pump. The remainder is NOT a tile
+// (docs/spec.md section 5.2: the Rest of your home card owns it);
+// tile shares are the true share of the period total. Returns an
+// empty array when the period has no primary total (the component's
+// empty state).
 export function buildTiles(
   data: UsageBreakdown,
   mode: Mode,
@@ -73,8 +95,13 @@ export function buildTiles(
   if (totalPrimary <= 0) {
     return []
   }
+  const previousPrimaryOf = (category: UsageBreakdownCategory): number =>
+    mode === "energy"
+      ? category.previous_kwh
+      : (category.previous_cost_eur ?? 0)
   const kept: TreemapTile[] = []
-  const small: UsageBreakdownCategory[] = []
+  const smallPlugs: UsageBreakdownCategory[] = []
+  const smallEstimates: UsageBreakdownCategory[] = []
   for (const category of data.categories) {
     if (category.class === "remainder") {
       continue
@@ -83,38 +110,66 @@ export function buildTiles(
     if (primary <= 0) {
       continue
     }
-    if (primary / totalPrimary < OTHER_SHARE_THRESHOLD) {
-      small.push(category)
-    } else {
-      const previousPrimary =
-        mode === "energy"
-          ? category.previous_kwh
-          : (category.previous_cost_eur ?? 0)
-      kept.push({
-        key: category.key,
-        label: category.label,
-        color: colorOf(category.key),
-        isEstimate: category.class === "Est.",
-        primary,
-        secondary: secondaryOf(category, mode),
-        share: primary / totalPrimary,
-        previousPrimary,
-      })
+    const isEstimate = category.class === "Est."
+    const share = primary / totalPrimary
+    if (isEstimate && share < OTHER_SHARE_THRESHOLD) {
+      // Only estimates collapse: an under-threshold heat pump lands
+      // in "Other" exactly as before.
+      smallEstimates.push(category)
+      continue
     }
+    if (!isEstimate && share < SMALL_PLUGS_SHARE_FLOOR) {
+      smallPlugs.push(category)
+      continue
+    }
+    kept.push({
+      key: category.key,
+      label: category.label,
+      color: colorOf(category.key),
+      isEstimate,
+      primary,
+      secondary: secondaryOf(category, mode),
+      share,
+      previousPrimary: previousPrimaryOf(category),
+    })
   }
-  if (small.length > 0) {
-    const primary = small.reduce((sum, c) => sum + primaryOf(c, mode), 0)
-    if (primary / totalPrimary < OTHER_MIN_SHARE) {
-      return kept
-    }
-    const secondaryValues = small.map((c) => secondaryOf(c, mode))
+  if (smallPlugs.length > 0) {
+    const primary = smallPlugs.reduce((sum, c) => sum + primaryOf(c, mode), 0)
+    const secondaryValues = smallPlugs.map((c) => secondaryOf(c, mode))
     const secondary = secondaryValues.some((v) => v === null)
       ? null
       : (secondaryValues as number[]).reduce((sum, v) => sum + v, 0)
-    const previousPrimary = small.reduce(
-      (sum, c) =>
-        sum +
-        (mode === "energy" ? c.previous_kwh : (c.previous_cost_eur ?? 0)),
+    const previousPrimary = smallPlugs.reduce(
+      (sum, c) => sum + previousPrimaryOf(c),
+      0
+    )
+    kept.push({
+      key: "small_plugs",
+      label: "Small plugs",
+      color: colorOf("small_plugs"),
+      isEstimate: false,
+      primary,
+      secondary,
+      share: primary / totalPrimary,
+      previousPrimary,
+      members: smallPlugs.map((c) => ({
+        label: c.label,
+        primary: primaryOf(c, mode),
+        secondary: secondaryOf(c, mode),
+      })),
+    })
+  }
+  if (smallEstimates.length > 0) {
+    const primary = smallEstimates.reduce((sum, c) => sum + primaryOf(c, mode), 0)
+    if (primary / totalPrimary < OTHER_MIN_SHARE) {
+      return kept
+    }
+    const secondaryValues = smallEstimates.map((c) => secondaryOf(c, mode))
+    const secondary = secondaryValues.some((v) => v === null)
+      ? null
+      : (secondaryValues as number[]).reduce((sum, v) => sum + v, 0)
+    const previousPrimary = smallEstimates.reduce(
+      (sum, c) => sum + previousPrimaryOf(c),
       0
     )
     kept.push({

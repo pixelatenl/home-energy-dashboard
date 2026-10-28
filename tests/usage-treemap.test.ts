@@ -179,12 +179,12 @@ describe("buildTiles: the tile model", () => {
     assert.equal(tiles.some((t) => t.key === "remainder"), false);
   });
 
-  it(`collapses under-threshold categories into Other (${OTHER_SHARE_THRESHOLD} share)`, () => {
+  it(`collapses under-threshold estimates into Other (${OTHER_SHARE_THRESHOLD} share)`, () => {
     const data = breakdownFixture({
       categories: [
         { key: "remainder", label: "Remainder", kwh: 97, cost_eur: 48.5, class: "remainder" },
-        { key: "dishwasher", label: "Dishwasher", kwh: 1.5, cost_eur: 0.75 },
-        { key: "dryer", label: "Dryer", kwh: 1.5, cost_eur: 0.75 },
+        { key: "heat_pump", label: "Heat pump", kwh: 1.5, cost_eur: 0.75, class: "Est." },
+        { key: "heat_pump2", label: "Heat pump 2", kwh: 1.5, cost_eur: 0.75, class: "Est." },
       ],
     });
     const tiles = buildTiles(data, "energy", COLOR);
@@ -193,15 +193,89 @@ describe("buildTiles: the tile model", () => {
     assert.equal(other!.primary, 3);
     // Other's share is of the period total: 3 of 100.
     assert.equal(other!.share, 0.03);
-    assert.equal(tiles.some((t) => t.key === "dishwasher"), false);
-    assert.equal(tiles.some((t) => t.key === "dryer"), false);
+    assert.equal(tiles.some((t) => t.key === "heat_pump"), false);
+    assert.equal(tiles.some((t) => t.key === "heat_pump2"), false);
   });
 
-  it("returns no tiles when the known set is too small to read", () => {
+  it("always renders measured categories regardless of share", () => {
+    const data = breakdownFixture({
+      categories: [
+        { key: "remainder", label: "Remainder", kwh: 97, cost_eur: 48.5, class: "remainder" },
+        { key: "dishwasher", label: "Dishwasher", kwh: 1.5, cost_eur: 0.75 },
+        { key: "dryer", label: "Dryer", kwh: 1.5, cost_eur: 0.75 },
+      ],
+    });
+    const tiles = buildTiles(data, "energy", COLOR);
+    assert.deepEqual(
+      tiles.map((t) => t.key).sort(),
+      ["dishwasher", "dryer"]
+    );
+    assert.equal(tiles.some((t) => t.key === "other"), false);
+    assert.equal(tiles.some((t) => t.key === "small_plugs"), false);
+  });
+
+  it("merges measured plugs under the Small plugs floor into one tile with members", () => {
+    const data = breakdownFixture({
+      categories: [
+        { key: "remainder", label: "Remainder", kwh: 96.91, cost_eur: 48.455, class: "remainder" },
+        { key: "dishwasher", label: "Dishwasher", kwh: 3, cost_eur: 1.5 },
+        { key: "game_pc", label: "Game PC", kwh: 0.05, cost_eur: 0.025 },
+        { key: "tv_audio", label: "TV and audio", kwh: 0.04, cost_eur: 0.02 },
+      ],
+    });
+    const tiles = buildTiles(data, "energy", COLOR);
+    assert.deepEqual(
+      tiles.map((t) => t.key).sort(),
+      ["dishwasher", "small_plugs"]
+    );
+    const smallPlugs = tiles.find((t) => t.key === "small_plugs")!;
+    assert.equal(smallPlugs.label, "Small plugs");
+    assert.equal(smallPlugs.color, COLOR("small_plugs"));
+    assert.equal(smallPlugs.primary, 0.09);
+    assert.equal(smallPlugs.members?.length, 2);
+    assert.deepEqual(
+      smallPlugs.members!.map((m) => m.label),
+      ["Game PC", "TV and audio"]
+    );
+    assert.equal(smallPlugs.members![0].primary, 0.05);
+    assert.equal(smallPlugs.members![0].secondary, 0.025);
+  });
+
+  it("renders the measured day set: own tiles, Small plugs below the floor, in both modes", () => {
+    const data = breakdownFixture({
+      totalKwh: 14.6,
+      totalCost: 7.3,
+      categories: [
+        { key: "remainder", label: "Remainder", kwh: 13.38, cost_eur: 6.69, class: "remainder" },
+        { key: "dishwasher", label: "Dishwasher", kwh: 1.1, cost_eur: 0.55 },
+        { key: "office", label: "Office", kwh: 0.1, cost_eur: 0.05 },
+        { key: "game_pc", label: "Game PC", kwh: 0.006, cost_eur: 0.003 },
+        { key: "tv_audio", label: "TV and audio", kwh: 0.014, cost_eur: 0.007 },
+      ],
+    });
+    for (const mode of ["energy", "cost"] as const) {
+      const tiles = buildTiles(data, mode, COLOR);
+      const keys = tiles.map((t) => t.key);
+      assert.equal(keys.includes("dishwasher"), true, mode);
+      assert.equal(keys.includes("office"), true, mode);
+      assert.equal(keys.includes("game_pc"), false, mode);
+      assert.equal(keys.includes("tv_audio"), false, mode);
+      assert.equal(keys.includes("other"), false, mode);
+      const smallPlugs = tiles.find((t) => t.key === "small_plugs")!;
+      assert.notEqual(smallPlugs, undefined, mode);
+      assert.deepEqual(
+        smallPlugs.members!.map((m) => m.label),
+        ["Game PC", "TV and audio"],
+        mode
+      );
+    }
+  });
+
+  it("omits an under-floor estimate and returns no tiles when nothing else is known", () => {
     const data = breakdownFixture({
       categories: [
         { key: "remainder", label: "Remainder", kwh: 99.8, cost_eur: 49.9, class: "remainder" },
-        { key: "dishwasher", label: "Dishwasher", kwh: 0.2, cost_eur: 0.1 },
+        { key: "heat_pump", label: "Heat pump", kwh: 0.2, cost_eur: 0.1, class: "Est." },
       ],
     });
     const tiles = buildTiles(data, "energy", COLOR);

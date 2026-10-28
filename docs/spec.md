@@ -253,14 +253,18 @@ your home card (section 7.2) owns it completely.
   terracotta, washing machine plum, heat pump brick), fixed per key -
   muted, warm-leaning tones that sit with the dashboard's warm
   dark-brown glass aesthetic.
-- Within the known set, categories under 2 percent of the period's
-  primary total collapse into one "Other" tile (darker neutral) - 2
-  percent is the smallest share that still fits a label and value on
-  a laptop panel. "Other" appears only when its own share reaches 1
-  percent (a smaller bucket would be an unreadable sliver and is
-  omitted from the treemap).
-- When the known set is zero or near zero - no category clears the
-  collapse floor - the treemap shows an empty state instead, pointing
+- Within the known set, measured categories always render: each is
+  its own tile, except plugs under 0.1 percent of the period's
+  primary total, which merge into one "Small plugs" tile (neutral
+  warm gray) whose tooltip enumerates the merged plugs. The
+  under-2-percent collapse applies to estimated categories only
+  (today the heat pump): those collapse into one "Other" tile (darker
+  neutral) - 2 percent is the smallest share that still fits a label
+  and value on a laptop panel. "Other" appears only when its own
+  share reaches 1 percent (a smaller bucket would be an unreadable
+  sliver and is omitted from the treemap).
+- When the known set is zero or near zero - no metered appliance and
+  no estimate - the treemap shows an empty state instead, pointing
   at the Rest of your home card.
 
 ### 5.3 Tooltip
