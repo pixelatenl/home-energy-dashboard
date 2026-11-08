@@ -676,7 +676,22 @@ export function validateSectionNarrative(
   const reasons = [...validateSectionFigures(text, section.facts).problems];
   for (const guard of [
     guardTomorrowPrice(text, { tomorrowPublished }),
-    guardBeyondTomorrowPrice(text),
+    guardBeyondTomorrowPrice(text, {
+      // The published TOMORROW section legitimately names its own served
+      // weekday with its own prices (owner decision of 8 November 2026);
+      // every other section keeps the absolute weekday ban. The weekday
+      // comes from the validation facts (live at generation time, the
+      // stored snapshot at serve time), and the exemption only applies
+      // while tomorrow's prices are published: an unpublished price
+      // attached to the weekday name is a fabrication and stays rejected.
+      ownWeekday:
+        section.key === "tomorrow" &&
+        tomorrowPublished &&
+        typeof section.facts?.weekday === "string" &&
+        section.facts.weekday !== ""
+          ? section.facts.weekday
+          : null,
+    }),
     guardArithmetic(text),
     guardInternalVocabulary(text),
     guardNonFiniteText(text),

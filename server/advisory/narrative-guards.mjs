@@ -47,12 +47,29 @@ export function guardTomorrowPrice(text, { tomorrowPublished = false } = {}) {
 // Guard 2: the beyond-tomorrow price prohibition.
 // No price may be stated for any day beyond tomorrow: a currency figure in
 // the same sentence as a weekday name, an explicit calendar date, or "next
-// week" is a fabrication - those days carry solar facts only.
-export function guardBeyondTomorrowPrice(text) {
+// week" is a fabrication - those days carry solar facts only. The one
+// exemption (the owner decision of 8 November 2026): the section's own
+// served weekday, passed in as `ownWeekday` - the published TOMORROW
+// section's facts.weekday - is not beyond tomorrow while tomorrow's prices
+// are published, so a price in the same sentence as that weekday name is
+// the section's own served price, not a fabrication (the figure-verbatim
+// check already guarantees the figure belongs to the section's fact set).
+// Every other weekday name, every calendar date and every "next week"
+// reference tied to a price stays banned absolutely; `ownWeekday` never
+// exempts the ISO-date or "next week" branches.
+export function guardBeyondTomorrowPrice(text, { ownWeekday = null } = {}) {
   const problems = [];
+  const own =
+    typeof ownWeekday === "string" && ownWeekday !== ""
+      ? ownWeekday.toLowerCase()
+      : null;
   for (const sentence of splitSentences(text)) {
     if (!CURRENCY.test(sentence)) continue;
     for (const match of sentence.matchAll(WEEKDAY_RE)) {
+      // The section's own served weekday (compared case-insensitively, so a
+      // casing slip never re-triggers the false positive); any other
+      // weekday in the same sentence still rejects.
+      if (own !== null && match[0].toLowerCase() === own) continue;
       problems.push(
         `states a price for ${match[0]}, which is beyond tomorrow`
       );

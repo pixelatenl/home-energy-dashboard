@@ -922,6 +922,190 @@ test("a tomorrow price in prose rejects while tomorrow is unpublished", () => {
   assert.ok(verdict.reasons.some((r) => /not published/.test(r)));
 });
 
+// ---------------------------------------------------------------------------
+// The beyond-tomorrow guard learns the section context (the owner decision
+// of 8 November 2026): the published TOMORROW section's own served weekday
+// may carry its own prices; every other section keeps the absolute ban.
+// ---------------------------------------------------------------------------
+
+// A published-tomorrow fixture: tomorrow's weekday served as a fact, its
+// prices published with the window and the averages pre-formatted.
+function publishedTomorrowFacts() {
+  return baseFacts({
+    tomorrow: {
+      pricesPublished: true,
+      prices: [0.31, 0.3, 0.29],
+      averageEur: 0.29,
+      window: "13:00-16:00",
+      windowAverageEur: 0.24,
+      weekday: "Wednesday",
+      solarKwh: 12.5,
+      solarScore: 45,
+      lowSolar: false,
+      compareSolarKwh: 8.18,
+    },
+  });
+}
+
+// The exact shape of the live false positive of 24 October, with every
+// figure taken from the built section's own facts.
+function publishedTomorrowNarrative(tomorrow) {
+  return (
+    `On ${tomorrow.facts.weekday} the cheapest window runs from ` +
+    `${tomorrow.facts.cheap_window_start} to ${tomorrow.facts.cheap_window_end} ` +
+    `at an average of ${tomorrow.facts.cheap_window_average}, and the day ` +
+    `averages ${tomorrow.facts.average_price}.`
+  );
+}
+
+test("a published TOMORROW narrative naming its own served weekday with its own prices validates", () => {
+  const facts = publishedTomorrowFacts();
+  const tomorrow = section("tomorrow", facts);
+  assert.equal(tomorrow.facts.weekday, "Wednesday");
+  assert.equal(tomorrow.facts.prices_published, true);
+  const narrative = publishedTomorrowNarrative(tomorrow);
+  // The exact live false positive, now accepted: ok with zero reasons.
+  const verdict = validateSectionNarrative(narrative, tomorrow, {
+    tomorrowPublished: true,
+  });
+  assert.equal(verdict.ok, true, verdict.reasons.join(" | "));
+  assert.deepEqual(verdict.reasons, []);
+});
+
+test("the same TOMORROW narrative rejects while tomorrow's prices are unpublished", () => {
+  const facts = publishedTomorrowFacts();
+  const tomorrow = section("tomorrow", facts);
+  const narrative = publishedTomorrowNarrative(tomorrow);
+  const verdict = validateSectionNarrative(narrative, tomorrow, {
+    tomorrowPublished: false,
+  });
+  assert.equal(verdict.ok, false);
+  assert.ok(
+    verdict.reasons.includes(
+      "states a price for Wednesday, which is beyond tomorrow"
+    ),
+    JSON.stringify(verdict.reasons)
+  );
+});
+
+test("a weekday section's own weekday never exempts it: Saturday with a price rejects", () => {
+  const facts = baseFacts({
+    comingDays: [
+      { weekday: "Saturday", date: "2026-10-24", solarKwh: 6.0, solarScore: 22, condition: "cloudy" },
+      { weekday: "Sunday", date: "2026-10-25", solarKwh: 10.87, solarScore: 26, condition: "sunny" },
+    ],
+  });
+  const sat = section("sat", facts);
+  assert.equal(sat.facts.weekday, "Saturday");
+  const verdict = validateSectionNarrative(
+    "Saturday looks cheap at €0.13 per kWh.",
+    sat
+  );
+  assert.equal(verdict.ok, false);
+  assert.ok(
+    verdict.reasons.includes(
+      "states a price for Saturday, which is beyond tomorrow"
+    ),
+    JSON.stringify(verdict.reasons)
+  );
+});
+
+test("a TODAY narrative naming any weekday with a price stays rejected", () => {
+  const today = section("today");
+  assert.equal(today.facts.weekday, undefined, "TODAY serves no weekday fact");
+  const verdict = validateSectionNarrative(
+    "On Friday expect €0.20 per kWh.",
+    today
+  );
+  assert.equal(verdict.ok, false);
+  assert.ok(
+    verdict.reasons.includes(
+      "states a price for Friday, which is beyond tomorrow"
+    ),
+    JSON.stringify(verdict.reasons)
+  );
+});
+
+test("generateMonologue serves a published-tomorrow narrative naming its served weekday on attempt 1 with zero rejections", async () => {
+  const facts = publishedTomorrowFacts();
+  const tomorrow = section("tomorrow", facts);
+  const narrative = publishedTomorrowNarrative(tomorrow);
+  let tomorrowCalls = 0;
+  const stub = async (prompt) => {
+    if (prompt.includes("Write the TOMORROW section")) tomorrowCalls += 1;
+    return { narratives: { tomorrow: narrative } };
+  };
+  const { payload, sections } = await generateMonologue(
+    buildSections(facts, NOW),
+    facts,
+    NOW,
+    stub
+  );
+  const entry = sections.find((s) => s.key === "tomorrow");
+  // The pre-fix behavior was one named rejection then a retry workaround;
+  // now the narrative validates on attempt 1.
+  assert.equal(tomorrowCalls, 1, "served on attempt 1, no retry");
+  assert.equal(entry.ok, true, JSON.stringify(entry.reasons));
+  assert.deepEqual(entry.rejected_attempts, []);
+  assert.equal(entry.retried, false);
+  const tomorrowPayload = payload.find((s) => s.label === "TOMORROW");
+  assert.ok(
+    tomorrowPayload.narrative.startsWith(narrative),
+    "the narrative is served verbatim"
+  );
+});
+
+test("serve-time revalidation accepts the stored published-tomorrow narrative against its snapshot; a snapshot without the weekday keeps the strict guard", async () => {
+  const facts = publishedTomorrowFacts();
+  const tomorrow = section("tomorrow", facts);
+  const narrative = publishedTomorrowNarrative(tomorrow);
+  const stub = async () => ({ narratives: { tomorrow: narrative } });
+  const generated = await generateMonologue(
+    buildSections(facts, NOW),
+    facts,
+    NOW,
+    stub
+  );
+  const stored = generated.payload.find((s) => s.label === "TOMORROW");
+  assert.equal(typeof stored.narrative, "string");
+  // The serve path (serveAdvisoryMonologue): the stored narrative is
+  // revalidated with its facts replaced by the stored snapshot.
+  const serveStub = async () => ({ narratives: { tomorrow: stored.narrative } });
+  const served = await generateMonologue(
+    buildSections(facts, NOW),
+    facts,
+    NOW,
+    serveStub,
+    { validationFacts: { tomorrow: stored.facts } }
+  );
+  const servedEntry = served.sections.find((s) => s.key === "tomorrow");
+  assert.equal(servedEntry.ok, true, JSON.stringify(servedEntry.reasons));
+  assert.deepEqual(servedEntry.rejected_attempts, []);
+  const servedPayload = served.payload.find((s) => s.label === "TOMORROW");
+  assert.ok(servedPayload.narrative.includes(stored.narrative));
+  // A snapshot without the weekday fact keeps the strict guard: the same
+  // narrative naming a weekday is rejected there, never silently weakened.
+  const snapshotWithoutWeekday = { ...stored.facts };
+  delete snapshotWithoutWeekday.weekday;
+  const strict = await generateMonologue(
+    buildSections(facts, NOW),
+    facts,
+    NOW,
+    serveStub,
+    { validationFacts: { tomorrow: snapshotWithoutWeekday } }
+  );
+  const strictEntry = strict.sections.find((s) => s.key === "tomorrow");
+  assert.equal(strictEntry.ok, false);
+  assert.ok(
+    strictEntry.reasons.includes(
+      "states a price for Wednesday, which is beyond tomorrow"
+    ),
+    JSON.stringify(strictEntry.reasons)
+  );
+  const strictPayload = strict.payload.find((s) => s.label === "TOMORROW");
+  assert.equal(strictPayload.narrative, null, "the strict guard serves the fallback");
+});
+
 test("the week-best framing rule accepts a best-framed SUN narrative and rejects a poor one", () => {
   const sun = section("sun"); // baseFacts marks Sunday the week's best
   assert.equal(sun.facts.week_best, true);

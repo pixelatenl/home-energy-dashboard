@@ -72,6 +72,58 @@ test("guardBeyondTomorrowPrice: rejects weekday and dated prices beyond tomorrow
   );
 });
 
+test("guardBeyondTomorrowPrice: the section's own served weekday is exempt from the weekday ban", () => {
+  // The live false positive of 24 October: the published TOMORROW section
+  // legitimately names its own served weekday with its own prices.
+  const live =
+    "On Sunday the cheapest window runs from 10:00 to 13:00 at an average of €0.13.";
+  assert.deepEqual(guardBeyondTomorrowPrice(live, { ownWeekday: "Sunday" }), {
+    ok: true,
+    problems: [],
+  });
+  // The comparison is case-insensitive, so a casing slip never re-triggers
+  // the false positive.
+  assert.equal(guardBeyondTomorrowPrice(live, { ownWeekday: "sunday" }).ok, true);
+});
+
+test("guardBeyondTomorrowPrice: without the section context the same sentence rejects with the pinned reason", () => {
+  const live =
+    "On Sunday the cheapest window runs from 10:00 to 13:00 at an average of €0.13.";
+  const verdict = guardBeyondTomorrowPrice(live);
+  assert.equal(verdict.ok, false);
+  assert.deepEqual(verdict.problems, [
+    "states a price for Sunday, which is beyond tomorrow",
+  ]);
+  // An empty or non-string ownWeekday is no exemption at all.
+  assert.equal(guardBeyondTomorrowPrice(live, { ownWeekday: "" }).ok, false);
+  assert.equal(guardBeyondTomorrowPrice(live, { ownWeekday: null }).ok, false);
+});
+
+test("guardBeyondTomorrowPrice: a different weekday in the same sentence still rejects and is named, not the exempt one", () => {
+  const mixed =
+    "On Sunday the window is cheap at €0.13, but Monday looks even cheaper at €0.10.";
+  const verdict = guardBeyondTomorrowPrice(mixed, { ownWeekday: "Sunday" });
+  assert.equal(verdict.ok, false);
+  assert.deepEqual(verdict.problems, [
+    "states a price for Monday, which is beyond tomorrow",
+  ]);
+});
+
+test("guardBeyondTomorrowPrice: the exemption never lifts the ISO-date or next-week branches", () => {
+  const dated = guardBeyondTomorrowPrice("On 2026-10-25 expect €0.20.", {
+    ownWeekday: "Sunday",
+  });
+  assert.equal(dated.ok, false);
+  assert.deepEqual(dated.problems, ["states a price for a dated day beyond tomorrow"]);
+  const nextWeek = guardBeyondTomorrowPrice("Next week looks like €0.15.", {
+    ownWeekday: "Sunday",
+  });
+  assert.equal(nextWeek.ok, false);
+  assert.deepEqual(nextWeek.problems, [
+    "states a price for next week, which is beyond tomorrow",
+  ]);
+});
+
 test("guardArithmetic: rejects expressions but not window ranges", () => {
   assert.equal(guardArithmetic("The saving is 0.38 - 0.26 per kWh.").ok, false);
   assert.equal(guardArithmetic("That works out to 1.07 * 0.12 euros.").ok, false);
