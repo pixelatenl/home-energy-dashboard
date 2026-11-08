@@ -1,4 +1,4 @@
-# The Your Advisor card — specification
+# The Your Advisor card - specification
 
 This document keeps the advisory card's purpose statement, its content
 classes and its rendering and visual rules. The advisory pipeline
@@ -25,19 +25,19 @@ from the context signature, so a reshaping forecast no longer triggers
 a regeneration; only the candidates (and the bucketed live values)
 do. The card renders their rows from its own deterministic templates.
 
-1. **Action** — a specific recommendation with an exact EUR saving.
+1. **Action**: a specific recommendation with an exact EUR saving.
    Server-computed candidates only: an appliance with at least
    0.5 kWh measured today (saving = kWh x the exact price difference
    between what it paid and the cheapest remaining window), or a real
    battery discharge (saving = discharged kWh x the difference between
    the hours it covered and the window). Candidates under EUR 0.05
    stay in the list, marked `below_threshold`.
-2. **Guidance** — generic today advice from the price data: the
+2. **Guidance**: generic today advice from the price data: the
    cheapest remaining window (start, end, average), today's peak hour
    and price, and the spread per kWh. Omitted on flat-price days
    (spread under EUR 0.03). Never attached to an appliance load or an
    EUR total.
-3. **Day-ahead advisory (the TOMORROW row)** — always computed when
+3. **Day-ahead advisory (the TOMORROW row)**: always computed when
    the forecast carries tomorrow's expected solar; omitted only when
    no forecast data exists (honest absence). Fields: tomorrow's
    expected solar, today's solar for comparison, tomorrow's average
@@ -45,12 +45,12 @@ do. The card renders their rows from its own deterministic templates.
    prefer triggers (tomorrow's average at least 20% above the cheapest
    known day = defer, 20% below today = advance; tomorrow's solar at
    least 40% below the best following day = defer, 40% above today's
-   = advance) decide the recommendation and its prefer chip — they no
+   = advance) decide the recommendation and its prefer chip; they no
    longer decide whether the row exists. The `triggered` flag carries
    the decision. Without published prices the row renders on solar
    alone and labels the horizon honestly: "Grid prices for tomorrow
    are not yet published; a fuller comparison follows once they are
-   available." The informational row (no trigger) never commands —
+   available." The informational row (no trigger) never commands,
    and it carries no invitation either: the "If you can wait"
    phrasing belongs only to genuinely better days (a fired trigger).
    A neutral day reads as plain information: the Tomorrow
@@ -64,7 +64,7 @@ do. The card renders their rows from its own deterministic templates.
    integrity checker with every figure matching the computed values.
    A neutral day narrates: "Grid power should cost about the same as
    today, with about as much of your own solar."
-4. **Week outlook** — every forecast day after today with weekday,
+4. **Week outlook**: every forecast day after today with weekday,
    expected solar kWh, its solar score (0 to 100 versus the annual
    peak), a home-language condition, and a grid price
    field that is non-null only for tomorrow (unpublished prices are
@@ -82,16 +82,16 @@ do. The card renders their rows from its own deterministic templates.
    follows once tomorrow's prices are published" - the forecast fact
    stated as fact, the price half hedged with "usually" because wind
    can still soften the market price.
-5. **Context note** — one coherent sentence about the home, written
+5. **Context note**: one coherent sentence about the home, written
    and rendered only on quiet days: why no candidates exist, or a
    genuine insight the rows do not carry (the
    battery-charging-reduces-shifting-value class). It never restates
    the action's numbers, appliance names or windows. On action days
    the basis line does the explaining and the note is omitted
    entirely. Rendered as a muted footnote, never amber.
-6. **Warning** — amber, and only for something that needs attention
+6. **Warning**: amber, and only for something that needs attention
    and implies what to check or do. Explanatory text never goes here.
-7. **Price and battery facts** — server-computed grounding fields
+7. **Price and battery facts**: server-computed grounding fields
    served next to the advisory: today's lowest and peak price, each
    with its own timestamp, and the battery state (SOC percentage and
    charging/discharging/idle) verbatim from the context values. The
@@ -171,7 +171,7 @@ the honest statement:
 - Exactly one "today" per sentence.
 - Single imperative composition: when a real action exists, the
   action row is the card's only command. The generic guidance row
-  then carries no imperative — it does not render when the action
+  then carries no imperative: it does not render when the action
   already names its window, and renders as the plain timing fact
   ("Cheapest window today: ..." / "Cheapest remaining window: ...")
   otherwise. The advisory stays in planning voice.
@@ -184,10 +184,10 @@ the honest statement:
   "Run your large appliances between ...", composed deterministically
   by the frontend. The specific appliance and its measured load
   appear only in the server-computed basis line ("your dishwasher used
-  0.59 kWh so far today at €0.45/kWh average versus ...") — never
+  0.59 kWh so far today at €0.45/kWh average versus ..."), never
   a model duty, never a command implying a second run.
-- Future days (tomorrow and later) speak in planning voice — "If you
-  can wait: ..." — and never command. The imperative may transfer to
+- Future days (tomorrow and later) speak in planning voice: "If you
+  can wait: ..." and never command. The imperative may transfer to
   a later day only when today offers nothing actionable (no action
   candidate and the practicality gate failed).
 - Household register everywhere: address the user directly, name
@@ -206,7 +206,7 @@ the honest statement:
 - Every number on the card is copied verbatim from the facts layer;
   the model states no figures at all (contract section 4), so nothing
   is ever multiplied, derived or invented.
-- No grid price is ever stated for a day beyond tomorrow — those
+- No grid price is ever stated for a day beyond tomorrow: those
   prices are unpublished; beyond tomorrow only solar kWh and weather
   condition are spoken of.
 - While `tomorrow_prices_available` is false, tomorrow is not
@@ -215,7 +215,7 @@ the honest statement:
 - No-opportunity is honest: with zero candidates the insight states
   that no actionable opportunity exists and the saving is 0; absence
   never renders as a value of zero. The no-opportunity action is the
-  plain honest statement, "No action worth taking today" — never
+  plain honest statement, "No action worth taking today", never
   deferral phrasing such as "Wait for tomorrow": the tomorrow
   comparison belongs to the planning rows, which already carry it.
 - Horizon honesty: the horizon note renders exactly when the outlook
