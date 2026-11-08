@@ -184,7 +184,7 @@ function TodaySolarChart({
   elapsedHours: number;
   producedKwh: number | null;
   // The share of today's solar the home used on site, moved here
-  // from the home usage stat card; carried in the header's chip.
+  // from the electricity usage stat card; carried in the header's chip.
   selfConsumptionPct: number | null;
   // The live PV output in watts, the value's sub-line.
   pvW: number | null;

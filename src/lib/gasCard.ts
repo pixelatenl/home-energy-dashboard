@@ -17,21 +17,31 @@ export function formatM3(m3: number | null): string {
   return m3 === null ? PLACEHOLDER : `${m3.toFixed(2)} m\u00b3`
 }
 
-// Today's gas cost label: the euro figure per the project's euro-sign
-// convention, or the dash when the price is unknown
-// (hasUnknownPrice) or the cost figure cannot be trusted. Never 0.
-export function gasCostLabel(
+// The cost figure when the price is known, null when the window
+// carries hasUnknownPrice or the cost is not a finite number: the
+// shared unknown-price rule, never 0.
+export function knownGasCost(
   totals: { cost_eur: number; hasUnknownPrice: boolean } | null,
-): string {
+): number | null {
   if (
     totals === null ||
     totals.hasUnknownPrice ||
     typeof totals.cost_eur !== "number" ||
     !Number.isFinite(totals.cost_eur)
   ) {
-    return PLACEHOLDER
+    return null
   }
-  return `\u20ac${totals.cost_eur.toFixed(2)}`
+  return totals.cost_eur
+}
+
+// Today's gas cost label: the euro figure per the project's euro-sign
+// convention, or the dash when the price is unknown
+// (hasUnknownPrice) or the cost figure cannot be trusted. Never 0.
+export function gasCostLabel(
+  totals: { cost_eur: number; hasUnknownPrice: boolean } | null,
+): string {
+  const cost = knownGasCost(totals)
+  return cost === null ? PLACEHOLDER : `\u20ac${cost.toFixed(2)}`
 }
 
 export interface GasCardFigures {

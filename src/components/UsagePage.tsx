@@ -4,6 +4,7 @@ import PageLayout from "@/components/PageLayout";
 import PeriodNavigator from "@/components/PeriodNavigator";
 import RestOfHomeCard from "@/components/RestOfHomeCard";
 import UsageSlotChart from "@/components/UsageSlotChart";
+import UsageGasChart from "@/components/UsageGasChart";
 import SelfUsageCard from "@/components/SelfUsageCard";
 import UsageSummaryStats from "@/components/UsageSummaryStats";
 import { Card, CardContent } from "@/components/ui/card";
@@ -16,9 +17,11 @@ import { useUsageBreakdown } from "@/lib/useUsageBreakdown";
 // The Usage tab's final layout (docs/spec.md section 7): the left
 // column stacks the period summary card above the category treemap,
 // the right column holds the Rest of your home card, and the per-slot
-// chart spans the full width beneath. Everything reads from one
-// breakdown fetch anchored to the navigator's period; the Energy/Cost
-// mode swaps the primary and secondary metric everywhere on the tab.
+// chart plus the gas slot chart span the full width beneath. The
+// breakdown reads from one fetch anchored to the navigator's period;
+// the gas stat and chart read their own /api/heat/gas fetches, so
+// either side fails soft without the other. The Energy/Cost mode
+// swaps the primary and secondary metric everywhere on the tab.
 function UsagePage() {
   const { period, isCurrent } = usePeriod();
   const { mode } = useMode();
@@ -46,6 +49,7 @@ function UsagePage() {
         data={breakdown.data}
         status={breakdown.status}
         mode={mode}
+        period={period}
         aside={<SelfUsageCard period={period} mode={mode} />}
       />
 
@@ -83,6 +87,14 @@ function UsagePage() {
           period={period}
           isCurrent={isCurrent}
         />
+      </div>
+
+      {/* The gas slot chart sits beneath it in its own card, fed by
+          its own /api/heat/gas fetch: one bar per slot at the
+          endpoint's granularity, with the €/m³ price overlay. It
+          fails soft independently of the breakdown above. */}
+      <div className="mt-4">
+        <UsageGasChart period={period} isCurrent={isCurrent} mode={mode} />
       </div>
     </PageLayout>
   );

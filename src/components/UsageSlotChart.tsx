@@ -108,7 +108,7 @@ interface UsageSlotChartProps {
 
 // The per-slot chart (docs/spec.md section 8): one bar per slot -
 // hourly for day periods, daily for weeks and months, monthly for
-// years - showing the slot's total household consumption, rounded
+// years - showing the slot's total electricity consumption, rounded
 // tops, on a full-period axis (slots without data yet sit empty).
 // The y axis carries gridlines with labels, the x axis a label per
 // slot. The hourly price rides as an amber line overlay on its own
@@ -221,7 +221,7 @@ function UsageSlotChart({
         <PanelHeader
           icon={ChartColumn}
           title={title}
-          description={`${periodLabel(period)} - household consumption per ${unit === "hour" ? "hour" : unit === "day" ? "day" : "month"}`}
+          description={`${periodLabel(period)} - electricity consumption per ${unit === "hour" ? "hour" : unit === "day" ? "day" : "month"}`}
         />
       </SkeletonReveal>
       <CardContent>
@@ -240,7 +240,7 @@ function UsageSlotChart({
             <>
               <div className="flex items-center justify-between gap-2">
                 <span className="text-xs text-muted-foreground">
-                  Total household consumption (
+                  Total electricity consumption (
                   {mode === "energy" ? "kWh" : "EUR"})
                 </span>
                 <label className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -285,7 +285,7 @@ function UsageSlotChart({
                     preserveAspectRatio="none"
                     className="h-56 w-full"
                     role="img"
-                    aria-label="Household consumption per slot"
+                    aria-label="Electricity consumption per slot"
                   >
                     {/* The gridlines and the axis baseline. */}
                     {Array.from(

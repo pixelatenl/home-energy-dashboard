@@ -34,7 +34,7 @@ interface UsageTreemapProps {
 }
 
 // The Usage tab's left panel: the category treemap of the period's
-// household usage. Tile area encodes the mode's primary metric, each
+// electricity usage. Tile area encodes the mode's primary metric, each
 // tile also shows the secondary metric and its share of the total,
 // the heat pump carries its "Est." badge, and under-threshold
 // estimates collapse into "Other" while measured categories above

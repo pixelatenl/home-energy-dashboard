@@ -426,8 +426,8 @@ export function fetchSummary(force = false): Promise<SummaryData> {
   return promise
 }
 
-// GET /api/usage/breakdown: the category breakdown of household usage
-// for a calendar period (docs/spec.md section 3). Every category
+// GET /api/usage/breakdown: the category breakdown of electricity
+// usage for a calendar period (docs/spec.md section 3). Every category
 // carries kWh and cost for the period and the previous period; the
 // heat pump is the one estimated category ("Est." class).
 export interface UsageBreakdownCategory {

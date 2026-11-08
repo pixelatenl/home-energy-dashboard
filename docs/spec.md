@@ -397,32 +397,38 @@ remainder exactly for all periods.
 
 The Usage tab's final layout: the period summary leads as a
 full-width page header (the section's title and period, outside any
-card) with its three stats as a row of stat cards beneath - the
-home page stat cards' composition, horizontal from the sm
-breakpoint up, vertical on phones. One glass card then carries the
-two breakdown sections side by side - the Usage breakdown left,
-Rest of your home right, a soft divider between them from the lg
-breakpoint up; beneath it, the per-slot chart (section 8) spans
-the full width. On narrow screens the single-column order is
-summary stats, breakdown, Rest of your home, chart. Every section
-header uses the shared header idiom (PanelHeader for standalone
-panels, SectionHeader inside the shared card). Toggling
-Energy/Cost swaps their metrics in place, no remount.
+card) with its stats as a row of stat cards beneath - the home page
+stat cards' composition, horizontal from the sm breakpoint up,
+vertical on phones. One glass card then carries the two breakdown
+sections side by side - the Usage breakdown left, Rest of your home
+right, a soft divider between them from the lg breakpoint up;
+beneath it, the per-slot chart and the gas slot chart (section 8)
+span the full width. On narrow screens the single-column order is
+summary stats, breakdown, Rest of your home, electricity chart, gas
+chart. Every section header uses the shared header idiom (PanelHeader
+for standalone panels, SectionHeader inside the shared card).
+Toggling Energy/Cost swaps their metrics in place, no remount.
 
 ### 7.1 Period summary strip
 
 The period summary card (stacked above the treemap in the left
-column) presents the with-and-without comparison as a three-stat
-glass row in the price widget's stat composition. Each stat carries
-the same shape: eyebrow, big primary, secondary line, one muted
-detail line. On narrow screens the stats wrap like the price
-widget's (`grid gap-3 sm:grid-cols-3`).
+column) presents the with-and-without comparison as a stat glass row
+in the price widget's stat composition: Electricity usage, Net grid,
+Saved and earned and Gas/heating, plus the Self usage card as the
+far-right aside. Each stat carries the same shape: eyebrow, big
+primary, secondary line, one muted detail line. The cluster's
+responsive ladder has exactly three steps: phones stack the five
+cards, the sm band pairs them in a clean 2x2 with the aside spanning
+the full last row, and lg restores the single five-column row - no
+intermediate step where a card strands half-width or the aside
+floats alone (`grid gap-4 sm:grid-cols-2 lg:grid-cols-5`).
 
-- Stat 1, Household usage: the mode's primary metric large with the
+- Stat 1, Electricity usage: the mode's primary metric large with the
   secondary beneath, the previous-period delta (both metrics) as its
   detail line. The actual physical total and its cost - what the same
   usage would cost without solar and battery, all imported at the
-  dynamic hourly price.
+  dynamic hourly price. Named "electricity" because the Gas/heating
+  stat sits beside it; the two carriers never share a title.
 - Stat 2, Net grid: net grid volume (import minus export) with the
   net grid cost beneath and the gross import and export volumes as
   its detail line - the provider billing view.
@@ -431,10 +437,27 @@ widget's (`grid gap-3 sm:grid-cols-3`).
   so the headline pops), with the kWh that never drew net from the
   grid (total minus net, self-supplied plus exported) beneath and the
   window's average price as its detail line.
-- The corner info tooltip (the home page stat cards' idiom) carries
-  both caveats: the valuation basis (household usage includes
-  self-supplied energy, costed as if all imported at the dynamic
-  hourly price) and the fixed network fees excluded from the
+- Stat 4, Gas/heating: the period's gas from `GET /api/heat/gas`,
+  fetched twice - once anchored on the navigator's period and date,
+  once on the previous period's anchor (the same-length period
+  immediately before, per section 3's previous-period definition).
+  Energy mode shows the period's `totals.m3` large with the period's
+  `totals.cost_eur` beneath; cost mode shows the cost large with the
+  m3 beneath. The detail line is "vs previous" with the m3 delta
+  always and the cost delta only when both windows have a known price
+  (otherwise the unavailable dash), signed like stat 1's delta line.
+  Honest unknown price: when a window's `totals.hasUnknownPrice` is
+  true or its cost is not a finite number, the cost reads the dash
+  placeholder, never 0. A failed fetch or an empty window renders the
+  card's own honest error or empty state without affecting the other
+  cards, and vice versa. The corner info tooltip (the home page stat
+  cards' idiom) carries both caveats: the gas day totals miss roughly
+  the first half hour after midnight, and the cost uses the last known
+  gas price when the period's price rows are missing.
+- The corner info tooltip (the home page stat cards' idiom) on stat 1
+  carries both caveats: the valuation basis (electricity usage
+  includes self-supplied energy, costed as if all imported at the
+  dynamic hourly price) and the fixed network fees excluded from the
   provider billing view.
 
 The payload's grid statistics back the figures: `grid_import_kwh`,
@@ -522,3 +545,45 @@ bars sum to the period total within that floor.
   carry the measured categories only).
 - Without price rows a slot's price and cost read null (the
   null-cost rule), never zero.
+
+### 8.1 The gas slot chart
+
+A second full-width chart card directly beneath the per-slot chart,
+with the shared PanelHeader, titled Gas usage. It renders one
+neutral bar per slot of the same period, following the per-slot
+chart's conventions, from one `GET /api/heat/gas` call anchored on
+the navigator's period and date (a fetch that fails soft
+independently of the breakdown fetch, and vice versa).
+
+- Period granularity maps directly to the slots: a day period
+  renders 24 hourly bars (25 on a DST fall-back day), a week 7 daily
+  bars, a month one bar per calendar day (the days ahead sit on the
+  axis without a bar), a year 12 monthly slots. The slot list is
+  built from the response window at the endpoint's granularity; the
+  series intervals join by slot key.
+- The bars carry rounded top corners (flat on the axis) and the y
+  axis shows gridlines with labels at round step values; the x axis
+  labels each slot per the per-slot chart's granularity conventions
+  (every third hour, the week's days or the day-of-month, the month
+  abbreviation). No per-series legend.
+- The bars follow the mode: m3 per slot in energy mode, the slot's
+  `cost_eur` in cost mode. A slot without its price row reads the
+  unavailable dash in the tooltip, never 0.
+- The gas price overlay: a line in the data-viz palette's muted
+  terracotta (distinct from the per-slot chart's amber electricity
+  price line) on its own scale (min to max of the slot prices,
+  labeled at the right edge), always EUR/m3 in both modes, on by
+  default with a single toggle.
+- The now marker: the dashed vertical line at the current local
+  hour, on the current day period only.
+- The shared hover tooltip, one shape for every granularity: the
+  slot's label (hour, day or month), its m3, its EUR cost and its
+  EUR/m3 price.
+- The data caveats register as a one-line footnote beneath the
+  chart: the gas day totals miss roughly the first half hour after
+  midnight, and the cost uses the last known gas price when the
+  period's price rows are missing.
+- Fail-soft: the chart keeps its previous content while revalidating
+  on period switches (no skeleton flash), shows the shared
+  shape-matched skeleton on first load, and has its own empty and
+  error states.

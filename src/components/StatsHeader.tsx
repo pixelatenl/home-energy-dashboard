@@ -20,22 +20,23 @@ const PLACEHOLDER = "\u2014";
 const GRID_TOOLTIP =
   "Grid electricity today: imported minus exported; negative means net export. The live grid renewables share lives in the Live power card.";
 
-// The home usage card's tooltip: the headline figure's battery
-// accounting, including the always-present balance sub-line's rule.
-// Solar that charged
-// the battery counts as self-consumption today, but as home usage
-// only on the day the battery discharges it.
+// The electricity usage card's tooltip: the headline figure's
+// battery accounting, including the always-present balance sub-line's
+// rule. Solar that charged
+// the battery counts as self-consumption today, but as electricity
+// usage only on the day the battery discharges it.
 const USAGE_TOOLTIP =
-  "Home usage today: everything the household consumed - grid import plus solar used directly plus battery discharge, minus export. Energy that charged the battery today is not counted here; it counts on the day the battery discharges it. The first sub-line states the battery balance: today's net-stored energy is excluded once it is large enough to notice, otherwise the line reads the balance as included. The self-consumption share lives in the Solar today card.";
+  "Electricity usage today: everything the home consumed on electricity - grid import plus solar used directly plus battery discharge, minus export. Energy that charged the battery today is not counted here; it counts on the day the battery discharges it. The first sub-line states the battery balance: today's net-stored energy is excluded once it is large enough to notice, otherwise the line reads the balance as included. The self-consumption share lives in the Solar today card.";
 
 // The two headline metric cards: From the grid (net of import and
-// export) and Home usage (household consumption). Both share one
-// fixed composition so their height never changes during the day:
+// export) and Electricity usage (household electricity consumption,
+// named so because the Gas/heating card sits beside it). Both share
+// one fixed composition so their height never changes during the day:
 // the title and the big figure at the top, then exactly two
 // sub-lines - the in/out split and the week/month figures for the
 // grid card, the battery balance and the week/month figures for
-// home usage - every line always present, a muted dash wherever a
-// figure does not exist. The two groups spread across the fixed
+// electricity usage - every line always present, a muted dash
+// wherever a figure does not exist. The two groups spread across the fixed
 // grid cell height, so no bottom gap opens up next to the taller
 // visual cards. The live grid renewables share moved to the Live
 // power card, the self-consumption share to the Solar today card.
@@ -51,8 +52,9 @@ function StatsHeader() {
   const usageToday = summary?.today.total_usage_kwh ?? null;
 
   // Net energy the battery absorbed today: charged minus discharged.
-  // Home usage excludes this share by definition, so the card states
-  // it beneath the figure whenever it is large enough to notice.
+  // Electricity usage excludes this share by definition, so the card
+  // states it beneath the figure whenever it is large enough to
+  // notice.
   const batteryNetStored =
     summary === null
       ? null
@@ -113,13 +115,14 @@ function StatsHeader() {
         </Card>
       </SkeletonReveal>
 
-      {/* Home usage: the household's consumption today. */}
+      {/* Electricity usage: the household's electricity consumption
+          today. */}
       <SkeletonReveal loading={loading} skeleton={<StatCardSkeleton />}>
         <Card className="relative min-h-24 transition-[background-color,border-color,box-shadow] hover:bg-card-hover hover:border-white/30 hover:shadow-card-lift">
           {/* The whole card opens today in the Usage tab. */}
           <StatCardLink
             to={HUB_LINKS.homeUsage}
-            label="Home usage: open today in the Usage tab"
+            label="Electricity usage: open today in the Usage tab"
           />
           <div className="absolute right-3 top-3 z-20">
             <InfoTooltip text={USAGE_TOOLTIP} />
@@ -131,7 +134,7 @@ function StatsHeader() {
             <div className="flex flex-col gap-1">
               <CardTitle className="flex items-center gap-1.5 text-title-foreground">
                 <House className="size-5 shrink-0" aria-hidden="true" />
-                Home usage
+                Electricity usage
                 {summary !== null && !summary.pv_available && (
                   <span
                     className="italic"

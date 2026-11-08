@@ -1,29 +1,18 @@
 import type { ReactNode } from "react";
 import { House, PlugZap, Recycle } from "lucide-react";
+import GasUsageStatCard from "@/components/GasUsageStatCard";
 import InfoTooltip from "@/components/InfoTooltip";
 import SkeletonReveal from "@/components/SkeletonReveal";
 import StatCardSkeleton from "@/components/StatCardSkeleton";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import type { UsageBreakdown } from "@/lib/api";
 import type { Mode } from "@/lib/mode";
-import { STAT_HEADLINE } from "@/lib/statCard";
+import type { Period } from "@/lib/period";
+import { formatEur, signedEur, signedKwh, STAT_HEADLINE } from "@/lib/statCard";
 import { netFigures } from "@/lib/usageNet";
 
 function formatKwh(value: number): string {
   return `${value.toFixed(1)} kWh`;
-}
-
-function formatEur(value: number | null): string {
-  return value === null ? "\u2014" : `€${value.toFixed(2)}`;
-}
-
-// Signed like the deltas: "+64.9 kWh" / "\u2212€0.85".
-function signedKwh(value: number): string {
-  return `${value >= 0 ? "+" : "\u2212"}${Math.abs(value).toFixed(1)} kWh`;
-}
-
-function signedEur(value: number): string {
-  return `${value >= 0 ? "+" : "\u2212"}€${Math.abs(value).toFixed(2)}`;
 }
 
 // Net figures carry their own sign: positive reads plain, only a
@@ -44,31 +33,37 @@ interface UsageSummaryStatsProps {
   data: UsageBreakdown | null;
   status: "loading" | "ok" | "error";
   mode: Mode;
-  // The cluster's fourth card, the far-right column on desktop: the
+  period: Period;
+  // The cluster's fifth card, the far-right column on desktop: the
   // page passes the period-aware Self usage card.
   aside?: ReactNode;
 }
 
-// The period summary's three stats (docs/spec.md section 7.1) plus the
+// The period summary's four stats (docs/spec.md section 7.1) plus the
 // aside's Self usage card as one cluster of stat cards in the hub stat
 // cards' composition: muted icon and title row with the shared
 // responsive headline scale at the top, then exactly two sub-lines at
-// the bottom spread across the cell - household usage (the usage costed
-// as if all of it were imported at the dynamic hourly price), the net
-// grid, and saved and earned with the self-supplied kWh. The cluster's
-// responsive ladder has exactly three steps: phones stack the four
-// cards, the sm band pairs them in a clean 2x2, and lg restores the
-// single four-column row. The section's own title and period render as
-// the page-level header above, outside any card. The two caveats ride
-// in the first card's corner info tooltip, the hub stat cards' idiom.
-// The first load shows the shared shape-matched skeletons cross-fading
-// into the cards; period switches keep the previous cards and update in
-// place. All figures, sign handling and the null-cost rule are exactly
-// those of section 7.1.
+// the bottom spread across the cell - electricity usage (the usage
+// costed as if all of it were imported at the dynamic hourly price),
+// the net grid, saved and earned with the self-supplied kWh, and
+// Gas/heating from the gas endpoint - so the two carriers never share
+// one title. The cluster's responsive ladder has exactly three steps:
+// phones stack the five cards, the sm band pairs them in a clean 2x2
+// with the aside spanning the full last row, and lg restores the
+// single five-column row. The section's own title and period render as
+// the page-level header above, outside any card. The electricity
+// caveats ride in the first card's corner info tooltip, the hub stat
+// cards' idiom; the gas caveats in the Gas/heating card's own. The
+// first load shows the shared shape-matched skeletons cross-fading
+// into the cards; period switches keep the previous cards and update
+// in place. All figures, sign handling and the null-cost rule are
+// exactly those of section 7.1; the gas card fails soft on its own,
+// independently of this cluster's breakdown fetch.
 function UsageSummaryStats({
   data,
   status,
   mode,
+  period,
   aside,
 }: UsageSummaryStatsProps) {
   const energyFirst = mode === "energy";
@@ -80,19 +75,25 @@ function UsageSummaryStats({
   // The two caveats, in the corner info tooltip the home page stat
   // cards use instead of a footnote line.
   const CAVEATS_TOOLTIP =
-    "Household usage includes self-supplied energy, costed as if all of it were imported at the dynamic hourly price. Net grid is the provider billing view at dynamic hourly prices; fixed network fees are excluded, so it may deviate slightly from the provider\u2019s invoice.";
+    "Electricity usage includes self-supplied energy, costed as if all of it were imported at the dynamic hourly price. Net grid is the provider billing view at dynamic hourly prices; fixed network fees are excluded, so it may deviate slightly from the provider\u2019s invoice.";
 
-  // The skeleton mirrors the loaded cluster's own ladder: four stat
-  // card shapes - the three stats plus the aside's stand-in - in the
-  // same 2x2 / four-across arrangement, so the first-load cross-fade
-  // swaps like for like. The reveal sits in the same tree position
-  // for every state. An error is not loading: the honest message
-  // fades in like content; an empty period keeps its own honest
-  // state.
+  // The skeleton mirrors the loaded cluster's own ladder: five stat
+  // card shapes - the four stats plus the aside's stand-in - in the
+  // same 2x2-plus-full-row / five-across arrangement, so the first-load
+  // cross-fade swaps like for like. The reveal sits in the same tree
+  // position for every state. An error is not loading: the honest
+  // message fades in like content; an empty period keeps its own
+  // honest state.
   const loading = status === "loading" && data === null;
+  // The aside's cell spans the sm band's full last row, so no step
+  // strands a card half-width or floats the aside alone; from lg up
+  // every card is one column of the single row.
+  const asideCell = (
+    <div className="sm:col-span-2 lg:col-span-1 [&>*]:h-full">{aside}</div>
+  );
   const skeleton = (
-    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-      {[0, 1, 2, 3].map((index) => (
+    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+      {[0, 1, 2, 3, 4].map((index) => (
         <StatCardSkeleton key={index} />
       ))}
     </div>
@@ -104,7 +105,7 @@ function UsageSummaryStats({
   return (
     <SkeletonReveal loading={loading} skeleton={skeleton}>
       {data === null || net === null ? (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
           <div className="min-w-0 sm:col-span-2 lg:col-span-3">
             <p className="min-h-12 text-sm text-subtle-foreground">
               {status === "error"
@@ -112,20 +113,21 @@ function UsageSummaryStats({
                 : "No usage data for this period."}
             </p>
           </div>
-          {aside}
+          <GasUsageStatCard period={period} mode={mode} />
+          {asideCell}
         </div>
       ) : (
         /* The cluster's responsive ladder, exactly three steps: phones
-           stack the four cards, the sm band pairs them in a clean 2x2
-           (the three stats plus the aside), and lg restores the single
-           four-column row - no intermediate step where the third stat
-           strands half-width or the aside floats alone. Every card is
-           a direct cell, so each row pairs equal-height fixed
-           compositions, and the caveat note spans the stats' columns
-           beneath. */
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+           stack the five cards, the sm band pairs them in a clean 2x2
+           (the four stats) with the aside spanning the full last row,
+           and lg restores the single five-column row - no intermediate
+           step where a card strands half-width or the aside floats
+           alone. Every card is a direct cell, so each row pairs
+           equal-height fixed compositions, and the caveat note spans
+           the stats' columns beneath. */
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
           <Card className="relative min-h-24">
-            {/* The corner info tooltip over the household usage card,
+            {/* The corner info tooltip over the electricity usage card,
                 the hub stat cards' idiom. */}
             <div className="absolute right-3 top-3 z-20">
               <InfoTooltip text={CAVEATS_TOOLTIP} />
@@ -134,7 +136,7 @@ function UsageSummaryStats({
               <div className="flex flex-col gap-1">
                 <CardTitle className="flex items-center gap-1.5 text-title-foreground">
                   <House className="size-5 shrink-0" aria-hidden="true" />
-                  Household usage
+                  Electricity usage
                 </CardTitle>
                 <CardTitle className={STAT_HEADLINE}>
                   {energyFirst
@@ -220,9 +222,11 @@ function UsageSummaryStats({
             </CardHeader>
           </Card>
 
-          {aside}
+          <GasUsageStatCard period={period} mode={mode} />
+
+          {asideCell}
           {noPrices && (
-            <p className="mt-2 text-xs italic text-muted-foreground sm:col-span-2 lg:col-span-3">
+            <p className="mt-2 text-xs italic text-muted-foreground sm:col-span-2 lg:col-span-4">
               No price data for this period; the cost, net and saved figures
               are unavailable, not zero.
             </p>

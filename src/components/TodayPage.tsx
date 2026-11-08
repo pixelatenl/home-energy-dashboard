@@ -104,7 +104,7 @@ function TodayPage() {
           row, every cell the same height, two rows - Live power (the
           breathing circle combining the live draw with the renewable
           grid share) leading, then Saved and earned, From the grid,
-          Home usage, Gas/heating, Solar today, Battery status,
+          Electricity usage, Gas/heating, Solar today, Battery status,
           Battery today. All eight slots fill. The layout steps with
           the viewport: phones stack one card per row, tablets from
           768px take two per row (four rows), and from 1024px the

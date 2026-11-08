@@ -18,11 +18,11 @@ function formatKwh(value: number): string {
 // The card's tooltip: the same figure the Usage panel's period
 // summary shows, for today.
 const SAVED_TOOLTIP =
-  "Saved and earned today: what self-supplied solar and battery power plus the feed-in credit are worth versus importing everything. The cost of today's household usage if all of it were imported at dynamic hourly prices, minus the net grid cost actually paid. The average is today's volume-weighted grid price.";
+  "Saved and earned today: what self-supplied solar and battery power plus the feed-in credit are worth versus importing everything. The cost of today's electricity usage if all of it were imported at dynamic hourly prices, minus the net grid cost actually paid. The average is today's volume-weighted grid price.";
 
 // The stats hub's "Saved and earned" card: the Usage panel's saved
 // figure (docs/spec.md section 7.1) for today - the all-imported
-// cost of today's household usage minus the net grid cost - in the
+// cost of today's electricity usage minus the net grid cost - in the
 // home page stat cards' composition. The same usage breakdown
 // endpoint and the same netFigures derivation the Usage panel uses,
 // anchored to the current day, so the number always agrees with the
