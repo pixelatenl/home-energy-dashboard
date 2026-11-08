@@ -735,15 +735,47 @@ function narrativeWithNotes(narrative, notes) {
   return text;
 }
 
-export async function generateMonologue(sections, rawFacts, now, modelStub) {
+// Snapshot validation (the serve path): when the caller supplies
+// options.validationFacts ({ [sectionKey]: facts snapshot captured at
+// generation time }), an offered narrative is validated against the
+// section-like object rebuilt from that snapshot, never against the
+// live facts. The full validateSectionNarrative pipeline runs unchanged
+// (figure membership and every facts-based guard); only the reference
+// facts come from the snapshot. The prompt, the payload facts, the
+// fallback sentences and the notes stay built from the live section.
+export async function generateMonologue(
+  sections,
+  rawFacts,
+  now,
+  modelStub,
+  options = {}
+) {
   const monologueSections = buildMonologueSections(sections, rawFacts, now);
-  const tomorrowPublished =
+  const liveTomorrowPublished =
     (Array.isArray(sections) ? sections : []).find((s) => s.id === "tomorrow")
       ?.facts?.prices_published === true;
+  const validationFacts =
+    options.validationFacts != null && typeof options.validationFacts === "object"
+      ? options.validationFacts
+      : null;
+  // The tomorrow-price guard's flag follows the snapshot when the
+  // snapshot carries the tomorrow section's own prices_published fact.
+  const snapshotTomorrowPublished = validationFacts?.tomorrow?.prices_published;
+  const tomorrowPublished =
+    typeof snapshotTomorrowPublished === "boolean"
+      ? snapshotTomorrowPublished
+      : liveTomorrowPublished;
 
   const payload = [];
   const report = [];
   for (const section of monologueSections) {
+    // The section-like object validation runs against: the live section,
+    // or the same section rebuilt from the stored facts snapshot.
+    const snapshot = validationFacts?.[section.key] ?? null;
+    const validationSection =
+      snapshot != null && typeof snapshot === "object"
+        ? { ...section, facts: snapshot }
+        : section;
     let offered = null;
     let verdict = { ok: true, reasons: [] };
     let served = false;
@@ -762,7 +794,7 @@ export async function generateMonologue(sections, rawFacts, now, modelStub) {
       offered = await narrativeFromStub(modelStub, prompt, section.key);
       if (offered === null) break; // nothing offered: serve the fallback
       if (attempt > 0) retried = true;
-      verdict = validateSectionNarrative(offered, section, {
+      verdict = validateSectionNarrative(offered, validationSection, {
         tomorrowPublished,
       });
       if (verdict.ok) {

@@ -139,14 +139,18 @@ export function monologueSectionKeyFromPrompt(prompt) {
 
 // Regenerates the monologue at insight refresh. cachedSections is the
 // previous insight record's monologue section store ({ [key]:
-// { facts_hash, narrative } }); a section whose hash is unchanged
+// { facts_hash, narrative, facts } }); a section whose hash is unchanged
 // reuses its stored narrative and costs no model call. modelSeam is
 // the per-section model seam the tests use: one prompt in, { narratives }
 // out. It is called only for sections without a reusable narrative.
-// Returns the section store for the new record plus one log entry per
-// generated section - label, reason (new-facts, retry or fallback),
-// the count of figure-verification rejections from validation, and the
-// readable rejection reasons of each rejected attempt.
+// Each stored entry also carries the facts snapshot the narrative was
+// written from (the formatted section.facts at generation time), so the
+// serve path can re-validate the narrative against the facts it was
+// generated from instead of the drifted live facts. Returns the section
+// store for the new record plus one log entry per generated section -
+// label, reason (new-facts, retry or fallback), the count of
+// figure-verification rejections from validation, and the readable
+// rejection reasons of each rejected attempt.
 export async function refreshAdvisoryMonologue(
   request,
   cachedSections,
@@ -163,6 +167,12 @@ export async function refreshAdvisoryMonologue(
       section.key,
       compositionFactsHash(section.facts),
     ])
+  );
+  // The generation-time facts snapshot per section key. A reused section
+  // reaches the store only when its hash is unchanged, so its live facts
+  // are canonically identical to the ones its narrative was written from.
+  const factsByKey = new Map(
+    monologueSections.map((section) => [section.key, { ...section.facts }])
   );
   const cached = cachedSections ?? null;
   const reuse = new Map();
@@ -199,6 +209,9 @@ export async function refreshAdvisoryMonologue(
     store[entry.key] = {
       facts_hash: hashes.get(entry.key) ?? null,
       narrative: payload[i]?.narrative ?? null,
+      // The facts snapshot the stored narrative is re-validated against
+      // at serve time (the formatted facts used at generation time).
+      facts: factsByKey.get(entry.key) ?? null,
     };
     if (reuse.has(entry.key)) continue; // reused: no generation this refresh
     const reason = !entry.offered
@@ -230,29 +243,57 @@ export async function refreshAdvisoryMonologue(
 // The monologue payload (contract section 4, the Stage 4 monologue
 // specification): one entry per section with its label, narrative,
 // fallback sentences and facts, served from the insight record's
-// stored narratives - never a model call at serve time. The stored
-// narrative is re-validated against the live section facts by the same
-// pipeline that generated it, so a narrative that no longer holds
-// serves the section's deterministic fallback sentences instead.
-// nowIso is injected here by the adapter - the core stays pure, the
-// request's moment travels as data. Absent keys read as null.
+// stored narratives - never a model call at serve time. A stored
+// narrative is re-validated at serve time against the facts snapshot
+// captured when it was generated (the entry's facts field), not against
+// the live section facts: TODAY figures drift continuously during the
+// day, and validating against them would falsely reject a narrative
+// that was valid when written. The full validation pipeline runs
+// unchanged against the snapshot, so a narrative that violates the
+// contract still falls back. A legacy stored entry (a narrative without
+// a facts snapshot) is never validated against live facts; its section
+// serves the deterministic fallback. The payload's facts and fallback
+// sentences are always built from the live facts at serve time, and the
+// server-owned notes stay composed from the live facts. nowIso is
+// injected here by the adapter - the core stays pure, the request's
+// moment travels as data. Absent keys read as null.
 export async function serveAdvisoryMonologue(request, storedSections = null) {
   const built = buildSections(request.facts, request.nowIso);
   const stored = storedSections ?? null;
+  // The generation-time facts snapshots of the stored sections, keyed by
+  // section key: each stored narrative is validated against its own
+  // snapshot, so drifting live figures never falsely reject it.
+  const validationFacts = {};
+  for (const [key, entry] of Object.entries(stored ?? {})) {
+    if (
+      entry != null &&
+      typeof entry === "object" &&
+      entry.facts != null &&
+      typeof entry.facts === "object"
+    ) {
+      validationFacts[key] = entry.facts;
+    }
+  }
   const stub = async (prompt) => {
     const key = monologueSectionKeyFromPrompt(prompt);
-    const narrative =
+    const entry =
       key !== null && stored?.[key] != null && typeof stored[key] === "object"
-        ? stored[key].narrative
+        ? stored[key]
         : null;
+    const narrative = entry?.narrative ?? null;
     if (typeof narrative !== "string" || narrative.trim() === "") return null;
+    // A legacy entry (a narrative without a facts snapshot) is not
+    // validated against the live facts: offer nothing, serve the
+    // section's deterministic fallback.
+    if (entry.facts == null || typeof entry.facts !== "object") return null;
     return { narratives: { [key]: narrative } };
   };
   const { payload } = await generateMonologue(
     built,
     request.facts,
     request.nowIso,
-    stub
+    stub,
+    { validationFacts }
   );
   return (Array.isArray(payload) ? payload : []).map((section) => ({
     label: section?.label ?? null,

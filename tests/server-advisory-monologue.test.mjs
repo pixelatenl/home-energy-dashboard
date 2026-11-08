@@ -244,3 +244,111 @@ describe("serveSummaryAdvisory: the summary payload's advisory fields", () => {
     }
   });
 });
+
+describe("serveAdvisoryMonologue: snapshot validation of stored narratives", () => {
+  it("stores the generation-time facts snapshot alongside each narrative at refresh", async () => {
+    const stub = countingStub(m1.stub.narratives);
+    const record = await generateInsightMonologue(m1Request(), null, stub);
+    for (const key of ["today", "tomorrow", "fri", "sun"]) {
+      const entry = record.sections[key];
+      assert.equal(typeof entry.facts_hash, "string");
+      assert.ok(
+        entry.facts !== null && typeof entry.facts === "object",
+        `section ${key} must carry its facts snapshot`
+      );
+    }
+    // The snapshot is the formatted fact set the narrative was written
+    // from: the drifting display figures as they were at generation.
+    assert.equal(record.sections.today.facts.battery_level, "72%");
+    assert.equal(record.sections.today.facts.solar_today, "8.18 kWh");
+    assert.equal(record.sections.today.facts.appliance_saving, "€0.12");
+  });
+
+  it("serves the stored narrative when the live facts have drifted since generation (regression)", async () => {
+    const stub = countingStub(m1.stub.narratives);
+    const record = await generateInsightMonologue(m1Request(), null, stub);
+    // Drift the live facts the TODAY narrative quotes: the battery level
+    // and the solar actual move continuously during the day, so a serve
+    // minutes later sees different live figures than at generation time.
+    const drifted = m1Request();
+    drifted.facts.battery.socPct = 65;
+    drifted.facts.solarToday.actualKwh = 8.9;
+    const served = await adapter.serveAdvisoryMonologue(
+      drifted,
+      record.sections
+    );
+    const today = served.find((s) => s.label === "TODAY");
+    // The stored narrative is validated against its own snapshot, so it
+    // is served instead of downgrading to the fallback.
+    assert.ok(today.narrative !== null);
+    assert.ok(today.narrative.includes(m1.stub.narratives.today));
+    // The payload itself still reflects the live facts at serve time.
+    assert.equal(today.facts.battery_level, "65%");
+    assert.equal(today.facts.solar_today, "8.9 kWh");
+    assert.equal(today.facts.nowIso, m1.now);
+    assert.ok(Array.isArray(today.fallback_sentences));
+    assert.ok(today.fallback_sentences.length > 0);
+  });
+
+  it("still rejects at serve time a stored narrative with a figure absent from its own snapshot", async () => {
+    const stub = countingStub(m1.stub.narratives);
+    const record = await generateInsightMonologue(m1Request(), null, stub);
+    const stored = structuredClone(record.sections);
+    stored.today.narrative = `${m1.stub.narratives.today} On top of that, this saves €9.99.`;
+    const served = await adapter.serveAdvisoryMonologue(m1Request(), stored);
+    const today = served.find((s) => s.label === "TODAY");
+    // The figure guards are not weakened: €9.99 matches no served amount
+    // of the section's own snapshot, so the section falls back.
+    assert.equal(today.narrative, null);
+    assert.ok(today.fallback_sentences.length > 0);
+  });
+
+  it("rejects a figure that exists only in the drifted live facts, not in the snapshot", async () => {
+    const stub = countingStub(m1.stub.narratives);
+    const record = await generateInsightMonologue(m1Request(), null, stub);
+    const stored = structuredClone(record.sections);
+    // 65% is a member of the drifted live fact set but of no snapshot
+    // fact, so validating against live facts would wrongly accept it.
+    stored.today.narrative = "Your battery sits at 65% right now.";
+    const drifted = m1Request();
+    drifted.facts.battery.socPct = 65;
+    const served = await adapter.serveAdvisoryMonologue(drifted, stored);
+    const today = served.find((s) => s.label === "TODAY");
+    assert.equal(today.narrative, null);
+    assert.ok(today.fallback_sentences.length > 0);
+  });
+
+  it("still rejects at serve time a banned tomorrow-price mention when the snapshot says unpublished", async () => {
+    const stub = countingStub(m1.stub.narratives);
+    const record = await generateInsightMonologue(m1Request(), null, stub);
+    const stored = structuredClone(record.sections);
+    stored.tomorrow.narrative =
+      "Tomorrow's prices will average €0.30 per kWh, so plan the big runs for then.";
+    const served = await adapter.serveAdvisoryMonologue(m1Request(), stored);
+    const tomorrow = served.find((s) => s.label === "TOMORROW");
+    // The snapshot carries prices_published false, so the tomorrow-price
+    // guard rejects the mention and the section falls back.
+    assert.equal(tomorrow.narrative, null);
+    assert.ok(tomorrow.fallback_sentences.length > 0);
+  });
+
+  it("serves the fallback for a legacy stored entry without a facts snapshot", async () => {
+    const legacy = {
+      today: { facts_hash: "0badf00d", narrative: m1.stub.narratives.today },
+    };
+    const served = await adapter.serveAdvisoryMonologue(m1Request(), legacy);
+    const today = served.find((s) => s.label === "TODAY");
+    // A legacy narrative is never validated against live facts: the
+    // section serves its deterministic fallback and a valid payload.
+    assert.equal(today.narrative, null);
+    assert.ok(Array.isArray(today.fallback_sentences));
+    assert.ok(today.fallback_sentences.length > 0);
+    assert.equal(today.facts.nowIso, m1.now);
+    for (const section of served) {
+      assert.ok("label" in section);
+      assert.ok("narrative" in section);
+      assert.ok("fallback_sentences" in section);
+      assert.ok("facts" in section);
+    }
+  });
+});
