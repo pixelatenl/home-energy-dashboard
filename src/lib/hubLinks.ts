@@ -9,7 +9,7 @@ export const HUB_LINKS = {
   savedEarned: todayTabUrl("/usage"),
   fromGrid: todayTabUrl("/usage"),
   homeUsage: todayTabUrl("/usage"),
-  solarForecast: todayTabUrl("/solar"),
+  gasHeating: todayTabUrl("/heat"),
   solarToday: todayTabUrl("/solar"),
   batteryStatus: todayTabUrl("/battery"),
   batteryToday: todayTabUrl("/battery"),

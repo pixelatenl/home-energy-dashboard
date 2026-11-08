@@ -19,7 +19,7 @@ const CARD_TABS = {
   savedEarned: "/usage",
   fromGrid: "/usage",
   homeUsage: "/usage",
-  solarForecast: "/solar",
+  gasHeating: "/heat",
   solarToday: "/solar",
   batteryStatus: "/battery",
   batteryToday: "/battery",

@@ -13,6 +13,7 @@ import StatCardLink from "@/components/StatCardLink";
 import StatCardSkeleton from "@/components/StatCardSkeleton";
 import { BatteryCharging, Sun } from "lucide-react";
 import {
+  fetchWeatherDaily,
   fetchWeatherHourly,
   type BatteryFlowHour,
   type PvFlowHour,
@@ -24,9 +25,13 @@ import {
   SOLAR_COLOR,
 } from "@/lib/flowDiagram";
 import { HUB_LINKS } from "@/lib/hubLinks";
+import { solarScoreLabel, todaySolarScore } from "@/lib/solarScore";
 import { STAT_HEADLINE } from "@/lib/statCard";
 import { useSummary } from "@/lib/useSummary";
-import { useDataRefreshListener } from "@/lib/useDataRefresh";
+import {
+  useDataRefreshListener,
+  useRefetchOnWake,
+} from "@/lib/useDataRefresh";
 import {
   amsterdamDayHourCount,
   amsterdamElapsedHoursOf,
@@ -51,7 +56,7 @@ const TODAY_CHART_H = 48;
 
 // The two cards' tooltips: what each headline and curve reads.
 const SOLAR_TODAY_TOOLTIP =
-  "Actual solar production today: the headline is the day total so far, the curve the hourly output, with the dashed line the hourly forecast. Self usage is the share of today's solar the home consumed on site instead of feeding it into the grid.";
+  "Actual solar production today: the headline is the day total so far, the curve the hourly output, with the dashed line the hourly forecast. Self usage is the share of today's solar the home consumed on site instead of feeding it into the grid. The Solar score chip grades the day's forecast conditions from 0 to 100.";
 const BATTERY_TODAY_TOOLTIP =
   "Energy moved through the battery today: charged in amber above the zero line, discharged in green below, per hour. The headline is the day's charged total.";
 
@@ -168,6 +173,7 @@ function TodaySolarChart({
   producedKwh,
   selfConsumptionPct,
   pvW,
+  solarScore,
   loading,
 }: {
   actual: PvFlowHour[];
@@ -182,6 +188,9 @@ function TodaySolarChart({
   selfConsumptionPct: number | null;
   // The live PV output in watts, the value's sub-line.
   pvW: number | null;
+  // Today's solar score for the header's second chip; null hides the
+  // chip (no forecast data or no score), never a fabricated number.
+  solarScore: number | null;
   // True while the first summary load has not landed yet.
   loading: boolean;
 }) {
@@ -233,6 +242,10 @@ function TodaySolarChart({
     .join(" ");
   const hasForecast = forecast !== null && forecast.length > 0;
   const hasActual = actual.some((hour) => hour.kwh > 0);
+  // The score chip's label, or null when today's daily forecast row
+  // carries no score: the chip then hides and the Self usage chip
+  // stands alone.
+  const scoreLabel = solarScoreLabel(solarScore);
 
   // The skeleton mirrors the chart card's exact geometry: title,
   // headline, sub-line, one Card gap, then the chart block and the
@@ -260,25 +273,39 @@ function TodaySolarChart({
         {/* The Solar forecast's header structure: the title row with
           the self-usage chip, the big value and sub-line beneath. The
           header reserves the corner's fixed clear zone (pr-9, the
-          tooltip icon plus its padding) at every width, so the chip
-          can never slide under the absolutely positioned icon: it
-          flows in the remaining space, and only when the cell is too
-          narrow to share the row does it wrap below the title. */}
+          tooltip icon plus its padding) at every width, so the chips
+          can never slide under the absolutely positioned icon: they
+          flow in the remaining space, and only when the cell is too
+          narrow to share the row do they wrap below the title. */}
         <CardHeader className="pr-9">
           <div className="flex flex-wrap items-center justify-between gap-1">
             <CardTitle className="flex items-center gap-1.5 text-title-foreground">
               <Sun className="size-5 shrink-0" aria-hidden="true" />
               Solar today
             </CardTitle>
-            <Badge
-              variant="outline"
-              className="border-white/25 bg-white/15 text-chip-foreground tabular-nums"
-            >
-              Self usage:{" "}
-              {selfConsumptionPct === null
-                ? "\u2014"
-                : `${Math.round(selfConsumptionPct)}%`}
-            </Badge>
+            {/* The two header chips side by side, the same glass
+              treatment for both: a neutral translucent white chip
+              rather than a colored callout. The score chip only
+              appears when today's forecast row carries a score. */}
+            <div className="flex flex-wrap items-center gap-1">
+              {scoreLabel !== null && (
+                <Badge
+                  variant="outline"
+                  className="border-white/25 bg-white/15 text-chip-foreground tabular-nums"
+                >
+                  {scoreLabel}
+                </Badge>
+              )}
+              <Badge
+                variant="outline"
+                className="border-white/25 bg-white/15 text-chip-foreground tabular-nums"
+              >
+                Self usage:{" "}
+                {selfConsumptionPct === null
+                  ? "\u2014"
+                  : `${Math.round(selfConsumptionPct)}%`}
+              </Badge>
+            </div>
           </div>
           <CardTitle
             className={`${STAT_HEADLINE} ${
@@ -503,35 +530,45 @@ function TodayBatteryChart({
 // on narrow widths), one compact card each, riding the shared summary
 // cycle and the weather forecast for the solar curve.
 // The solar card: its own summary slice plus the hourly weather
-// forecast's estimated PV, refreshed with the panel cycle and the
-// header refresh button.
+// forecast's estimated PV and today's solar score from the daily
+// forecast, refreshed with the panel cycle, the header refresh
+// button and the wake-up catch-up.
 export function TodaySolarCard() {
   const { summary, status } = useSummary();
   const { dateKey, elapsedHours } = useAmsterdamDayNow();
 
   // The solar forecast curve for the compact solar chart: the hourly
   // weather endpoint's estimated PV per hour; null keeps the chart on
-  // the actual production only. State is only updated after the
-  // await, so this is safe to call from effects.
+  // the actual production only. The same load reads today's solar
+  // score from the daily endpoint (fetchWeatherDaily(1), the call the
+  // retired forecast widget used) for the header chip; null hides the
+  // chip. Each call fails soft on its own. State is only updated
+  // after the await, so this is safe to call from effects.
   const [forecastHours, setForecastHours] = useState<WeatherHour[] | null>(
     null,
   );
-  const loadForecast = useCallback(async () => {
-    try {
-      const result = await fetchWeatherHourly(todayInAmsterdam());
-      setForecastHours(result.hours);
-    } catch {
-      setForecastHours(null);
-    }
+  const [solarScore, setSolarScore] = useState<number | null>(null);
+  const loadWeather = useCallback(async () => {
+    const dateKey = todayInAmsterdam();
+    const [hourlyResult, daysResult] = await Promise.all([
+      fetchWeatherHourly(dateKey).catch(() => null),
+      fetchWeatherDaily(1).catch(() => null),
+    ]);
+    setForecastHours(hourlyResult?.hours ?? null);
+    setSolarScore(
+      daysResult === null ? null : todaySolarScore(daysResult, dateKey),
+    );
   }, []);
 
   useEffect(() => {
     // eslint-disable-next-line react/set-state-in-effect
-    void loadForecast();
-  }, [loadForecast]);
+    void loadWeather();
+  }, [loadWeather]);
 
-  // Re-fetch when the header refresh button fires.
-  useDataRefreshListener(() => void loadForecast());
+  // Re-fetch when the header refresh button fires, and catch up
+  // immediately when the kiosk tab wakes up or the network returns.
+  useDataRefreshListener(() => void loadWeather());
+  useRefetchOnWake(() => void loadWeather());
 
   return (
     <TodaySolarChart
@@ -542,6 +579,7 @@ export function TodaySolarCard() {
       producedKwh={summary?.today.pv_kwh ?? null}
       selfConsumptionPct={summary?.today.self_consumption_pct ?? null}
       pvW={summary?.flow.pv_w ?? null}
+      solarScore={solarScore}
       loading={status === "loading" && summary === null}
     />
   );

@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useState } from "react"
 import BatteryStatusWidget from "@/components/BatteryStatusWidget"
 import DataFreshnessLabel from "@/components/DataFreshnessLabel"
+import GasTodayCard from "@/components/GasTodayCard"
 import LiveUsageCard from "@/components/LiveUsageCard"
 import MonologueCard from "@/components/MonologueCard"
 import PageLayout from "@/components/PageLayout"
 import PricesWidget from "@/components/PricesWidget"
 import SavedEarnedCard from "@/components/SavedEarnedCard"
-import SolarForecastWidget from "@/components/SolarForecastWidget"
 import StatsHeader from "@/components/StatsHeader"
 import { TodayBatteryCard, TodaySolarCard } from "@/components/TodayCharts"
 import {
@@ -104,7 +104,7 @@ function TodayPage() {
           row, every cell the same height, two rows - Live power (the
           breathing circle combining the live draw with the renewable
           grid share) leading, then Saved and earned, From the grid,
-          Home usage, Solar forecast, Solar today, Battery status,
+          Home usage, Gas/heating, Solar today, Battery status,
           Battery today. All eight slots fill. The layout steps with
           the viewport: phones stack one card per row, tablets from
           768px take two per row (four rows), and from 1024px the
@@ -113,7 +113,7 @@ function TodayPage() {
         <LiveUsageCard />
         <SavedEarnedCard />
         <StatsHeader />
-        <SolarForecastWidget />
+        <GasTodayCard />
         <TodaySolarCard />
         <BatteryStatusWidget />
         <TodayBatteryCard />
