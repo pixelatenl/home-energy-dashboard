@@ -129,6 +129,7 @@ function TodayPage() {
           field absent the area renders nothing at all and the prices
           widget stands alone. */}
       <div className="grid gap-4 lg:grid-cols-2">
+        <PricesWidget />
         <MonologueCard
           sections={monologue}
           reasoning={insight?.state === "reasoning"}
@@ -141,7 +142,7 @@ function TodayPage() {
             triggerDataRefresh()
           }}
         />
-        <PricesWidget />
+
       </div>
     </PageLayout>
   )
