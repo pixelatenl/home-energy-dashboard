@@ -106,7 +106,8 @@ interface UsageSlotChartProps {
   isCurrent: boolean;
 }
 
-// The per-slot chart (docs/spec.md section 8): one bar per slot -
+// The per-slot chart (docs/spec.md section 8), titled Electricity
+// usage like the gas chart is titled Gas usage: one bar per slot -
 // hourly for day periods, daily for weeks and months, monthly for
 // years - showing the slot's total electricity consumption, rounded
 // tops, on a full-period axis (slots without data yet sit empty).
@@ -170,12 +171,9 @@ function UsageSlotChart({
       : -1;
 
   const hovered = hoveredIndex !== null ? (slots[hoveredIndex] ?? null) : null;
-  const title =
-    unit === "hour"
-      ? "Hourly usage"
-      : unit === "day"
-        ? "Daily usage"
-        : "Monthly usage";
+  // The fixed panel title, mirroring the gas chart's "Gas usage": the
+  // granularity lives in the description beneath it.
+  const title = "Electricity usage";
   const tickLabel = (value: number): string =>
     mode === "energy"
       ? step < 1

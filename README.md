@@ -47,7 +47,7 @@ The /live page carries the live energy flow hero alone, with a Back to today lin
 
 The spoke pages share a period navigator (segmented Day/Week/Month/Year control, arrows, Today button, URL params) and a global Energy/Cost mode (URL `mode` param; the mode toggle restyles figures without a refetch):
 
-- Usage - a stat card row (Electricity usage, Net grid, Saved and earned, Gas/heating, Self usage), the appliance treemap with the Rest of your home card (the data-derived base load and static home-model entries, an honest unexplained remainder), a per-slot totals chart with a price line overlay, and beneath it the gas slot chart card (gas per slot with a €/m³ price overlay, from `GET /api/heat/gas`).
+- Usage - a stat card row (Electricity usage, Net grid, Saved and earned, Gas/heating, Self usage), the appliance treemap with the Rest of your home card (the data-derived base load and static home-model entries, an honest unexplained remainder), an Electricity usage per-slot chart with a price line overlay, and beneath it the gas slot chart card (gas per slot with a €/m³ price overlay, from `GET /api/heat/gas`).
 - Solar - the PV production chart (energy/cost mode aware, export earnings at Zonneplan's dynamic return price) and the five-day forecast with the hourly strip.
 - Battery - the period-anchored charge/discharge flow (hourly on a day, daily on week and month, monthly on a year), the SOC gauge and status block while the period contains now, and the totals as stat rows.
 - Heat - the nine-zone temperature/setpoint timeline with the outdoor reference and inferred heating intervals, the gas section (mode-aware m3/EUR), and the hybrid heating cost model (gas as the cost basis, the heat pump route as visible estimates).

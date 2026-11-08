@@ -514,8 +514,9 @@ stays available). The strip is the predecessor of the U6 widget 1.
 ## 8. The per-slot chart (Usage tab)
 
 The full-width chart beneath the two-column area, with the shared
-PanelHeader: one neutral bar per slot showing the slot's total
-household consumption - the same five-counter formula as the period
+PanelHeader, titled Electricity usage (the gas chart beneath it is
+titled Gas usage): one neutral bar per slot showing the slot's total
+electricity consumption - the same five-counter formula as the period
 total (section 1), computed per slot and floored at zero - so the
 bars sum to the period total within that floor.
 
