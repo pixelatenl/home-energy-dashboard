@@ -16,10 +16,12 @@ import { usePeriod } from "@/lib/usePeriod";
 // First local day with heat data, matching the server's dataStart.
 const HEAT_DATA_START = "2026-10-12";
 
-// The heat and hot water spoke. The hero is the zone timeline; the gas
-// section below carries the mode-aware usage and cost. Heating
-// intervals are inferred from the setpoint gap (captioned in the
-// hero); the gas footnote covers the post-midnight gap.
+// The heat and hot water spoke. The gas chart leads, carrying the
+// mode-aware usage and cost; the zone timeline follows with per-zone
+// temperatures and heating intervals; the heating cost card closes
+// the page. Heating intervals are inferred from the setpoint gap
+// (captioned in the timeline); the gas footnote covers the
+// post-midnight gap.
 function HeatPage() {
   const { period, isCurrent } = usePeriod();
   const hasData = periodHasData(period, HEAT_DATA_START);
@@ -30,7 +32,7 @@ function HeatPage() {
   return (
     <PageLayout
       title="Heat"
-      subtitle="Zones, gas and heating cost"
+      subtitle="Gas, zones and heating cost"
       toolbar={
         <div className="flex flex-wrap items-center gap-2">
           <PeriodNavigator />
@@ -46,6 +48,7 @@ function HeatPage() {
         </Card>
       ) : (
         <>
+          <GasSection data={gas.data} status={gas.status} />
           <SkeletonReveal
             loading={zones.status === "loading" && zones.data === null}
             skeleton={
@@ -78,7 +81,6 @@ function HeatPage() {
               />
             ) : null}
           </SkeletonReveal>
-          <GasSection data={gas.data} status={gas.status} />
           <HeatingModelCard data={model.data} status={model.status} />
         </>
       )}

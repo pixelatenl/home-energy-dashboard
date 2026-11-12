@@ -1,3 +1,5 @@
+import { Calculator } from "lucide-react";
+import PanelHeader from "@/components/PanelHeader";
 import { Card, CardContent } from "@/components/ui/card";
 import SkeletonReveal from "@/components/SkeletonReveal";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -24,16 +26,19 @@ function HeatingModelCard({
   data: HeatModelData | null;
   status: "loading" | "ok" | "error";
 }) {
-  // The card's shape-matched skeleton: the title line, then the
-  // two route columns with their big values and supporting lines.
-  // The reveal sits in the same tree position for every branch; an
-  // error is not loading.
+  // The card's shape-matched skeleton: the PanelHeader's two
+  // lines, then the two route columns with their big values and
+  // supporting lines. The reveal sits in the same tree position
+  // for every branch; an error is not loading.
   const loading = status === "loading" && data === null;
   const skeleton = (
     <Card className="min-h-48" aria-busy="true">
+      <div className="grid auto-rows-min items-start gap-1 px-4">
+        <Skeleton className="h-[24.75px] w-28" />
+        <Skeleton className="h-5 w-96" />
+      </div>
       <CardContent>
-        <Skeleton className="h-5 w-28" />
-        <div className="mt-3 grid gap-6 sm:grid-cols-2">
+        <div className="grid gap-6 sm:grid-cols-2">
           {[0, 1].map((index) => (
             <div key={index} className="flex flex-col gap-1">
               <Skeleton className="h-5 w-20" />
@@ -69,9 +74,15 @@ function HeatingModelCard({
   return (
     <SkeletonReveal loading={false} skeleton={skeleton}>
       <Card>
+        <PanelHeader
+          icon={Calculator}
+          title="Heating cost"
+          description="Cost per kWh of heat for the period, gas route versus heat pump estimate"
+        />
         <CardContent>
-          <p className="text-sm font-medium">Heating cost</p>
-          <div className="mt-3 grid gap-6 sm:grid-cols-2">
+          {/* No top margin: the card's own header gap seats the
+            block, as in the gas and zones panels. */}
+          <div className="grid gap-6 sm:grid-cols-2">
             <div className="space-y-2">
               <p className="text-sm font-medium">Gas</p>
               {gas.cost_per_kwh_heat === null ? (
