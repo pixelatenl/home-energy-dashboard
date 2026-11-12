@@ -114,7 +114,6 @@ The API server listens on port 5273 and the Vite dev server on 5173; the fronten
 - `GET /api/solar/production?period=day|week|month|year&date=YYYY-MM-DD` - PV production per interval with the self-consumption avoided cost, the hourly disposition split (to home, to grid, to battery), export earnings at the dynamic return price, and the `returnPricing` meta
 - `GET /api/prices?days=N` - merged hourly price curve (today plus N-1 more days, default 2) with per-day stats and the cheapest 3-hour window
 - `GET /api/prices/cheapest?hours=N` - the cheapest N consecutive hours from now, by average price
-- `GET /api/prices/context` - a short AI-generated commentary on the price curve, or `text: null` when unavailable
 - `GET /api/battery/flow?period=day|week|month|year&date=YYYY-MM-DD` - the period-anchored battery charge/discharge flow: hourly buckets with the SOC series on a day, daily aggregates on week and month, monthly on year; money figures (charge cost, discharge value, arbitrage) priced bottom-up at the dynamic hourly price. No params means today
 - `GET /api/battery/context` - a short AI-generated commentary on the battery state, or `text: null` when unavailable
 - `GET /api/weather/daily?days=N` - per-day forecast starting today (default 5, max 6): weather code, min/max temperature, solar score (0-100), estimated PV kWh, sunrise, sunset; today's row also carries `actual_today_kwh`, the PV production so far today (null before any production)
@@ -129,7 +128,7 @@ The frontend consumes these through the typed client in `src/lib/api.ts`.
 
 ### Your Advisor
 
-The advisory is the hub's single deciding AI voice (the weather, prices and battery boxes are explaining voices; they only contextualize their own widget). It is a per-section monologue - day labels as the only structural element, continuous narrative paragraphs, fallback sentences when a section fails validation - composed from one facts layer so insight and data cannot disagree:
+The advisory is the hub's single deciding AI voice (the weather and battery boxes are explaining voices; they only contextualize their own widget). It is a per-section monologue - day labels as the only structural element, continuous narrative paragraphs, fallback sentences when a section fails validation - composed from one facts layer so insight and data cannot disagree:
 
 - The server computes every number exactly: the action candidates (an appliance with at least 0.5 kWh today against the cheapest remaining window, or a battery discharge), their savings, the timing guidance (the cheapest remaining window), the day-ahead advisory and the week outlook from the merged price and forecast data. The model never computes or invents a number, so no number can be fabricated.
 - The Mistral model authors only the monologue section prose: it weaves the served figures verbatim, figure-verbatim validates each section's narrative against that section's own fact set, a rejection retries once with the readable rejection reasons as feedback, and a second rejection serves the section's deterministic fallback sentences. The horizon note and the positive and negative weather-derived advice lines are server-owned and never model-written.

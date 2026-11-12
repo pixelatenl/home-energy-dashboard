@@ -19,7 +19,6 @@ import {
   fetchDailyInsight,
   fetchDebugTime,
   fetchInsightDebug,
-  fetchPriceContext,
   fetchPrices,
   fetchSummary,
   fetchWeatherContext,
@@ -139,13 +138,6 @@ const ENDPOINTS: EndpointSpec[] = [
     description: "Cheapest N consecutive hours from now, by average price",
     params: [{ key: "hours", label: "hours", fallback: 3, max: 12 }],
     run: (args) => fetchCheapestBlock(args.hours),
-  },
-  {
-    key: "prices-context",
-    label: "GET /api/prices/context",
-    description: "AI-generated insight over the price curve",
-    params: [],
-    run: () => fetchPriceContext(),
   },
   {
     key: "weather-daily",

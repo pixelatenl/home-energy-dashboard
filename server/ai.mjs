@@ -1,5 +1,5 @@
 // Insights for the dashboard widgets: compact context builders for the
-// weather and prices widgets, a shared Mistral client with per-insight
+// weather and battery widgets, a shared Mistral client with per-insight
 // response caching, a per-insight 30-minute upstream throttle and one shared
 // daily call cap. The summary insight is generated through the advisory core
 // (server/advisory/); the request is prepared by advisory-adapter.mjs. The
@@ -11,7 +11,7 @@ import {
   localHourIndex,
   localHourLabel,
 } from "./time.mjs";
-import { guardNonFiniteText, guardTomorrowPrice } from "./advisory/narrative-guards.mjs";
+import { guardNonFiniteText } from "./advisory/narrative-guards.mjs";
 import { generateAdvisoryCard } from "./advisory/advisory-core.mjs";
 import { MONOLOGUE_STYLE_BRIEF } from "./advisory/advisory-monologue.mjs";
 import {
@@ -24,7 +24,7 @@ const MISTRAL_URL = "https://api.mistral.ai/v1/chat/completions";
 const MISTRAL_MODEL = "mistral-small-latest";
 const REQUEST_TIMEOUT_MS = 15_000;
 // At most one upstream call per 30 minutes per insight: the throttle for
-// the weather, prices and battery widget paths.
+// the weather and battery widget paths.
 const MIN_CALL_INTERVAL_MS = 30 * 60 * 1000;
 // The summary insight regenerates in step with the live view, so its
 // own throttle is tighter: 5 minutes by default, overridable via
@@ -49,24 +49,6 @@ const WEATHER_SYSTEM_PROMPT =
   "coming days are for solar production, when production peaks today, and " +
   "one practical tip about timing energy use. Be concrete, no marketing " +
   "tone, no emoji.";
-
-const PRICE_SYSTEM_PROMPT =
-  "You are the assistant of a home energy dashboard in the Netherlands " +
-  "with a dynamic electricity contract and solar panels. Given price and " +
-  "production data, reply in 2 to 3 short sentences: how grid prices " +
-  "develop between today and tomorrow (only when the context contains " +
-  "tomorrow's prices; otherwise focus on today and today's remaining " +
-  "hours), when the cheapest window is, and one practical tip that " +
-  "combines cheap grid hours with the sun's production peak " +
-  "(self-consumption is free). Every sentence must refer to one single " +
-  "coherent time frame: never combine a window on one day with prices " +
-  "or solar production from another day. Never call appliances " +
-  "solar-heavy; appliances are flexible or not. Advise to run flexible " +
-  "appliances during the solar production peak to increase " +
-  "self-consumption. Only state numbers that are present in the " +
-  "provided context. If data for a period is unavailable, do not " +
-  "reference that period, do not estimate, and do not invent values. " +
-  "Be concrete, no marketing tone, no emoji.";
 
 const BATTERY_SYSTEM_PROMPT =
   "You are the assistant of a home energy dashboard in the Netherlands " +
@@ -122,112 +104,6 @@ export function buildWeatherContext(daily, hourlyResult) {
 
 // Hour label "HH:00" for an ISO timestamp in Europe/Amsterdam is provided
 // by server/time.mjs (localHourLabel).
-
-// Compact price summary for the model. solarDaily is optional and omitted
-// when the weather data is unavailable. Tomorrow's price section exists
-// only when tomorrow's prices are genuinely published (rows in the
-// merged curve); otherwise the context carries the explicit unpublished
-// note instead, so the model is never offered a tomorrow slot to fill.
-// Every money value is rounded to display precision - two decimals -
-// so the model can only ever quote prices the way humans read them;
-// the payload outside the AI context keeps its full precision.
-export function buildPriceContext(priceParts, solarDaily) {
-  const priceData = priceParts?.priceData ?? null;
-  const cheapestBlock = priceParts?.cheapestBlock ?? null;
-  const tomorrowAvailable = priceParts?.tomorrowPricesAvailable === true;
-  const eur = (value) =>
-    value === null || value === undefined
-      ? null
-      : Math.round(value * 100) / 100;
-  const context = {
-    current_price: eur(priceData?.current_price ?? null),
-    today: {
-      average: eur(priceData?.today?.average ?? null),
-      min: eur(priceData?.today?.min ?? null),
-      max: eur(priceData?.today?.max ?? null),
-      peak_hour: priceData?.today?.peak_hour ?? null,
-    },
-    cheapest_window: cheapestBlock
-      ? {
-          day: localDateKey(new Date(cheapestBlock.start)),
-          start_hour: localHourLabel(cheapestBlock.start),
-          end_hour: localHourLabel(cheapestBlock.end),
-          average_price: eur(cheapestBlock.average_price),
-        }
-      : null,
-  };
-  if (tomorrowAvailable) {
-    context.tomorrow = {
-      available: true,
-      average: eur(priceData?.tomorrow?.average ?? null),
-      min: eur(priceData?.tomorrow?.min ?? null),
-      max: eur(priceData?.tomorrow?.max ?? null),
-    };
-  } else {
-    context.tomorrow_note =
-      "Tomorrow's prices are not published yet; they become available " +
-      "later today. Do not mention or estimate tomorrow's prices.";
-  }
-  if (solarDaily) {
-    context.solar_today = solarDaily;
-  }
-  return context;
-}
-
-
-// Detects a false denial of today's cheapest window while it exists in
-// the context - the model sometimes claims the window is unavailable,
-// right after being told that tomorrow's prices are not published.
-export function deniesCheapestWindow(text) {
-  return (
-    /cheapest[^.!?]{0,80}(not available|unavailable|not (?:be )?determin|missing|cannot)/i.test(
-      text
-    ) || /no cheapest (window|hours?)/i.test(text)
-  );
-}
-
-// Deterministic price insight from the merged data, served when the
-// model output fails validation or the upstream is unavailable: plain
-// today-only facts, never contradicting the price widget.
-export function priceFallbackText(priceParts) {
-  const priceData = priceParts?.priceData ?? null;
-  if (!priceData) {
-    return null;
-  }
-  const tomorrowAvailable = priceParts?.tomorrowPricesAvailable === true;
-  const eur = (value) =>
-    value === null || value === undefined
-      ? null
-      : `€${(Math.round(value * 1000) / 1000).toFixed(3)}/kWh`;
-  const sentences = [];
-  if (priceData.current_price != null) {
-    sentences.push(`The current grid price is ${eur(priceData.current_price)}.`);
-  }
-  if (priceData.today?.average != null) {
-    sentences.push(
-      `Today's average is ${eur(priceData.today.average)}` +
-        (priceData.today.peak_hour
-          ? `, peaking around ${priceData.today.peak_hour}`
-          : "") +
-        "."
-    );
-  }
-  const block = priceParts?.cheapestBlock;
-  if (block) {
-    sentences.push(
-      `The cheapest window is ${localHourLabel(block.start)}-` +
-        `${localHourLabel(block.end)} on ` +
-        `${dayLabel(localDateKey(new Date(block.start)))} at ` +
-        `${eur(block.average_price)} on average.`
-    );
-  }
-  sentences.push(
-    tomorrowAvailable
-      ? "Tomorrow's prices are published."
-      : "Tomorrow's prices are not published yet; they become available later today."
-  );
-  return sentences.filter(Boolean).join(" ");
-}
 
 // "Sat 11 Oct" for a local "YYYY-MM-DD" date key. Parsed and formatted at
 // UTC noon so the label never depends on the server's ambient timezone.
@@ -305,8 +181,8 @@ function parseInsightJson(text) {
 
 // Shared daily budget for every insight widget against
 // MISTRAL_DAILY_CALL_LIMIT (read from the environment, default 100). The
-// counter is per UTC day and in-memory; all four insight widgets (summary,
-// prices, weather, battery) draw from the same budget.
+// counter is per UTC day and in-memory; all insight widgets (summary,
+// weather, battery) draw from the same budget.
 export function getMistralBudget() {
   const utcDay = new Date().toISOString().slice(0, 10);
   const rawLimit = Number.parseInt(
@@ -462,61 +338,6 @@ export async function getWeatherContext(daily, todayHourly, options = {}) {
       validate: (text) => guardNonFiniteText(text).ok,
     }
   );
-}
-
-export async function getPriceContext(priceParts, solarDaily, options = {}) {
-  const context = buildPriceContext(priceParts, solarDaily);
-  // The cache key follows the context, so it changes the moment
-  // tomorrow's prices are published and the insight can legitimately
-  // start referencing them.
-  const cacheKey = hashString(JSON.stringify(context));
-  const tomorrowAvailable = priceParts?.tomorrowPricesAvailable === true;
-  const cheapestExists = priceParts?.cheapestBlock != null;
-  // The answer is checked against what the context actually contains:
-  // NaN or Infinity is always rejected (the model inventing a value
-  // the context does not have); while tomorrow is unpublished,
-  // tomorrow price claims are rejected; while today's cheapest window
-  // exists, denials of it are rejected. A failure is re-asked once
-  // with the corrective instruction; a second failure degrades to the
-  // deterministic fallback below, never contradicting the widget.
-  const validators = [(text) => guardNonFiniteText(text).ok];
-  const correctionNotes = [
-    "Never print NaN or Infinity; omit any value that is missing " +
-      "from the context instead of inventing it.",
-  ];
-  if (!tomorrowAvailable) {
-    validators.push((text) => guardTomorrowPrice(text).ok);
-    correctionNotes.push(
-      "Tomorrow's prices are not published and must never be mentioned " +
-        "or estimated; you may note that tomorrow's prices are not " +
-        "published yet."
-    );
-  }
-  if (cheapestExists) {
-    validators.push((text) => !deniesCheapestWindow(text));
-    correctionNotes.push(
-      "Today's cheapest window is present in the context; state it " +
-        "exactly as given."
-    );
-  }
-  const result = await getInsight("prices", PRICE_SYSTEM_PROMPT, cacheKey, context, {
-    force: options.force === true,
-    validate:
-      validators.length > 0
-        ? (text) => validators.every((check) => check(text))
-        : null,
-    corrective:
-      correctionNotes.length > 0
-        ? `Your previous answer was rejected. ${correctionNotes.join(" ")} Answer again using only the provided context.`
-        : null,
-  });
-  if (result.error) {
-    const fallback = priceFallbackText(priceParts);
-    if (fallback) {
-      return { text: fallback, generatedAt: null, error: null };
-    }
-  }
-  return result;
 }
 
 // Compact battery context for the model: the snapshot, the range

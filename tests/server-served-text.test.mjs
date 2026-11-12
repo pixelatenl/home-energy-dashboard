@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { eurFactText, priceFallbackText } from "../server/ai.mjs";
+import { eurFactText } from "../server/ai.mjs";
 import {
   buildAdvisory,
   buildCandidates,
@@ -13,7 +13,7 @@ import {
 // never the three-letter code - both applied at server composition
 // time, never by frontend substitution. The advisory card's own
 // sentences are audited by the core (server/advisory/); this file
-// covers the sentences the facts layer and the price box compose.
+// covers the sentences the facts layer composes.
 
 function partsFixture({
   windowStart = "2027-06-15T12:00:00+02:00",
@@ -58,13 +58,6 @@ function servedSentences() {
     []
   );
   return [
-    priceFallbackText({
-      priceData: {
-        current_price: 0.123,
-        today: { average: 0.36, peak_hour: "08:00" },
-      },
-      tomorrowPricesAvailable: false,
-    }),
     outlook.best_solar_day?.line,
     outlook.poor_day?.line,
     outlook.poor_day?.advice,
@@ -75,11 +68,11 @@ function servedSentences() {
 
 describe("the served-sentence audit", () => {
   it("covers every served sentence type", () => {
-    // Six sentence types: the price fallback, the best and poor
-    // outlook lines, the poor day's advice, the candidate basis and
-    // the defer horizon note. The advisory card's own sentences are
-    // audited by the core's served-text audit.
-    assert.equal(servedSentences().length, 6);
+    // Five sentence types: the best and poor outlook lines, the poor
+    // day's advice, the candidate basis and the defer horizon note.
+    // The advisory card's own sentences are audited by the core's
+    // served-text audit.
+    assert.equal(servedSentences().length, 5);
   });
 
   it("opens every served sentence with a capital letter, or a figure or symbol", () => {

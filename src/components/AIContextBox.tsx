@@ -4,7 +4,7 @@ import SkeletonReveal from "@/components/SkeletonReveal";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Sparkles } from "lucide-react";
 
-// Insight box shared by the weather, prices and battery widgets:
+// Insight box shared by the weather and battery widgets:
 // the advisory panel's own surface in miniature - the dark-to-warm
 // AI gradient under the app's glass pane (blur, saturation, top
 // seam), the nested inset rounding and the card elevation, no

@@ -7,11 +7,9 @@ import { shutdown } from "./db.mjs";
 import {
   getBatteryContext,
   getMistralBudget,
-  getPriceContext,
   getSummaryInsight,
   getWeatherContext,
   peekSummaryInsight,
-  topProductionHours,
 } from "./ai.mjs";
 import { buildContextSnapshot } from "./context.mjs";
 import {
@@ -231,37 +229,6 @@ app.get(
       hours = parsed;
     }
     res.json(await getCheapestBlock(hours));
-  })
-);
-
-app.get(
-  "/api/prices/context",
-  asyncHandler(async (req, res) => {
-    const force = req.query.force === "1" || req.query.force === "true";
-    const priceParts = await getPriceContextData();
-    // Optional solar summary from the weather module; omitted when the
-    // weather data is unavailable rather than failing the request.
-    let solarDaily = null;
-    try {
-      const daily = await dailyForecast(5);
-      const todayKey = localDateKey(new Date());
-      const todayEntry = daily.find((day) => day.date === todayKey) ?? null;
-      const hourlyResult = await weatherHourly(todayKey);
-      if (todayEntry && hourlyResult?.hours?.length) {
-        solarDaily = {
-          estimated_kwh: todayEntry.estimated_kwh,
-          top_production_hours: topProductionHours(hourlyResult.hours),
-        };
-      }
-    } catch {
-      solarDaily = null;
-    }
-    const result = await getPriceContext(priceParts, solarDaily, { force });
-    res.json({
-      text: result.text,
-      generated_at: result.generatedAt,
-      error: result.error,
-    });
   })
 );
 

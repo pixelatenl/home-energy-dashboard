@@ -313,9 +313,9 @@ export async function getCheapestBlock(size) {
   return cheapestFromEntries(entries, currentHourMs, size);
 }
 
-// Compact data for the AI price insight: current price, per-day stats with
-// the peak hour, tomorrow availability, and the cheapest block. All values
-// come from the cached merged curve.
+// Compact price data for the AI contexts and the advisory facts: current
+// price, per-day stats with the peak hour, tomorrow availability, and the
+// cheapest block. All values come from the cached merged curve.
 export async function getPriceContextData() {
   const summary = await getPriceSummary(HORIZON_DAYS);
   const {

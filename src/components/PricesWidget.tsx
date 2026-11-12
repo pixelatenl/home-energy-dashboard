@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useState, type MouseEvent } from "react";
-import AIContextBox from "@/components/AIContextBox";
 import PanelHeader from "@/components/PanelHeader";
 import SkeletonReveal from "@/components/SkeletonReveal";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -7,13 +6,11 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Euro } from "lucide-react";
 import {
-  fetchPriceContext,
   fetchPrices,
   type CheapestBlock,
   type PriceHour,
   type PriceSource,
 } from "@/lib/api";
-import { useAiContext } from "@/lib/useAiContext";
 import { useDataRefreshListener } from "@/lib/useDataRefresh";
 import {
   amsterdamNow,
@@ -363,7 +360,6 @@ function blockLabel(block: CheapestBlock): string {
 }
 
 function PricesWidget() {
-  const priceContext = useAiContext(fetchPriceContext);
   const [summary, setSummary] = useState<Awaited<
     ReturnType<typeof fetchPrices>
   > | null>(null);
@@ -432,9 +428,9 @@ function PricesWidget() {
       : null;
 
   // The skeleton mirrors the panel's composition - header, three
-  // stat columns, the two chart blocks with their captions, the
-  // legend row and the AI context box - so the panel keeps its
-  // height while loading and nothing shifts when the prices land.
+  // stat columns, the two chart blocks with their captions and the
+  // legend row - so the panel keeps its height while loading and
+  // nothing shifts when the prices land.
   const skeleton = (
     <Card aria-busy="true">
       <div className="flex flex-col gap-1 px-4 pt-4">
@@ -468,7 +464,6 @@ function PricesWidget() {
           <Skeleton className="mt-1 h-4 w-1/2" />
         </div>
         <Skeleton className="h-5 w-48" />
-        <Skeleton className="h-24 w-full rounded-inset" />
       </CardContent>
     </Card>
   );
@@ -587,8 +582,6 @@ function PricesWidget() {
               </div>
 
               <PriceChartLegend />
-
-              <AIContextBox {...priceContext} />
             </>
           )}
         </CardContent>

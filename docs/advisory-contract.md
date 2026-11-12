@@ -1,6 +1,6 @@
 # Your Advisor Card Contract
 
-Version 2.0, 20 October 2026. This document is the source of truth for the Your Advisor card, its model context, its model output and the separation of the four AI consumers. It supersedes the advisory sections of `docs/advisory-spec.md` for everything listed here; the spec keeps its purpose statement, the rendering structure and the visual rules. Every prompt that touches the advisory must respect this contract.
+Version 2.0, 20 October 2026. This document is the source of truth for the Your Advisor card, its model context, its model output and the separation of the three AI consumers. It supersedes the advisory sections of `docs/advisory-spec.md` for everything listed here; the spec keeps its purpose statement, the rendering structure and the visual rules. Every prompt that touches the advisory must respect this contract.
 
 **Stage 3b note.** The legacy summary insight path is removed. The advisory core under `server/advisory/`, wrapped by `server/advisory-adapter.mjs`, is the only advisory pipeline; every insight endpoint serves the composed card through the adapter, and the model-authored slots are exactly `warning` and `contextNote`.
 
@@ -12,18 +12,19 @@ Version 2.0, 20 October 2026. This document is the source of truth for the Your 
 
 The Your Advisor card helps the household interpret the energy data on screen and act on it: what is happening today, what happened today after the evening pivot, what might happen tomorrow, and what the rest of the five-day forecast holds. It states when to run large appliances, when prices are cheapest, whether off-peak prices are low or high, and how to avoid cost by shifting usage. It is honest by construction: every number is server-computed, and the model writes prose only.
 
-## 2. Architecture: one facts layer, four consumers
+## 2. Architecture: one facts layer, three consumers
 
 **Facts layer (single writer).** One server layer owns the computed facts: the price curve with low and peak (each with its own timestamp), the cheapest remaining window and its average, the spread per kWh, the practical benefit against the day average, the peak threshold, battery state and throughput, solar actuals and forecast per day, appliance candidates with exact savings, CO2 intensity, the day-cheapest window and whether it has passed, and the evening pivot decision. Its builders currently live in `context.mjs` and are consolidated into `facts.mjs` during integration without behavior change. Every consumer reads from this layer; no consumer assembles its own view of the same data.
 
-**Consumers.** Four model calls, each with a narrow context carved from the facts layer by exactly one function:
+**Consumers.** Three model calls, each with a narrow context carved from the facts layer by exactly one function:
 
 | Consumer | Role | Facts it may receive | Output |
 | --- | --- | --- | --- |
 | Advisory card | Decides and interprets | All sections of section 3 | Optional per-section narratives, warning, contextNote |
-| Prices box | Explains the prices widget | Current price, today stats, cheapest window, tomorrow availability and stats, solar peak hours | 2 to 3 sentences |
 | Weather box | Explains the forecast | Daily forecast, top production hours, current conditions | 2 to 3 sentences |
 | Battery box | Explains the battery | SOC, state, power, today/week/month throughput, hourly flow, solar forecast | 2 to 3 sentences |
+
+The prices box is decommissioned (the advisory is the one advisory voice for prices): its endpoint, prompt, context builder and guards are removed, and the prices widget renders no AI box. The price facts it consumed stay in the facts layer for the advisory card and the battery box.
 
 **Separation rules (standing, apply to all future passes):**
 

@@ -916,12 +916,6 @@ export interface WeatherContext {
   error: string | null
 }
 
-export interface PriceContext {
-  text: string | null
-  generated_at: string | null
-  error: string | null
-}
-
 export interface BatteryContext {
   text: string | null
   generated_at: string | null
@@ -1058,28 +1052,6 @@ export function fetchCheapestBlock(hours = 3): Promise<CheapestBlock | null> {
   return getJson<CheapestBlock | null>(
     withParams("/api/prices/cheapest", { hours })
   )
-}
-
-let priceContextCache: { fetchedAt: number; value: PriceContext } | null =
-  null
-
-// Fetches the price insight at most once every 30 minutes; the
-// module-level cache means remounts never trigger a new request. With
-// force, the cache is bypassed and the server is asked to regenerate.
-export function fetchPriceContext(force = false): Promise<PriceContext> {
-  if (
-    !force &&
-    priceContextCache &&
-    Date.now() - priceContextCache.fetchedAt < CONTEXT_CACHE_MS
-  ) {
-    return Promise.resolve(priceContextCache.value)
-  }
-  return getJson<PriceContext>(
-    withParams("/api/prices/context", force ? { force: "1" } : {})
-  ).then((value) => {
-    priceContextCache = { fetchedAt: Date.now(), value }
-    return value
-  })
 }
 
 let batteryContextCache: { fetchedAt: number; value: BatteryContext } | null =
