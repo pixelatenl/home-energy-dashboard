@@ -374,7 +374,7 @@ Checker comparison constants stay in `checker.mjs` only.
 
 **Scope.** This section is the one authority for the per-section AI context boxes on the spoke pages: the `usage_context`, `heat_context` and `solar_production` widget ids. The hub advisory contract (sections 1 to 10) is unchanged by it; every narrator of a context box reads this section instead of prompt history. The existing weather box on the Solar page and battery box on the Battery page remain governed by their current implementation and are out of scope for this contract in this pass.
 
-**Register.** Context boxes speak in an interpretive voice, second person, in household words. Light advice is allowed only when the section's facts carry a server-computed verdict or opportunity field. Advice sentences are declarative and comparative, for example "the heat pump estimate is currently the cheaper route at EUR 0.05 versus EUR 0.09 per kWh of heat". Imperative-mood sentences are banned in context boxes.
+**Register.** Context boxes speak in an interpretive voice, second person, in household words. Light advice is allowed only when the section's facts carry a server-computed verdict or opportunity field. Advice sentences are declarative and comparative, for example "the heat pump estimate is currently the cheaper route at €0.05 versus €0.09 per kWh of heat". Imperative-mood sentences are banned in context boxes.
 
 **Semantics.** Every fact set ships meaning hints alongside its figures. Energy figures are day or period totals, never live power. Forecast figures are whole-period totals, never "later" or "still to come".
 
