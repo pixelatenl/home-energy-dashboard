@@ -176,6 +176,61 @@ export function guardImperativeRegister(text, facts) {
 }
 
 // ---------------------------------------------------------------------------
+// The consistency view's checker rules per box type, applied to the
+// served text (the accepted narrative or the fallback sentences): every
+// figure must be a verbatim member of the section's own fact set, and a
+// verdict sentence (which route is cheaper) may appear only when the
+// section's facts carry the server-computed verdict field.
+// ---------------------------------------------------------------------------
+
+const VERDICT_CLAIM_RE =
+  /\bcheaper\b|\bcosts\s+less\b|\bbetter\s+route\b|\bbest\s+value\b|\bthe\s+cheaper\s+route\b/i;
+
+export function guardVerdictClaim(text, facts) {
+  const problems = [];
+  const verdictServed =
+    typeof facts?.verdict === "string" && facts.verdict !== "";
+  if (verdictServed) return { ok: true, problems };
+  for (const sentence of splitSentences(text)) {
+    const match = VERDICT_CLAIM_RE.exec(sentence);
+    if (match !== null) {
+      problems.push(
+        `verdict sentence ("${match[0]}" in "${sentence.trim()}") but no verdict fact is served to this section`
+      );
+    }
+  }
+  return { ok: problems.length === 0, problems };
+}
+
+// The consistency check for one section box: figure membership of the
+// served text in the section's own facts, plus the verdict-claim rule.
+// `section` carries { key, label, facts, narrative?, fallback_sentences? };
+// the served text is the narrative when present, else the fallbacks.
+export function checkContextBoxSection(section) {
+  const facts = section?.facts ?? {};
+  const narrative =
+    typeof section?.narrative === "string" && section.narrative.trim() !== ""
+      ? section.narrative
+      : null;
+  const served =
+    narrative ??
+    (Array.isArray(section?.fallback_sentences)
+      ? section.fallback_sentences.join(" ")
+      : "");
+  const reasons = [
+    ...validateNarrativeFigures(served, facts).problems,
+    ...guardVerdictClaim(served, facts).problems,
+  ];
+  return { key: section?.key ?? null, ok: reasons.length === 0, problems: reasons };
+}
+
+// The consistency view for a whole payload: one check result per
+// section box, in payload order.
+export function checkContextBoxConsistency(sections) {
+  return (Array.isArray(sections) ? sections : []).map(checkContextBoxSection);
+}
+
+// ---------------------------------------------------------------------------
 // The full pure check for one context-box section narrative: figure-verbatim
 // membership in this section's own fact set, the five context-box guards,
 // and the shared narrative guards (arithmetic, internal vocabulary,

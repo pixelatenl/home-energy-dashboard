@@ -294,13 +294,13 @@ function usageSections(pageFacts) {
       );
     }
     if (facts.price_stats !== null) {
-      const stats = compact([
-        facts.price_stats.min_eur,
-        facts.price_stats.max_eur,
-        facts.price_stats.average_eur,
-      ]);
-      if (stats.length > 0) {
-        fallbacks.push(`Prices per kWh ranged ${stats.join(" to ")}.`);
+      const { min_eur: min, max_eur: max, average_eur: avg } = facts.price_stats;
+      if (min !== null && max !== null && avg !== null) {
+        fallbacks.push(
+          `Prices per kWh ranged from ${min} to ${max}, averaging ${avg}.`
+        );
+      } else if (min !== null && max !== null) {
+        fallbacks.push(`Prices per kWh ranged from ${min} to ${max}.`);
       }
     }
     if (facts.comparison !== null) {
@@ -432,10 +432,12 @@ function heatSections(pageFacts) {
       );
     }
     const heatingParts = zones
-      .filter((zone) => zone.heating.count > 0)
+      .filter((zone) => Number(zone.heating.count) > 0)
       .map(
         (zone) =>
-          `${zone.name} heated for ${zone.heating.total_hours} across ${zone.heating.count} intervals`
+          `${zone.name} heated for ${zone.heating.total_hours} across ${zone.heating.count} ${
+            zone.heating.count === "1" ? "interval" : "intervals"
+          }`
       );
     if (heatingParts.length > 0) {
       fallbacks.push(`${heatingParts.join("; ")}.`);
@@ -755,6 +757,40 @@ export function contextBoxSignature(widgetId, pageFacts, anchor = {}) {
 const insightCaches = new Map(); // widgetId -> { signature, result }
 const lastCallAt = new Map(); // widgetId -> timestamp of the last upstream call
 
+// The rejection journal: a ring buffer per widget id holding the recent
+// guard rejections, mirrored from the log lines so the debug probe can
+// show them next to the served narratives. A fallback stays diagnosable
+// from the panel, not just the server log.
+const rejectionJournal = new Map(); // widgetId -> [{ at, key, attempt, reasons }]
+const JOURNAL_LIMIT = 20;
+
+export function contextBoxRejectionJournal(widgetId) {
+  return [...(rejectionJournal.get(widgetId) ?? [])];
+}
+
+function recordRejection(widgetId, key, attempt, reasons) {
+  const list = rejectionJournal.get(widgetId) ?? [];
+  list.push({ at: new Date().toISOString(), key, attempt, reasons: [...reasons] });
+  if (list.length > JOURNAL_LIMIT) list.splice(0, list.length - JOURNAL_LIMIT);
+  rejectionJournal.set(widgetId, list);
+}
+
+// Read-only peek for the debug probe: the cached insight and its state
+// against the live signature. Never a model call, never a budget
+// charge - opening the debug panel costs zero Mistral calls.
+export function peekContextBoxInsight(widgetId, pageFacts, anchor = {}) {
+  const signature = contextBoxSignature(widgetId, pageFacts, anchor);
+  const cached = insightCaches.get(widgetId);
+  if (cached === undefined) {
+    return null;
+  }
+  return {
+    ...cached.result,
+    signature,
+    state: cached.signature === signature ? "fresh" : "stale",
+  };
+}
+
 function fallbackPayload(widgetId, sections, signature, error) {
   return {
     signature,
@@ -824,6 +860,7 @@ export async function getContextBoxInsight(widgetId, pageFacts, anchor = {}, opt
       }, sentences ${line.sentenceCount}/${line.budget}`
     );
     for (const rejection of line.rejected_attempts) {
+      recordRejection(widgetId, line.key, rejection.attempt, rejection.reasons);
       console.log(
         `context-box ${widgetId} ${line.key} attempt ${rejection.attempt} rejected: ${rejection.reasons.join("; ")}`
       );

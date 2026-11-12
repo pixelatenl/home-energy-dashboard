@@ -1163,6 +1163,35 @@ export function fetchSolarProductionContext(
   return fetchContextBox("/api/solar/production/context", "solar", {}, force)
 }
 
+// The read-only context-box debug probe (one per widget id): raw facts,
+// signature, served narratives with fallback flags, the consistency
+// check per box, recent guard rejections from the journal and the
+// remaining budget. Opening the debug panel never calls Mistral.
+export interface ContextBoxDebugResponse {
+  widget: string
+  period?: string
+  date?: string
+  read_only: boolean
+  facts: unknown
+  signature: string
+  state: "fresh" | "stale" | "error"
+  insight_as_of: string | null
+  sections: ContextBoxSection[]
+  consistency: { key: string | null; ok: boolean; problems: string[] }[]
+  rejections: { at: string; key: string; attempt: number; reasons: string[] }[]
+  budget: { daily_limit: number; calls_today: number; remaining_calls: number }
+}
+
+export function fetchContextBoxDebug(
+  widget: "usage_context" | "heat_context" | "solar_production",
+  period?: string,
+  date?: string,
+): Promise<ContextBoxDebugResponse> {
+  return getJson<ContextBoxDebugResponse>(
+    withParams("/api/debug/context-box", { widget, period, date }),
+  )
+}
+
 // One interval of the period-anchored battery flow: charged and
 // discharged kWh with their money dimensions, both carried so the
 // Energy/Cost toggle restyles without a refetch. Null money means
