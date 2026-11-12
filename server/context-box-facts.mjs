@@ -311,6 +311,11 @@ function gasSection(gas) {
   };
 }
 
+// The server-owned parity note for inferred heating intervals (contract
+// section 11): inferred from setpoint gaps, not measured heat demand.
+export const ZONES_INFERENCE_NOTE =
+  "Inferred from setpoint gaps, not measured heat demand.";
+
 // One zone's facts: the period average and the current temperature
 // with the setpoint summary, and the heating intervals - count and
 // total duration, always flagged inferred, with the server-owned
@@ -346,7 +351,7 @@ function zoneFacts(zone) {
       count: intervals.length,
       total_hours: totalHours,
       inferred: true,
-      inference_note: "Inferred from setpoint gaps, not measured heat demand.",
+      inference_note: ZONES_INFERENCE_NOTE,
     },
   };
 }

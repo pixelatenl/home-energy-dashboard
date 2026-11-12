@@ -43,10 +43,14 @@ import {
   applianceTotals,
   currentMeasurements,
   dailyTotals,
+  dbHourlyPrices,
+  gasPrices,
   getDebugTimeData,
   getGasUsage,
   getHeatModel,
   getHeatZones,
+  getPvTodayKwh,
+  getRangeMetrics,
   getSummary,
   getUsageBreakdown,
   HEAT_DATA_START,
@@ -54,6 +58,13 @@ import {
   hourlyTotals,
   listEntities,
 } from "./queries.mjs";
+import {
+  buildHeatContextFacts,
+  buildSolarProductionFacts,
+  buildUsageContextFacts,
+  previousPeriodWindow,
+} from "./context-box-facts.mjs";
+import { getContextBoxInsight } from "./context-boxes.mjs";
 import {
   localDateKey,
   localDayStartUtcMs,
@@ -908,6 +919,170 @@ app.get(
       generated_at: result.generatedAt,
       error: result.error,
     });
+  })
+);
+
+// ---- Context boxes (contract section 11): the spoke-page insight boxes ----
+
+// The three context-box endpoints share one shape: the page facts, the
+// bucketed signature, one entry per section box (narrative or fallback
+// flag), the request moment and the moment the insight was generated.
+// force=1 bypasses the 30-minute floor but never the shared daily cap.
+// Period anchoring follows the other period endpoints: period plus a
+// date key, half-open local window via the DST-safe time helpers.
+function parsePeriodAnchor(req) {
+  const period = req.query.period;
+  if (
+    typeof period !== "string" ||
+    !["day", "week", "month", "year"].includes(period)
+  ) {
+    return { error: "period must be one of day, week, month, year" };
+  }
+  const anchor =
+    typeof req.query.date === "string"
+      ? req.query.date
+      : localDateKey(new Date());
+  const keys = periodDateKeys(period, anchor);
+  if (keys === null) {
+    return { error: "invalid date (date=YYYY-MM-DD)" };
+  }
+  return {
+    period,
+    anchor,
+    keys,
+    fromMs: localDayStartUtcMs(keys.startKey),
+    toMs: localDayStartUtcMs(nextDateKey(keys.endKey, 1)),
+  };
+}
+
+function contextBoxResponse(widgetId, extra, result) {
+  return {
+    widget: widgetId,
+    ...extra,
+    facts: result.facts,
+    signature: result.signature,
+    sections: result.sections,
+    as_of: new Date().toISOString(),
+    insight_as_of: result.generatedAt,
+    error: result.error,
+  };
+}
+
+app.get(
+  "/api/usage/context",
+  asyncHandler(async (req, res) => {
+    const parsed = parsePeriodAnchor(req);
+    if (parsed.error) {
+      return res.status(400).json({ error: parsed.error });
+    }
+    const { period, anchor, fromMs, toMs } = parsed;
+    const now = new Date();
+    const [breakdown, priceRows] = await Promise.all([
+      getUsageBreakdown(fromMs, toMs),
+      dbHourlyPrices(fromMs, toMs),
+    ]);
+    // The previous period's breakdown only when the anchored period is
+    // complete, over the time-aligned previous window.
+    let previous = null;
+    const todayKey = localDateKey(now);
+    if (parsed.keys.endKey < todayKey) {
+      const prev = previousPeriodWindow(period, anchor);
+      if (prev !== null) {
+        previous = await getUsageBreakdown(prev.fromMs, prev.toMs);
+      }
+    }
+    const facts = buildUsageContextFacts(
+      period,
+      anchor,
+      { breakdown, priceRows, previous },
+      now
+    );
+    const force = req.query.force === "1" || req.query.force === "true";
+    const result = await getContextBoxInsight(
+      "usage_context",
+      facts,
+      { period, date: anchor },
+      { force }
+    );
+    res.json(
+      contextBoxResponse("usage_context", { period, date: anchor }, { ...result, facts })
+    );
+  })
+);
+
+app.get(
+  "/api/heat/context",
+  asyncHandler(async (req, res) => {
+    const parsed = parsePeriodAnchor(req);
+    if (parsed.error) {
+      return res.status(400).json({ error: parsed.error });
+    }
+    const { period, anchor, fromMs, toMs } = parsed;
+    const now = new Date();
+    const granularity =
+      period === "day" ? "hour" : period === "year" ? "month" : "day";
+    const resolution = period === "day" ? "raw" : "hourly";
+    const [gas, zones, model, priceRows] = await Promise.all([
+      getGasUsage(fromMs, toMs, granularity),
+      getHeatZones(fromMs, toMs, resolution),
+      getHeatModel(fromMs, toMs, resolution),
+      gasPrices(localDateKey(new Date(toMs - 1))),
+    ]);
+    const gasPrice =
+      priceRows.length > 0
+        ? Number(priceRows[priceRows.length - 1].price_eur_per_m3)
+        : null;
+    const facts = buildHeatContextFacts(
+      period,
+      anchor,
+      {
+        gas: { totals: gas.totals, price_eur_per_m3: gasPrice },
+        zones,
+        heat_model: model,
+      },
+      now
+    );
+    const force = req.query.force === "1" || req.query.force === "true";
+    const result = await getContextBoxInsight(
+      "heat_context",
+      facts,
+      { period, date: anchor },
+      { force }
+    );
+    res.json(
+      contextBoxResponse("heat_context", { period, date: anchor }, { ...result, facts })
+    );
+  })
+);
+
+app.get(
+  "/api/solar/production/context",
+  asyncHandler(async (req, res) => {
+    const force = req.query.force === "1" || req.query.force === "true";
+    const now = new Date();
+    const todayKey = localDateKey(now);
+    const fromMs = localDayStartUtcMs(todayKey);
+    const [today, pvToday, daily] = await Promise.all([
+      getRangeMetrics(fromMs, now.getTime()),
+      getPvTodayKwh(),
+      dailyForecast(1).catch(() => []),
+    ]);
+    const weatherToday =
+      (Array.isArray(daily) ? daily.find((row) => row.date === todayKey) : null) ??
+      null;
+    const facts = buildSolarProductionFacts(
+      { today, pv_today_kwh: pvToday, weather_today: weatherToday },
+      now
+    );
+    const result = await getContextBoxInsight(
+      "solar_production",
+      facts,
+      { date: todayKey },
+      { force }
+    );
+    res.json(
+      contextBoxResponse("solar_production", { date: todayKey }, { ...result, facts })
+    );
   })
 );
 
