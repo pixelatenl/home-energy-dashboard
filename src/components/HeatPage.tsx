@@ -1,3 +1,5 @@
+import { useCallback, useMemo } from "react";
+import { AIContextSectionBox } from "@/components/AIContextBox";
 import GasSection from "@/components/GasSection";
 import SkeletonReveal from "@/components/SkeletonReveal";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -7,7 +9,10 @@ import PageLayout from "@/components/PageLayout";
 import PeriodNavigator from "@/components/PeriodNavigator";
 import { Card, CardContent } from "@/components/ui/card";
 import ZoneTimeline from "@/components/ZoneTimeline";
+import { fetchHeatContext } from "@/lib/api";
+import { contextBoxByKey, contextBoxItems } from "@/lib/contextBoxes";
 import { periodHasData } from "@/lib/period";
+import { useAiContextSections } from "@/lib/useAiContext";
 import { useHeatGas } from "@/lib/useHeatGas";
 import { useHeatModel } from "@/lib/useHeatModel";
 import { useHeatZones } from "@/lib/useHeatZones";
@@ -28,6 +33,20 @@ function HeatPage() {
   const zones = useHeatZones(period.kind, period.date);
   const gas = useHeatGas(period.kind, period.date);
   const model = useHeatModel(period.kind, period.date);
+  // One context fetch per page visit per period anchor; the mode is
+  // not a dependency, so the Energy/Cost toggle never refetches a box.
+  const context = useAiContextSections(
+    useCallback(
+      (force?: boolean) => fetchHeatContext(period.kind, period.date, force),
+      [period.kind, period.date],
+    ),
+  );
+  const boxes = useMemo(() => contextBoxItems(context.response), [context.response]);
+  const boxProps = {
+    loading: context.loading,
+    generatedAt: context.response?.insight_as_of ?? null,
+    error: context.response?.error ?? null,
+  };
 
   return (
     <PageLayout
@@ -49,6 +68,10 @@ function HeatPage() {
       ) : (
         <>
           <GasSection data={gas.data} status={gas.status} />
+          <AIContextSectionBox
+            item={contextBoxByKey(boxes, "gas")}
+            {...boxProps}
+          />
           <SkeletonReveal
             loading={zones.status === "loading" && zones.data === null}
             skeleton={
@@ -81,7 +104,15 @@ function HeatPage() {
               />
             ) : null}
           </SkeletonReveal>
+          <AIContextSectionBox
+            item={contextBoxByKey(boxes, "zones")}
+            {...boxProps}
+          />
           <HeatingModelCard data={model.data} status={model.status} />
+          <AIContextSectionBox
+            item={contextBoxByKey(boxes, "heating_cost")}
+            {...boxProps}
+          />
         </>
       )}
     </PageLayout>

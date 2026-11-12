@@ -369,3 +369,21 @@ Checker comparison constants stay in `checker.mjs` only.
 - **Qualitative duplication (C21 class).** A model slot that restates served row content without figures ("Your own solar carried the house for much of the day") is not machine-guarded: no guard detects duplication or paraphrase of served sentences. This relies on the production style brief and fixture stub discipline.
 - **`guidance.day_cheapest_average_eur`.** Served null until the facts layer supplies the day-cheapest window's average; folding it in is a Stage 3a task.
 - **`composeAdvisoryCard` requires `facts.nowIso`.** The request's local moment travels as pure data in the facts layer, injected by `generateAdvisoryCard`; a direct call without it throws a clear error naming the missing fact.
+
+## 11. Context boxes
+
+**Scope.** This section is the one authority for the per-section AI context boxes on the spoke pages: the `usage_context`, `heat_context` and `solar_production` widget ids. The hub advisory contract (sections 1 to 10) is unchanged by it; every narrator of a context box reads this section instead of prompt history. The existing weather box on the Solar page and battery box on the Battery page remain governed by their current implementation and are out of scope for this contract in this pass.
+
+**Register.** Context boxes speak in an interpretive voice, second person, in household words. Light advice is allowed only when the section's facts carry a server-computed verdict or opportunity field. Advice sentences are declarative and comparative, for example "the heat pump estimate is currently the cheaper route at €0.05 versus €0.09 per kWh of heat". Imperative-mood sentences are banned in context boxes.
+
+**Semantics.** Every fact set ships meaning hints alongside its figures. Energy figures are day or period totals, never live power. Forecast figures are whole-period totals, never "later" or "still to come".
+
+**Weather vocabulary.** Weather words appear only in sections where a condition fact is served.
+
+**Provenance.** Estimated figures must be hedged (estimate, estimated, about). Measured figures are never hedged as estimates. Inference, the zone heating intervals, carries a server-owned parity note stating that it is inferred from setpoint gaps, not measured heat demand.
+
+**Figures.** Figures are verbatim from the served facts, euro signs intact, at human precision in the UI; no model arithmetic, no internal system vocabulary.
+
+**Framing.** Week-best or best-day claims appear only when a marker fact is served.
+
+**Honest absence.** No facts for the anchored period means no box at all, never an empty narrative.
