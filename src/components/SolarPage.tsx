@@ -1,11 +1,15 @@
-import { useMemo } from "react"
+import { useCallback, useMemo } from "react"
+import { AIContextSectionBox } from "@/components/AIContextBox"
 import ModeToggle from "@/components/ModeToggle"
 import PageLayout from "@/components/PageLayout"
 import PeriodNavigator from "@/components/PeriodNavigator"
 import SolarProductionChart from "@/components/SolarProductionChart"
 import WeatherForecast from "@/components/WeatherForecast"
+import { fetchSolarProductionContext } from "@/lib/api"
+import { contextBoxByKey, contextBoxItems } from "@/lib/contextBoxes"
 import { useMode } from "@/lib/mode"
 import { forecastPanelVisible } from "@/lib/solarChart"
+import { useAiContextSections } from "@/lib/useAiContext"
 import { usePeriod } from "@/lib/usePeriod"
 import {
   useSolarProduction,
@@ -38,6 +42,17 @@ function SolarPage() {
   // approximating past days the forecast does not cover; null only
   // while the fetch fails, keeping the full axis.
   const dayWindow = useDaylightWindow(period.kind === "day", period.date)
+  // The production box is today-anchored: one fetch per page visit,
+  // independent of the period navigator and of the Energy/Cost mode.
+  const context = useAiContextSections(
+    useCallback((force?: boolean) => fetchSolarProductionContext(force), []),
+  )
+  const boxes = useMemo(() => contextBoxItems(context.response), [context.response])
+  const boxProps = {
+    loading: context.loading,
+    generatedAt: context.response?.insight_as_of ?? null,
+    error: context.response?.error ?? null,
+  }
 
   return (
     <PageLayout
@@ -61,6 +76,10 @@ function SolarPage() {
           isCurrent={isCurrent}
           forecast={mode === "energy" ? todayForecast : null}
           dayWindow={dayWindow}
+        />
+        <AIContextSectionBox
+          item={contextBoxByKey(boxes, "production")}
+          {...boxProps}
         />
         {showForecast && <WeatherForecast />}
       </div>

@@ -1075,6 +1075,94 @@ export function fetchBatteryContext(force = false): Promise<BatteryContext> {
   })
 }
 
+// ---- Context boxes (contract section 11): the spoke-page section boxes ----
+
+// One section box of a page's context payload: the model-authored
+// narrative (or the served fallback text, flagged by `fallback`).
+export interface ContextBoxSection {
+  key: string
+  label: string
+  narrative: string | null
+  fallback: boolean
+}
+
+// The /api/usage/context, /api/heat/context and
+// /api/solar/production/context response: the page facts, the bucketed
+// signature, one entry per section box, and the two timestamps (the
+// request moment and the moment the insight was generated).
+export interface ContextBoxResponse {
+  widget: string
+  period?: string
+  date?: string
+  facts: unknown
+  signature: string
+  sections: ContextBoxSection[]
+  as_of: string
+  insight_as_of: string | null
+  error: string | null
+}
+
+// One fetch per page visit per anchor: the module-level cache mirrors
+// the weather and battery context fetches (at most once every 30
+// minutes per anchor); force bypasses the cache and asks the server to
+// regenerate.
+const contextBoxCache = new Map<
+  string,
+  { fetchedAt: number; value: ContextBoxResponse }
+>()
+
+function fetchContextBox(
+  path: string,
+  cacheKey: string,
+  params: Record<string, string>,
+  force: boolean,
+): Promise<ContextBoxResponse> {
+  const cached = contextBoxCache.get(cacheKey)
+  if (!force && cached && Date.now() - cached.fetchedAt < CONTEXT_CACHE_MS) {
+    return Promise.resolve(cached.value)
+  }
+  return getJson<ContextBoxResponse>(
+    withParams(path, force ? { ...params, force: "1" } : params)
+  ).then((value) => {
+    contextBoxCache.set(cacheKey, { fetchedAt: Date.now(), value })
+    return value
+  })
+}
+
+export function fetchUsageContext(
+  period: string,
+  date: string,
+  force = false,
+): Promise<ContextBoxResponse> {
+  return fetchContextBox(
+    "/api/usage/context",
+    `usage|${period}|${date}`,
+    { period, date },
+    force,
+  )
+}
+
+export function fetchHeatContext(
+  period: string,
+  date: string,
+  force = false,
+): Promise<ContextBoxResponse> {
+  return fetchContextBox(
+    "/api/heat/context",
+    `heat|${period}|${date}`,
+    { period, date },
+    force,
+  )
+}
+
+// The solar production box is today-anchored: one fetch per page visit,
+// independent of the period navigator.
+export function fetchSolarProductionContext(
+  force = false,
+): Promise<ContextBoxResponse> {
+  return fetchContextBox("/api/solar/production/context", "solar", {}, force)
+}
+
 // One interval of the period-anchored battery flow: charged and
 // discharged kWh with their money dimensions, both carried so the
 // Energy/Cost toggle restyles without a refetch. Null money means
