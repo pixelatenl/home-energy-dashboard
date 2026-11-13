@@ -49,7 +49,7 @@ const round4 = (value) => Math.round(value * 10_000) / 10_000;
 // WMO weather codes mapped to home-language condition summaries for
 // the week outlook.
 const RAIN_CODES = new Set([51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 80, 81, 82]);
-export function conditionSummary(code) {
+function conditionSummary(code) {
   if (RAIN_CODES.has(code)) {
     return "rain";
   }

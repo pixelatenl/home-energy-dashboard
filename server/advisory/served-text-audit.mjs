@@ -169,54 +169,6 @@ export function auditServedText(card) {
 }
 
 // ---------------------------------------------------------------------------
-// The context-box prose audit: the same sentence rules applied to the
-// context-box sections' served prose - the new sentence population of
-// contract section 11. Each section serves its accepted narrative when
-// one exists and its deterministic fallback sentences otherwise; the
-// fallback sentences are audited too, so a bad server-owned sentence
-// fails the runner exactly like a bad model-authored one. Figure
-// membership is not audited here: the consistency view enforces it per
-// section against the section's own facts.
-// ---------------------------------------------------------------------------
-
-export function auditContextBoxText(payload) {
-  const failures = [];
-  const sections = Array.isArray(payload?.sections)
-    ? payload.sections
-    : Array.isArray(payload)
-      ? payload
-      : [];
-  for (const [i, section] of sections.entries()) {
-    const label =
-      typeof section?.label === "string" && section.label !== ""
-        ? section.label
-        : `section ${i}`;
-    const path = `context-box[${i}] ${label}`;
-    const narrative =
-      typeof section?.narrative === "string" && section.narrative.trim() !== ""
-        ? section.narrative
-        : null;
-    const fallbacks = Array.isArray(section?.fallback_sentences)
-      ? section.fallback_sentences
-      : [];
-    // The served text, plus every fallback sentence on its own.
-    const texts = new Set(fallbacks.map((s) => String(s)));
-    if (narrative !== null) texts.add(narrative);
-    texts.add(narrative ?? fallbacks.join(" "));
-    for (const text of texts) {
-      for (const sentence of String(text ?? "")
-        .split(/(?<=[.!?])\s+/)
-        .filter((s) => s.trim() !== "")) {
-        failures.push(
-          ...auditSentenceItem({ path, text: sentence.trim(), kind: "sentence" })
-        );
-      }
-    }
-  }
-  return { ok: failures.length === 0, failures };
-}
-
-// ---------------------------------------------------------------------------
 // The monologue prose audit (STEP 3): the same sentence rules applied to
 // the monologue payload's served prose. Each section serves its narrative
 // when one was accepted and its deterministic fallback sentences
