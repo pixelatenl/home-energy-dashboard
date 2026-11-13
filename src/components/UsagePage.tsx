@@ -1,5 +1,4 @@
-import { useCallback, useMemo } from "react";
-import { AIContextSectionBox } from "@/components/AIContextBox";
+import { useMemo } from "react";
 import ModeToggle from "@/components/ModeToggle";
 import PageLayout from "@/components/PageLayout";
 import PeriodNavigator from "@/components/PeriodNavigator";
@@ -10,11 +9,8 @@ import SelfUsageCard from "@/components/SelfUsageCard";
 import UsageSummaryStats from "@/components/UsageSummaryStats";
 import { Card, CardContent } from "@/components/ui/card";
 import UsageTreemap from "@/components/UsageTreemap";
-import { fetchUsageContext } from "@/lib/api";
-import { contextBoxByKey, contextBoxItems } from "@/lib/contextBoxes";
 import { useMode } from "@/lib/mode";
 import { periodHasData } from "@/lib/period";
-import { useAiContextSections } from "@/lib/useAiContext";
 import { usePeriod } from "@/lib/usePeriod";
 import { useUsageBreakdown } from "@/lib/useUsageBreakdown";
 
@@ -34,21 +30,6 @@ function UsagePage() {
     [period.kind, period.date],
   );
   const breakdown = useUsageBreakdown(anchor);
-  // One context fetch per page visit per period anchor; the Energy/Cost
-  // mode is not a dependency, so the toggle never refetches a box (the
-  // facts carry both dimensions).
-  const context = useAiContextSections(
-    useCallback(
-      (force?: boolean) => fetchUsageContext(period.kind, period.date, force),
-      [period.kind, period.date],
-    ),
-  );
-  const boxes = useMemo(() => contextBoxItems(context.response), [context.response]);
-  const boxProps = {
-    loading: context.loading,
-    generatedAt: context.response?.insight_as_of ?? null,
-    error: context.response?.error ?? null,
-  };
 
   return (
     <PageLayout
@@ -78,28 +59,18 @@ function UsagePage() {
           and stacked sections on narrow widths. */}
       <Card>
         <CardContent className="grid gap-6 lg:grid-cols-2">
-          <div className="flex min-w-0 flex-col gap-4">
-            <UsageTreemap
-              data={breakdown.data}
-              status={breakdown.status}
-              mode={mode}
-              period={period}
-              hasData={periodHasData(period)}
-            />
-            <AIContextSectionBox
-              item={contextBoxByKey(boxes, "breakdown")}
-              {...boxProps}
-            />
-          </div>
-          <div className="flex min-w-0 flex-col gap-4 lg:border-l lg:pl-6">
+          <UsageTreemap
+            data={breakdown.data}
+            status={breakdown.status}
+            mode={mode}
+            period={period}
+            hasData={periodHasData(period)}
+          />
+          <div className="lg:border-l lg:pl-6">
             <RestOfHomeCard
               data={breakdown.data}
               status={breakdown.status}
               mode={mode}
-            />
-            <AIContextSectionBox
-              item={contextBoxByKey(boxes, "rest_of_home")}
-              {...boxProps}
             />
           </div>
         </CardContent>
@@ -107,7 +78,7 @@ function UsagePage() {
 
       {/* The per-slot chart spans the full width beneath: hourly bars
           for day periods, daily bars for weeks and months, monthly
-          bars for years. Its context box sits under the chart. */}
+          bars for years. */}
       <div className="mt-4">
         <UsageSlotChart
           data={breakdown.data}
@@ -117,10 +88,6 @@ function UsagePage() {
           isCurrent={isCurrent}
         />
       </div>
-      <AIContextSectionBox
-        item={contextBoxByKey(boxes, "over_time")}
-        {...boxProps}
-      />
 
       {/* The gas slot chart sits beneath it in its own card, fed by
           its own /api/heat/gas fetch: one bar per slot at the

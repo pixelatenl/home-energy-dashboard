@@ -16,7 +16,6 @@ import { Input } from "@/components/ui/input";
 import {
   fetchBatteryContext,
   fetchCheapestBlock,
-  fetchContextBoxDebug,
   fetchDailyInsight,
   fetchDebugTime,
   fetchInsightDebug,
@@ -160,30 +159,6 @@ const ENDPOINTS: EndpointSpec[] = [
     description: "AI-generated insight over the forecast period",
     params: [],
     run: () => fetchWeatherContext(),
-  },
-  {
-    key: "usage-context-box",
-    label: "GET /api/debug/context-box?widget=usage_context",
-    description:
-      "Context-box probe (usage_context, today's day): raw facts, signature, served narratives with fallback flags, the consistency check per box, recent guard rejections and the remaining budget. Read-only: opening it costs zero Mistral calls",
-    params: [],
-    run: () => fetchContextBoxDebug("usage_context"),
-  },
-  {
-    key: "heat-context-box",
-    label: "GET /api/debug/context-box?widget=heat_context",
-    description:
-      "Context-box probe (heat_context, today's day): raw facts, signature, served narratives with fallback flags, the consistency check per box, recent guard rejections and the remaining budget. Read-only: opening it costs zero Mistral calls",
-    params: [],
-    run: () => fetchContextBoxDebug("heat_context"),
-  },
-  {
-    key: "solar-context-box",
-    label: "GET /api/debug/context-box?widget=solar_production",
-    description:
-      "Context-box probe (solar_production, today): raw facts, signature, the served narrative with its fallback flag, the consistency check, recent guard rejections and the remaining budget. Read-only: opening it costs zero Mistral calls",
-    params: [],
-    run: () => fetchContextBoxDebug("solar_production"),
   },
 ];
 

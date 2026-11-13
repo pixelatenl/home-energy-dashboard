@@ -67,12 +67,9 @@ const TOKEN_RE = new RegExp(
     "(?<range>\\d{1,2}:\\d{2}\\s*[-–]\\s*\\d{1,2}:\\d{2})",
     `(?<currency>-?(?:€|EUR)\\s*${FIGURE_NUM})`,
     `(?<kwh>${FIGURE_NUM}\\s*kWh)`,
-    `(?<m3>${FIGURE_NUM}\\s*m3)`,
     `(?<percent>${FIGURE_NUM}\\s?%)`,
     "(?<time>\\d{1,2}:\\d{2})",
-    // A bare number never starts right after a letter, so the digit
-    // inside a unit such as "m3" is not extracted as a figure.
-    `(?<number>(?<![A-Za-z])${FIGURE_NUM})`,
+    `(?<number>${FIGURE_NUM})`,
   ].join("|"),
   "gi"
 );
@@ -175,7 +172,6 @@ export function validateNarrativeFigures(narrative, facts) {
       time: `time "${token.raw}" matches no served time in this section`,
       currency: `amount "${token.raw}" matches no served amount in this section (amounts carry the currency marker exactly as served; never compute a difference or total; state the amounts side by side exactly as served)`,
       kwh: `kWh figure "${token.raw}" matches no served kWh figure in this section`,
-      m3: `m3 figure "${token.raw}" matches no served m3 figure in this section`,
       percent: `percentage "${token.raw}" matches no served percentage in this section (write percentages exactly as served, for example "5%" without a space)`,
       number: `figure "${token.raw}" matches no served figure in this section`,
     }[token.kind];

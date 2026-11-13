@@ -118,7 +118,7 @@ export function dayLabel(dateKey) {
   });
 }
 
-export async function callMistral(systemPrompt, context) {
+async function callMistral(systemPrompt, context) {
   const apiKey = process.env.MISTRAL_API_KEY;
   if (!apiKey) {
     throw new Error("MISTRAL_API_KEY not configured");
@@ -150,7 +150,7 @@ export async function callMistral(systemPrompt, context) {
 }
 
 // Simple FNV-1a string hash; only used as a cache key, not for security.
-export function hashString(value) {
+function hashString(value) {
   let hash = 0x811c9dc5;
   for (let i = 0; i < value.length; i++) {
     hash ^= value.charCodeAt(i);
@@ -201,7 +201,7 @@ export function getMistralBudget() {
   };
 }
 
-export function dailyLimitReached() {
+function dailyLimitReached() {
   return getMistralBudget().remaining_calls <= 0;
 }
 
@@ -210,14 +210,14 @@ export function dailyLimitReached() {
 // (signature_change, throttle_expiry, force) and the outcome - so the
 // call volume and its causes stay observable in the server log. Never
 // logs the API key, the prompt or the context.
-export function logMistral(widget, signature, reason, outcome) {
+function logMistral(widget, signature, reason, outcome) {
   console.log(
     `[mistral] widget=${widget} signature=${signature} reason=${reason} outcome=${outcome}`
   );
 }
 
 // Compact single-line error text for the outcome field.
-export function shortError(err) {
+function shortError(err) {
   return String(err?.message ?? err).replace(/\s+/g, " ").slice(0, 80);
 }
 
@@ -501,7 +501,7 @@ export function summarySignature(summary, weatherDaily, priceParts, extras) {
 }
 
 // Records one upstream call against the shared daily cap.
-export function recordApiCall() {
+function recordApiCall() {
   const utcDay = new Date().toISOString().slice(0, 10);
   callsPerUtcDay.set(utcDay, (callsPerUtcDay.get(utcDay) ?? 0) + 1);
 }
