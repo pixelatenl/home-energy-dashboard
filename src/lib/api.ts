@@ -118,6 +118,17 @@ export interface CheapestBlock {
   average_price: number
 }
 
+// The 30-day price baseline from the server: the rolling average of each
+// completed local day's lowest and highest hourly price. Null anchors
+// (fewer than 14 completed days of history, or a failed query) mean the
+// price bars fall back to the purely relative palette.
+export interface PriceBaseline {
+  avg_daily_min_30d: number | null
+  avg_daily_max_30d: number | null
+  // The number of completed days actually used.
+  days: number
+}
+
 export interface PriceSummary {
   hours: PriceHour[]
   today: PriceDayStats
@@ -126,6 +137,8 @@ export interface PriceSummary {
   // The day's actual cheapest window, whole-day: the single source the
   // advisory card and the prices widget both consume.
   day_cheapest_block: CheapestBlock | null
+  // Optional so payloads from an older server still render.
+  baseline?: PriceBaseline
 }
 
 export interface RangeMetrics {

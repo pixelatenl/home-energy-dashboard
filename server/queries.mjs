@@ -123,6 +123,29 @@ export async function dbHourlyPrices(fromMs, toMs) {
   return rows;
 }
 
+// Per local day (Europe/Amsterdam), the day's lowest and highest hourly
+// price within [fromMs, toMs), for the 30-day price baseline in prices.mjs.
+// The local day comes from the Amsterdam wall clock (AT TIME ZONE), so a
+// DST transition day (23 or 25 hours long) groups onto its one calendar
+// day instead of splitting at a UTC midnight. Rows without a price are
+// excluded. The caller picks the window: the last N completed local days,
+// ending at today's local midnight (exclusive), so the still-running day
+// never contributes its not-yet-final extremes.
+export async function dbDailyPriceExtremes(fromMs, toMs) {
+  const { rows } = await pool.query(
+    `SELECT (date_trunc('day', ts AT TIME ZONE 'Europe/Amsterdam'))::date::text AS day,
+            min(price_eur) AS day_min,
+            max(price_eur) AS day_max
+       FROM price
+      WHERE ts >= $1::timestamptz AND ts < $2::timestamptz
+        AND price_eur IS NOT NULL
+      GROUP BY 1
+      ORDER BY 1`,
+    [new Date(fromMs), new Date(toMs)]
+  );
+  return rows;
+}
+
 // --- Dashboard summary statistics ---
 
 const round2 = (value) => Math.round(value * 100) / 100;

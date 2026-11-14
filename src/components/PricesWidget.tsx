@@ -8,9 +8,16 @@ import { Euro } from "lucide-react";
 import {
   fetchPrices,
   type CheapestBlock,
+  type PriceBaseline,
   type PriceHour,
   type PriceSource,
 } from "@/lib/api";
+import {
+  PRICE_HUE_GREEN,
+  PRICE_HUE_RED,
+  priceColor,
+  pricePaletteEndpoints,
+} from "@/lib/priceColors";
 import { useDataRefreshListener } from "@/lib/useDataRefresh";
 import {
   amsterdamNow,
@@ -33,17 +40,6 @@ interface PreparedHour {
 // per-kWh values stay in the payload and the debug views.
 function formatPrice(value: number | null): string {
   return value === null ? "\u2014" : `€${value.toFixed(2)}`;
-}
-
-// Green (cheap) through neutral to red (expensive), relative to the day's
-// own min and max - muted and mid-dark, the same depth as the usage
-// treemap's palette, so the bars sit with the warm glass aesthetic
-// instead of bright signal colors.
-function priceColor(price: number, min: number, max: number): string {
-  const span = max - min || 1;
-  const t = Math.min(1, Math.max(0, (price - min) / span));
-  const hue = 140 * (1 - t);
-  return `hsl(${hue} 40% 38%)`;
 }
 
 function prepareHours(hours: PriceHour[], dateKey: string): PreparedHour[] {
@@ -93,6 +89,7 @@ function PriceBars({
   block,
   dateKey,
   scale,
+  baseline,
 }: {
   hours: PreparedHour[];
   average: number | null;
@@ -107,6 +104,9 @@ function PriceBars({
   // Shared min/max across charts, so a euro has the same bar height and
   // color everywhere; falls back to the chart's own range when omitted.
   scale?: { min: number; max: number } | null;
+  // The 30-day baseline from the prices payload: anchors the bar colors
+  // to normal prices (green actually cheap, red actually expensive).
+  baseline?: PriceBaseline | null;
 }) {
   const width = 960;
   const height = 150;
@@ -193,7 +193,7 @@ function PriceBars({
                 width={slot * 0.7}
                 height={barHeight}
                 rx={2}
-                fill={priceColor(hour.price, min, max)}
+                fill={priceColor(hour.price, min, max, baseline)}
               />
             );
           })}
@@ -301,18 +301,30 @@ function PriceBars({
 }
 
 // Color swatches matching the chart elements in PriceBars.
-function PriceChartLegend() {
+function PriceChartLegend({
+  scale,
+  baseline,
+}: {
+  // The shared min/max the bars are colored on; without it the swatch
+  // stays the plain green-to-red ramp.
+  scale: { min: number; max: number } | null;
+  baseline?: PriceBaseline | null;
+}) {
+  // The swatch is regenerated from the same blended endpoints the bars
+  // use when a baseline is present; unchanged when not.
+  const { bottomHue, topHue } = scale
+    ? pricePaletteEndpoints(scale.min, scale.max, baseline ?? null)
+    : { bottomHue: PRICE_HUE_GREEN, topHue: PRICE_HUE_RED };
   return (
     <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-subtle-foreground">
       <span className="flex items-center gap-1.5">
         <span
           className="h-3 w-6 rounded-sm"
           style={{
-            background:
-              "linear-gradient(90deg, hsl(140 40% 38%), hsl(0 40% 38%))",
+            background: `linear-gradient(90deg, hsl(${bottomHue} 40% 38%), hsl(${topHue} 40% 38%))`,
           }}
         />
-        Hourly price (green cheap, red expensive)
+        Hourly price (green cheap, red expensive, amber normal)
       </span>
       <span className="flex items-center gap-1.5">
         <svg width="16" height="8" aria-hidden="true">
@@ -529,6 +541,7 @@ function PricesWidget() {
                   block={blockForDate(block, today)}
                   dateKey={today}
                   scale={sharedScale}
+                  baseline={summary.baseline}
                 />
                 {block && (
                   <p className="mt-2 text-xs text-muted-foreground">
@@ -568,6 +581,7 @@ function PricesWidget() {
                       block={blockForDate(block, tomorrow)}
                       dateKey={tomorrow}
                       scale={sharedScale}
+                      baseline={summary.baseline}
                     />
                   ) : (
                     // The unpublished state keeps the chart's exact
@@ -581,7 +595,7 @@ function PricesWidget() {
                 </div>
               </div>
 
-              <PriceChartLegend />
+              <PriceChartLegend scale={sharedScale} baseline={summary.baseline} />
             </>
           )}
         </CardContent>

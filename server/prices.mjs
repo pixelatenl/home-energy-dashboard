@@ -4,7 +4,7 @@
 // hours). The merged curve is cached for 10 minutes. No SQL lives here.
 
 import { haGetState } from "./ha.mjs";
-import { dbHourlyPrices } from "./queries.mjs";
+import { dbDailyPriceExtremes, dbHourlyPrices } from "./queries.mjs";
 import {
   localDateKey,
   localDayStartUtcMs,
@@ -23,6 +23,16 @@ const DEFAULT_TOMORROW_STATUS_ENTITY =
 // The cheapest-block endpoint scans the whole available horizon; the
 // Zonneplan forecast covers today and (later in the evening) tomorrow.
 const HORIZON_DAYS = 2;
+
+// The price baseline anchors the widget's bar palette to what prices
+// normally do in this household: the rolling average of each completed
+// local day's lowest and highest hourly price. The window covers the last
+// BASELINE_WINDOW_DAYS completed local days; the still-running day is
+// excluded because its minimum and maximum are not final. Below
+// BASELINE_MIN_DAYS completed days of history the anchors are served as
+// null and the frontend renders the purely relative palette.
+export const BASELINE_WINDOW_DAYS = 30;
+export const BASELINE_MIN_DAYS = 14;
 
 function roundPrice(value) {
   return Math.round(value * 1_000_000) / 1_000_000;
@@ -278,10 +288,70 @@ function toHourEntry(entry) {
   return { ts: entry.ts.toISOString(), price_eur: entry.price, source: entry.source };
 }
 
+// Pure fold of the per-day price extremes (rows from dbDailyPriceExtremes)
+// into the payload's baseline object. Nothing is rounded: the exact
+// averages ride in the payload and rendering rounds as usual. Below
+// BASELINE_MIN_DAYS days the anchors are null (fail-soft) with the true
+// day count. Exported for tests.
+export function priceBaselineFromDailyExtremes(rows) {
+  const days = rows.length;
+  if (days < BASELINE_MIN_DAYS) {
+    return { avg_daily_min_30d: null, avg_daily_max_30d: null, days };
+  }
+  let sumMin = 0;
+  let sumMax = 0;
+  for (const row of rows) {
+    sumMin += Number(row.day_min);
+    sumMax += Number(row.day_max);
+  }
+  return {
+    avg_daily_min_30d: sumMin / days,
+    avg_daily_max_30d: sumMax / days,
+    days,
+  };
+}
+
+// The baseline behind the prices payload. The window is the last
+// BASELINE_WINDOW_DAYS completed local days: from the local midnight that
+// many days back up to today's local midnight (exclusive). Fail-soft: a
+// query error serves null anchors instead of breaking the prices payload.
+// `fetchExtremes` is injectable for tests.
+export async function fetchPriceBaseline(
+  fetchExtremes = dbDailyPriceExtremes
+) {
+  const todayKey = localDateKey(new Date());
+  const fromMs = localDayStartUtcMs(
+    nextDateKey(todayKey, -BASELINE_WINDOW_DAYS)
+  );
+  const toMs = localDayStartUtcMs(todayKey);
+  try {
+    return priceBaselineFromDailyExtremes(await fetchExtremes(fromMs, toMs));
+  } catch {
+    return { avg_daily_min_30d: null, avg_daily_max_30d: null, days: 0 };
+  }
+}
+
+let baselineCache = null; // { fetchedAt, data }
+
+// The baseline is recomputed on the same cache cadence as the prices
+// payload itself (the merged curve's CACHE_TTL_MS); no separate endpoint.
+async function cachedPriceBaseline() {
+  if (baselineCache && Date.now() - baselineCache.fetchedAt < CACHE_TTL_MS) {
+    return baselineCache.data;
+  }
+  const data = await fetchPriceBaseline();
+  baselineCache = { fetchedAt: Date.now(), data };
+  return data;
+}
+
 // GET /api/prices response body.
 export async function getPriceSummary(days) {
+  const [curve, baseline] = await Promise.all([
+    loadCurve(days),
+    cachedPriceBaseline(),
+  ]);
   const { entries, todayKey, tomorrowKey, currentHourMs, tomorrowAvailable } =
-    await loadCurve(days);
+    curve;
   const todayEntries = entries.filter(
     (entry) => localDateKey(entry.ts) === todayKey
   );
@@ -304,6 +374,10 @@ export async function getPriceSummary(days) {
     // widget both consume, so the two surfaces can never disagree
     // about the day's cheapest hours.
     day_cheapest_block: cheapestFromEntries(todayEntries, "", 3),
+    // The 30-day price baseline: the anchors for the prices widget's
+    // bar palette (green actually cheap, red actually expensive). Null
+    // anchors mean the purely relative palette.
+    baseline,
   };
 }
 
