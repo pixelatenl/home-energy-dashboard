@@ -1,6 +1,6 @@
 import { todayTabUrl } from "./period.ts"
 
-// The Today hub's stat cards and the navigation target of each.
+// The Now hub's stat cards and the navigation target of each.
 // Every card opens its tab with the "today" period preset, so a card
 // always lands on today's view of that tab. The live card opens the
 // live energy flow page, which has no period.

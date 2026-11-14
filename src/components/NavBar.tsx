@@ -2,7 +2,7 @@ import { NavLink } from "react-router-dom"
 import { useModeSearch } from "@/lib/mode"
 
 const TABS = [
-  { to: "/", label: "Today", end: true },
+  { to: "/", label: "Now", end: true },
   { to: "/usage", label: "Usage", end: false },
   { to: "/solar", label: "Solar", end: false },
   { to: "/battery", label: "Battery", end: false },
