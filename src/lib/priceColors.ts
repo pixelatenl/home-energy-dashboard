@@ -62,3 +62,36 @@ export function priceColor(
   const hue = bottomHue + (topHue - bottomHue) * t;
   return `hsl(${hue} 40% 38%)`;
 }
+
+// The absolute price level of the visible window against the 30-day
+// baseline: an explicit, deterministic signal alongside the
+// season-relative bar colors. It reuses the palette gates' exact
+// comparisons, so the badge and the bar colors can never disagree by
+// construction: "high" fires under the same condition that slides the
+// green end of the palette toward amber (windowMin > avg_daily_min_30d,
+// the anchor positive), and "low" under the same condition that slides
+// the red end toward amber (windowMax < avg_daily_max_30d). When both
+// fire, the window sits inside the normal band (a flat window there is a
+// normal day); when neither fires, it straddles the band: no badge either
+// way. Null also when the baseline is absent or an anchor is null, so the
+// badge never appears without the anchors the colors themselves use.
+export function priceLevelState(
+  windowMin: number,
+  windowMax: number,
+  baseline?: PriceBaseline | null
+): "high" | "low" | null {
+  const avgMin = baseline?.avg_daily_min_30d ?? null;
+  const avgMax = baseline?.avg_daily_max_30d ?? null;
+  const high = avgMin !== null && avgMin > 0 && windowMin > avgMin;
+  const low = avgMax !== null && avgMax > 0 && windowMax < avgMax;
+  if (high && low) {
+    return null;
+  }
+  if (high) {
+    return "high";
+  }
+  if (low) {
+    return "low";
+  }
+  return null;
+}

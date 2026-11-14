@@ -3,7 +3,9 @@ import { describe, it } from "node:test";
 import type { PriceBaseline } from "../src/lib/api.ts";
 import {
   PRICE_HUE_AMBER,
+  PRICE_HUE_GREEN,
   priceColor,
+  priceLevelState,
   pricePaletteEndpoints,
 } from "../src/lib/priceColors.ts";
 
@@ -139,5 +141,60 @@ describe("priceColor: convergence at amber", () => {
     const { bottomHue } = pricePaletteEndpoints(100, 101, baseline(0.13, 0.5));
     assert.ok(bottomHue >= PRICE_HUE_AMBER);
     assert.ok(bottomHue < PRICE_HUE_AMBER + 1);
+  });
+});
+
+describe("priceLevelState: the absolute price level badge", () => {
+  it("returns high when the window's cheapest hour is above the normal daily low", () => {
+    // Roland's live scenario: the cheapest hour of the visible window
+    // still costs more than a normal day's cheapest hour, with the
+    // window's peak above the normal peak, so only the high gate fires.
+    assert.equal(priceLevelState(0.38, 0.55, baseline(0.33, 0.5)), "high");
+  });
+
+  it("returns low when the window's peak is below the normal daily peak", () => {
+    assert.equal(priceLevelState(0.1, 0.25, baseline(0.15, 0.45)), "low");
+  });
+
+  it("returns null on a normal day, when neither gate fires", () => {
+    assert.equal(priceLevelState(0.12, 0.5, baseline(0.13, 0.5)), null);
+  });
+
+  it("returns null when both gates fire: the window sits inside the normal band", () => {
+    // A flat window inside the band is a normal day.
+    assert.equal(priceLevelState(0.35, 0.4, baseline(0.3, 0.45)), null);
+    // So is a wider window fully inside the band (both anchors inside).
+    assert.equal(priceLevelState(0.38, 0.55, baseline(0.33, 0.6)), null);
+  });
+
+  it("never returns high when windowMin exactly equals avg_min", () => {
+    assert.equal(priceLevelState(0.33, 0.25, baseline(0.33, 0.6)), "low");
+    assert.equal(priceLevelState(0.33, 0.6, baseline(0.33, 0.6)), null);
+  });
+
+  it("never returns low when windowMax exactly equals avg_max", () => {
+    assert.equal(priceLevelState(0.38, 0.6, baseline(0.33, 0.6)), "high");
+    assert.equal(priceLevelState(0.12, 0.5, baseline(0.13, 0.5)), null);
+  });
+
+  it("returns null without a baseline or with both anchors null", () => {
+    assert.equal(priceLevelState(0.38, 0.55), null);
+    assert.equal(priceLevelState(0.38, 0.55, null), null);
+    assert.equal(priceLevelState(0.38, 0.55, baseline(null, null)), null);
+  });
+
+  it("gates each side on its own anchor when the other is null", () => {
+    assert.equal(priceLevelState(0.38, 0.55, baseline(0.33, null)), "high");
+    assert.equal(priceLevelState(0.1, 0.25, baseline(null, 0.45)), "low");
+  });
+
+  it("agrees with the palette gates by construction", () => {
+    // The badge fires exactly when the corresponding palette gate slides
+    // its endpoint away from the pure green/red end.
+    const b = baseline(0.33, 0.6);
+    const { bottomHue, topHue } = pricePaletteEndpoints(0.38, 0.65, b);
+    assert.ok(bottomHue < PRICE_HUE_GREEN, "the green gate fired");
+    assert.equal(topHue, 0, "the red gate did not fire");
+    assert.equal(priceLevelState(0.38, 0.65, b), "high");
   });
 });

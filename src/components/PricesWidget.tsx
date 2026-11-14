@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState, type MouseEvent } from "react";
+import InfoTooltip from "@/components/InfoTooltip";
 import PanelHeader from "@/components/PanelHeader";
 import SkeletonReveal from "@/components/SkeletonReveal";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -16,6 +17,7 @@ import {
   PRICE_HUE_GREEN,
   PRICE_HUE_RED,
   priceColor,
+  priceLevelState,
   pricePaletteEndpoints,
 } from "@/lib/priceColors";
 import { useDataRefreshListener } from "@/lib/useDataRefresh";
@@ -300,6 +302,26 @@ function PriceBars({
   );
 }
 
+// The absolute price level badge: a compact muted chip with an info
+// tooltip, rendered once in the legend row when the visible window's level
+// against the 30-day baseline is unambiguous. An annotation, not an
+// alert: no alarm colors, just the chip idiom the period navigator uses.
+function PriceLevelBadge({ level }: { level: "high" | "low" }) {
+  const label = level === "high" ? "High prices" : "Low prices";
+  const tooltip =
+    level === "high"
+      ? "High prices: the cheapest hour of the visible window still costs more than the average cheapest hour of the last 30 days."
+      : "Low prices: the most expensive hour of the visible window costs less than the average most expensive hour of the last 30 days.";
+  return (
+    <span className="flex items-center gap-1">
+      <span className="rounded-full border px-2.5 py-0.5 text-xs font-medium text-chip-foreground">
+        {label}
+      </span>
+      <InfoTooltip text={tooltip} />
+    </span>
+  );
+}
+
 // Color swatches matching the chart elements in PriceBars.
 function PriceChartLegend({
   scale,
@@ -315,8 +337,15 @@ function PriceChartLegend({
   const { bottomHue, topHue } = scale
     ? pricePaletteEndpoints(scale.min, scale.max, baseline ?? null)
     : { bottomHue: PRICE_HUE_GREEN, topHue: PRICE_HUE_RED };
+  // The absolute level of the visible window, from the same anchors the
+  // palette gates use; null when the window straddles or sits inside the
+  // normal band, so no badge renders then.
+  const level = scale
+    ? priceLevelState(scale.min, scale.max, baseline ?? null)
+    : null;
   return (
     <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-subtle-foreground">
+      {level !== null && <PriceLevelBadge level={level} />}
       <span className="flex items-center gap-1.5">
         <span
           className="h-3 w-6 rounded-sm"
