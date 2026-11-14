@@ -33,6 +33,8 @@ import {
   guardRegister,
   guardNoOpportunityPhrasing,
   guardWeekBestFraming,
+  guardUnservedWeather,
+  guardPresentTenseProduction,
 } from "./narrative-guards.mjs";
 import { validateSectionFigures } from "./figure-verbatim.mjs";
 
@@ -53,7 +55,7 @@ import { validateSectionFigures } from "./figure-verbatim.mjs";
 // day). Weekday sections speak of their day by weekday name only, and
 // the register stays uncontracted.
 export const MONOLOGUE_STYLE_BRIEF =
-  "You write the energy advisory for a household. You see one section at a time, with its facts. Write 2 to 5 flowing sentences in plain household language, second person. Every sentence either carries one of the served facts or makes exactly one honest interpretive step from them; never invent, compute, or round any number, and copy every figure exactly as served, including the currency marker. Never write calendar dates or years; the weekday label already anchors the day. Attribute a price to a window only from the window's own average fact, never from the day average. Never compute a difference or a total between served amounts; state each amount exactly as served and compare by placing them side by side. State a saving exactly as served; never construct a price comparison to explain it. When you tell the household to run something, speak of your large appliances and never name a specific appliance; a run instruction names the window and the price advantage and never the saving. The named appliance, its measured load and the saving belong in one plain supporting sentence, as in 'Your [appliance] used [appliance_load] today; shifting it into that window saves [appliance_saving].' For the battery recharge action, the load is what the recharge will draw, not what it used today; never write that the battery used its load today. When the section is TODAY and there is a real action with a small saving, you may close with one meaning-only sentence that puts the saving in perspective, as in 'On its own that is small, but it is the kind of shift that quietly adds up when it becomes a habit.' It never states a yearly or monthly amount, never carries any figure, and appears at most once. When the facts carry a served note, weave it into your narrative word for word where it fits best. When the facts carry the battery and the day's solar forecast, spend one sentence on that household context. When the facts mark this section as the week's best solar day, keep the forecast framing, with its own score and expected energy. In a weekday section, refer to the day only by its weekday name; never write 'today'. Use the served weekday name for tomorrow; never guess the day of the week. Describe the weather only as the served condition states; add no other weather words. The condition describes the weather, never the production; never conclude from the condition alone that there is nothing worth doing; a rainy day can still deliver strong solar output. No flattery, no exclamation marks, no technical vocabulary such as candidates, thresholds, payloads, or budgets. No contractions: write 'it is', not 'it's'. If the facts say there is nothing worth doing, say so plainly and briefly.";
+  "You write the energy advisory for a household. You see one section at a time, with its facts. Write 2 to 5 flowing sentences in plain household language, second person. Every sentence either carries one of the served facts or makes exactly one honest interpretive step from them; never invent, compute, or round any number, and copy every figure exactly as served, including the currency marker. Never write calendar dates or years; the weekday label already anchors the day. Attribute a price to a window only from the window's own average fact, never from the day average. Never compute a difference or a total between served amounts; state each amount exactly as served and compare by placing them side by side. State a saving exactly as served; never construct a price comparison to explain it. When you tell the household to run something, speak of your large appliances and never name a specific appliance; a run instruction names the window and the price advantage and never the saving. The named appliance, its measured load and the saving belong in one plain supporting sentence, as in 'Your [appliance] used [appliance_load] today; shifting it into that window saves [appliance_saving].' For the battery recharge action, the load is what the recharge will draw, not what it used today; never write that the battery used its load today. When the section is TODAY and there is a real action with a small saving, you may close with one meaning-only sentence that puts the saving in perspective, as in 'On its own that is small, but it is the kind of shift that quietly adds up when it becomes a habit.' It never states a yearly or monthly amount, never carries any figure, and appears at most once. When the facts carry a served note, weave it into your narrative word for word where it fits best. When the facts carry the battery and the day's solar forecast, spend one sentence on that household context. When the facts mark this section as the week's best solar day, keep the forecast framing, with its own score and expected energy. In a weekday section, refer to the day only by its weekday name; never write 'today'. Use the served weekday name for tomorrow; never guess the day of the week. Describe the weather only as the served condition states; add no other weather words. Mention weather only when the section facts serve a condition fact. The condition describes the weather, never the production; never conclude from the condition alone that there is nothing worth doing; a rainy day can still deliver strong solar output. Every solar figure is a day total for its day: for TODAY the amount produced so far, for TOMORROW and the weekday sections the full-day forecast; it is never a current output and never a remaining amount, and never attach 'later' or 'still to come' phrasing to a day-total figure. Frame a day as the week's best only when the facts carry the week_best marker. No flattery, no exclamation marks, no technical vocabulary such as candidates, thresholds, payloads, or budgets. No contractions: write 'it is', not 'it's'. If the facts say there is nothing worth doing, say so plainly and briefly.";
 
 // Server-owned strings, served verbatim and never rephrased with different
 // figures: the horizon note, the tomorrow-unpublished sentence, the
@@ -424,6 +426,17 @@ function buildTomorrowSection(tomorrowSection, rawFacts, beyondTomorrow) {
   ) {
     facts.weekday = rawFacts.tomorrow.weekday;
   }
+  // The facts layer's condition for tomorrow (the owner decision of 8
+  // November 2026): served as facts.condition when present, so the
+  // narrative may use weather vocabulary consistent with it; when absent,
+  // facts.condition stays unset and the unserved-weather guard bans
+  // weather words in the TOMORROW narrative too.
+  if (
+    typeof rawFacts.tomorrow?.condition === "string" &&
+    rawFacts.tomorrow.condition !== ""
+  ) {
+    facts.condition = rawFacts.tomorrow.condition;
+  }
   const solar = kwhString(tmf.solar_kwh);
   if (solar !== null) facts.solar_forecast = solar;
   if (isNum(tmf.solar_score)) facts.solar_score = `${tmf.solar_score}`;
@@ -641,11 +654,37 @@ export function buildMonologueSections(sections, rawFacts, now) {
 // re-rolling blind. The stub is a parameter, never a network call.
 // ---------------------------------------------------------------------------
 
+// The "Meaning of the facts:" block served with each section's prompt (the
+// owner decision of 8 November 2026): the day-total semantics of every
+// solar figure, per section, plus the standing grounding rules. All served
+// solar figures are day totals, never instantaneous production; a forecast
+// is the FULL day including what has already happened, never the remaining
+// amount, so "later" / "still to come" phrasing never attaches to it.
+// Production is never explained from the weather, and weather is mentioned
+// only when the section facts serve a condition.
+function meaningOfFactsBlock(section) {
+  const standing =
+    "Never attach 'later' or 'still to come' phrasing to a day-total forecast; never explain production from the weather; mention weather only when the section facts serve a condition.";
+  if (section.label === "TODAY") {
+    return (
+      "Meaning of the facts: solar_today is the day total produced so far today, not the current output; solar_forecast is the forecast for the full day including what has already happened, never the remaining amount. " +
+      standing
+    );
+  }
+  // TOMORROW and the weekday sections: the solar figures are the full-day
+  // forecast for that day.
+  return (
+    "Meaning of the facts: the solar figures are the full-day forecast for that day. " +
+    standing
+  );
+}
+
 export function buildSectionPrompt(section, rejectionReasons = null) {
   const lines = [
     MONOLOGUE_STYLE_BRIEF,
     "",
     `Write the ${section.label} section of the advisory.`,
+    meaningOfFactsBlock(section),
     `Facts: ${JSON.stringify(section.facts)}`,
   ];
   const reasons = [
@@ -705,6 +744,13 @@ export function validateSectionNarrative(
       weekdaySection: section.mode === "day",
       negativeAdviceServed: section.facts?.advice === RAIN_DAY_ADVICE,
     }),
+    // The TODAY grounding guards (the owner decision of 8 November 2026,
+    // from the live incident where the served narrative fabricated the
+    // weather, misused a day total as present-tense production and made
+    // an unmarked week-best claim): interpretive claims are anchored in
+    // the served facts only.
+    guardUnservedWeather(text, section.facts),
+    guardPresentTenseProduction(text),
     guardWeekBestFraming(text, section.facts),
   ]) {
     reasons.push(...guard.problems);

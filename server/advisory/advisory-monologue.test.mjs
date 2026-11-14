@@ -1147,6 +1147,236 @@ test("the week-best framing rule accepts a best-framed SUN narrative and rejects
 });
 
 // ---------------------------------------------------------------------------
+// The TODAY narrative grounding pass (the owner decision of 8 November
+// 2026): the live incident of 8 November 2026 pinned verbatim, and the
+// three grounding guards wired into validateSectionNarrative - unserved
+// weather words, present-tense production claims, unmarked week-best
+// framing.
+// ---------------------------------------------------------------------------
+
+// The served TODAY narrative of the 8 November 2026 incident, pinned
+// verbatim: fabricated weather ("sunny" on a factually overcast, rainy
+// day), a day total misused as present-tense production, and an unmarked
+// week-best claim. The figures themselves were verbatim and served
+// correctly (recap mode, after EVENING_PIVOT_HOUR).
+const INCIDENT_NARRATIVE =
+  "It is sunny today, so your solar panels are producing 2.83 kWh. The forecast expects 5.74 kWh later, making this the week's best solar day. The battery sits at 5% and is idle, having earned -€0.12 so far. With no price advantage to shift anything into, there is nothing worth doing right now.";
+
+// The pinned rejection reasons of the three grounding guards.
+const REASON_UNSERVED_WEATHER =
+  'uses the weather word "sunny" while no condition fact is served; mention weather only when the section facts serve a condition';
+const REASON_PRESENT_TENSE =
+  'claims present-tense production ("are producing"); every served solar figure is a day total, never current output';
+const REASON_UNMARKED_WEEK_BEST =
+  "claims \"the week's best\" without the served week_best marker; a week-best claim is grounded only in the facts' week_best marker";
+
+// A recap-mode TODAY section carrying the incident's figures, with no
+// condition and no week_best fact served.
+function incidentFacts() {
+  return baseFacts({
+    solarToday: { actualKwh: 2.83, forecastKwh: 5.74 },
+    battery: { socPct: 5, state: "idle", todayInKwh: 0.4, todayOutKwh: 0.5 },
+    battery_earned_eur: -0.12,
+    candidates: [],
+  });
+}
+
+function incidentToday() {
+  const today = section("today", incidentFacts(), RECAP_NOW);
+  assert.equal(today.mode, "recap");
+  return today;
+}
+
+test("the 8 November 2026 incident narrative rejects with exactly the three named grounding reasons", () => {
+  const today = incidentToday();
+  assert.equal(today.facts.condition, undefined, "TODAY serves no condition fact");
+  assert.equal(today.facts.week_best, undefined, "TODAY serves no week_best marker");
+  assert.equal(today.facts.solar_today, "2.83 kWh");
+  assert.equal(today.facts.solar_forecast, "5.74 kWh");
+  assert.equal(today.facts.battery_level, "5%");
+  assert.equal(today.facts.battery_earned, "-€0.12");
+  const verdict = validateSectionNarrative(INCIDENT_NARRATIVE, today);
+  assert.equal(verdict.ok, false);
+  assert.deepEqual(verdict.reasons, [
+    REASON_UNSERVED_WEATHER,
+    REASON_PRESENT_TENSE,
+    REASON_UNMARKED_WEEK_BEST,
+  ]);
+});
+
+test("the incident without the weather word rejects with only the remaining two reasons", () => {
+  const today = incidentToday();
+  const narrative =
+    "Today your solar panels are producing 2.83 kWh. The forecast expects 5.74 kWh later, making this the week's best solar day. The battery sits at 5% and is idle, having earned -€0.12 so far. With no price advantage to shift anything into, there is nothing worth doing right now.";
+  const verdict = validateSectionNarrative(narrative, today);
+  assert.equal(verdict.ok, false);
+  assert.deepEqual(verdict.reasons, [REASON_PRESENT_TENSE, REASON_UNMARKED_WEEK_BEST]);
+});
+
+test("the incident with production rephrased into the past tense rejects with only the week-best reason", () => {
+  const today = incidentToday();
+  const narrative =
+    "Today your solar panels have produced 2.83 kWh so far. The forecast is 5.74 kWh for the full day, making this the week's best solar day. The battery sits at 5% and is idle, having earned -€0.12 so far. With no price advantage to shift anything into, there is nothing worth doing right now.";
+  const verdict = validateSectionNarrative(narrative, today);
+  assert.equal(verdict.ok, false);
+  assert.deepEqual(verdict.reasons, [REASON_UNMARKED_WEEK_BEST]);
+  // All three unmarked week-best phrasings reject, each naming its phrase.
+  for (const [phraseNarrative, phrase] of [
+    ["This day is the week's best solar day.", "the week's best"],
+    ["This is the best solar day of the week.", "best solar day"],
+    ["This day looks the best for solar.", "the best for solar"],
+  ]) {
+    const v = validateSectionNarrative(phraseNarrative, today);
+    assert.equal(v.ok, false, `expected rejection: ${phraseNarrative}`);
+    assert.deepEqual(v.reasons, [
+      `claims "${phrase}" without the served week_best marker; a week-best claim is grounded only in the facts' week_best marker`,
+    ]);
+  }
+});
+
+test("a clean grounded TODAY narrative accepts with zero reasons", () => {
+  const today = incidentToday();
+  const narrative =
+    "Your solar has produced 2.83 kWh so far today, and the full-day forecast is 5.74 kWh. The battery sits at 5% and is idle, having earned -€0.12 so far. With no price advantage to shift anything into, there is nothing worth doing right now.";
+  const verdict = validateSectionNarrative(narrative, today);
+  assert.equal(verdict.ok, true, verdict.reasons.join(" | "));
+  assert.deepEqual(verdict.reasons, []);
+});
+
+test("a TODAY narrative with a served condition fact may use matching weather vocabulary", () => {
+  const today = incidentToday();
+  const withCondition = { ...today, facts: { ...today.facts, condition: "rain" } };
+  const narrative =
+    "It is rainy today, and your solar has produced 2.83 kWh so far; the full-day forecast is 5.74 kWh.";
+  const accepted = validateSectionNarrative(narrative, withCondition);
+  assert.equal(accepted.ok, true, accepted.reasons.join(" | "));
+  assert.deepEqual(accepted.reasons, []);
+  // Without the served condition the same sentence rejects, naming "rainy".
+  const unserved = validateSectionNarrative(narrative, today);
+  assert.equal(unserved.ok, false);
+  assert.deepEqual(unserved.reasons, [
+    'uses the weather word "rainy" while no condition fact is served; mention weather only when the section facts serve a condition',
+  ]);
+});
+
+test("a week_best-marked TODAY section accepts a best framing (positive-branch regression pin)", () => {
+  const today = incidentToday();
+  const marked = { ...today, facts: { ...today.facts, week_best: true } };
+  const narrative =
+    "Your solar has produced 2.83 kWh so far today, and this is the best solar day of the week; the full-day forecast is 5.74 kWh.";
+  const accepted = validateSectionNarrative(narrative, marked);
+  assert.equal(accepted.ok, true, accepted.reasons.join(" | "));
+  assert.deepEqual(accepted.reasons, []);
+  // The same narrative without the marker rejects on the unmarked branch.
+  const unmarked = validateSectionNarrative(narrative, today);
+  assert.equal(unmarked.ok, false);
+  assert.deepEqual(unmarked.reasons, [
+    "claims \"best solar day\" without the served week_best marker; a week-best claim is grounded only in the facts' week_best marker",
+  ]);
+});
+
+test("TOMORROW serves the facts-layer condition: weather vocabulary allowed with it, banned without it", () => {
+  const withCondition = baseFacts({
+    tomorrow: {
+      pricesPublished: false,
+      prices: null,
+      weekday: "Wednesday",
+      solarKwh: 2.2,
+      solarScore: 15,
+      lowSolar: true,
+      compareSolarKwh: 8.18,
+      condition: "rain",
+    },
+  });
+  const tomorrow = section("tomorrow", withCondition);
+  assert.equal(tomorrow.facts.condition, "rain");
+  const narrative =
+    "It will be rainy tomorrow, with just 2.2 kWh of sun forecast against 8.18 kWh today.";
+  const accepted = validateSectionNarrative(narrative, tomorrow);
+  assert.equal(accepted.ok, true, accepted.reasons.join(" | "));
+  assert.deepEqual(accepted.reasons, []);
+  // Without a served condition the same narrative rejects, naming "rainy".
+  const plain = section("tomorrow", baseFacts());
+  assert.equal(plain.facts.condition, undefined);
+  const rejected = validateSectionNarrative(narrative, plain);
+  assert.equal(rejected.ok, false);
+  assert.deepEqual(rejected.reasons, [
+    'uses the weather word "rainy" while no condition fact is served; mention weather only when the section facts serve a condition',
+  ]);
+  // Every weather word of the list rejects without a condition, naming itself.
+  for (const word of [
+    "sunny",
+    "cloudy",
+    "rainy",
+    "raining",
+    "overcast",
+    "foggy",
+    "windy",
+    "stormy",
+    "snowy",
+    "clear skies",
+  ]) {
+    const v = validateSectionNarrative(`It is ${word} tomorrow.`, plain);
+    assert.equal(v.ok, false, `expected rejection for weather word: ${word}`);
+    assert.ok(
+      v.reasons.some((r) => r.includes(`"${word}"`)),
+      `expected the reason to name "${word}": ${v.reasons.join(" | ")}`
+    );
+  }
+  // "sun" and "solar" stay allowed without a condition (legitimate solar
+  // phrasing is not a weather claim).
+  assert.equal(
+    validateSectionNarrative(
+      "Tomorrow brings 2.2 kWh of sun against 8.18 kWh today, a solar day total.",
+      plain
+    ).ok,
+    true
+  );
+});
+
+test("buildSectionPrompt carries the per-section meaning-of-facts block with the day-total semantics and the later ban", () => {
+  const today = section("today");
+  const prompt = buildSectionPrompt(today);
+  assert.ok(
+    prompt.includes(
+      "Meaning of the facts: solar_today is the day total produced so far today, not the current output; solar_forecast is the forecast for the full day including what has already happened, never the remaining amount."
+    )
+  );
+  assert.ok(
+    prompt.includes(
+      "Never attach 'later' or 'still to come' phrasing to a day-total forecast; never explain production from the weather; mention weather only when the section facts serve a condition."
+    )
+  );
+  // TOMORROW and the weekday sections carry the full-day forecast meaning.
+  assert.ok(
+    buildSectionPrompt(section("tomorrow")).includes(
+      "Meaning of the facts: the solar figures are the full-day forecast for that day."
+    )
+  );
+  assert.ok(
+    buildSectionPrompt(section("sun")).includes(
+      "Meaning of the facts: the solar figures are the full-day forecast for that day."
+    )
+  );
+  // The shared style brief carries the three grounding sentences.
+  assert.ok(
+    MONOLOGUE_STYLE_BRIEF.includes(
+      "Every solar figure is a day total for its day: for TODAY the amount produced so far, for TOMORROW and the weekday sections the full-day forecast; it is never a current output and never a remaining amount, and never attach 'later' or 'still to come' phrasing to a day-total figure."
+    )
+  );
+  assert.ok(
+    MONOLOGUE_STYLE_BRIEF.includes(
+      "Mention weather only when the section facts serve a condition fact."
+    )
+  );
+  assert.ok(
+    MONOLOGUE_STYLE_BRIEF.includes(
+      "Frame a day as the week's best only when the facts carry the week_best marker."
+    )
+  );
+});
+
+// ---------------------------------------------------------------------------
 // Orchestration: one retry per section, then the fallback sentences.
 // ---------------------------------------------------------------------------
 

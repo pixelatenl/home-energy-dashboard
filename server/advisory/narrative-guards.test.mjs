@@ -18,6 +18,8 @@ import {
   guardActionRestatement,
   guardNoOpportunityPhrasing,
   guardWeekBestFraming,
+  guardUnservedWeather,
+  guardPresentTenseProduction,
 } from "./narrative-guards.mjs";
 
 // The selected candidate the restatement tests run against, in the today
@@ -220,6 +222,8 @@ test("all guards accept empty and null text", () => {
     (t) => guardActionRestatement(t, {}),
     guardNoOpportunityPhrasing,
     (t) => guardWeekBestFraming(t, { week_best: true }),
+    (t) => guardUnservedWeather(t, {}),
+    guardPresentTenseProduction,
   ]) {
     assert.equal(guard(null).ok, true);
     assert.equal(guard("").ok, true);
@@ -427,4 +431,40 @@ test("guardWeekBestFraming is inert without the week-best marker", () => {
   assert.equal(guardWeekBestFraming(text, { week_best: false }).ok, true);
   assert.equal(guardWeekBestFraming(text, {}).ok, true);
   assert.equal(guardWeekBestFraming(text, { week_poorest: true }).ok, true);
+});
+
+// ---------------------------------------------------------------------------
+// The TODAY grounding guards (the owner decision of 8 November 2026, from
+// the live incident of 8 November 2026: a rainy, overcast day narrated as
+// "sunny", a day total misused as present-tense production, an unmarked
+// week-best claim).
+// ---------------------------------------------------------------------------
+
+test("guardPresentTenseProduction: case-insensitive verb forms reject with the phrase named; past tense and the noun accept", () => {
+  // The incident verb form and the case/boundary pins.
+  for (const text of [
+    "Your solar panels are producing 2.83 kWh.",
+    "The panels is producing power right now.",
+    "Your array is Producing at full tilt.",
+    "It is generating extra today.",
+    "They are Generating well this afternoon.",
+  ]) {
+    const verdict = guardPresentTenseProduction(text);
+    assert.equal(verdict.ok, false, `expected rejection: ${text}`);
+    assert.ok(
+      verdict.problems.some((p) => /present-tense production/.test(p)),
+      `expected a named present-tense reason: ${text}`
+    );
+  }
+  // The matched phrase is named verbatim, casing preserved.
+  const named = guardPresentTenseProduction("Your panels are Producing 2.83 kWh.");
+  assert.ok(named.problems.some((p) => p.includes('"are Producing"')));
+  // Word boundary on the verb: the past tense and the noun are not claims.
+  for (const text of [
+    "Your solar panels have produced 2.83 kWh so far today.",
+    "Production reached 2.83 kWh by the afternoon.",
+    "The production figure is a day total, not current output.",
+  ]) {
+    assert.equal(guardPresentTenseProduction(text).ok, true, `expected acceptance: ${text}`);
+  }
 });

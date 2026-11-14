@@ -358,18 +358,106 @@ export function guardNoOpportunityPhrasing(
 // week's best solar day must be framed that way: the narrative carries the
 // word "best" and no "poor"-rooted word ("poor", "poorest"), so the live
 // failure of a best day called "a poor solar day" rejects with a readable
-// reason. Inert whenever the facts do not carry the marker.
+// reason. The other branch (the owner decision of 8 November 2026): when
+// the facts do NOT carry the week_best marker, no week-best claim may be
+// made at all - "the week's best", "best solar day" and "the best for
+// solar" are unserved interpretive claims and reject with their own named
+// reason, so the incident's unmarked "week's best solar day" cannot serve.
 const WEEK_BEST_WORD_RE = /\bbest\b/i;
 const WEEK_POOR_WORD_RE = /\bpoor\w*/i;
+const WEEK_BEST_UNMARKED_PATTERNS = [
+  /the week's best/i,
+  /best solar day/i,
+  /the best for solar/i,
+];
 
 export function guardWeekBestFraming(text, facts) {
   const problems = [];
-  if (facts?.week_best !== true) return { ok: true, problems };
   const t = String(text ?? "");
-  if (t.trim() === "") return { ok: true, problems };
-  if (WEEK_POOR_WORD_RE.test(t) || !WEEK_BEST_WORD_RE.test(t)) {
+  if (facts?.week_best === true) {
+    if (t.trim() === "") return { ok: true, problems };
+    if (WEEK_POOR_WORD_RE.test(t) || !WEEK_BEST_WORD_RE.test(t)) {
+      problems.push(
+        "the facts mark this day as the week's best solar day; frame it as the week's best"
+      );
+    }
+    return { ok: problems.length === 0, problems };
+  }
+  // Unmarked branch: one named reason for the first matched week-best
+  // phrase, naming the phrase as written.
+  for (const pattern of WEEK_BEST_UNMARKED_PATTERNS) {
+    const match = pattern.exec(t);
+    if (match !== null) {
+      problems.push(
+        `claims "${match[0]}" without the served week_best marker; a week-best claim is grounded only in the facts' week_best marker`
+      );
+      break;
+    }
+  }
+  return { ok: problems.length === 0, problems };
+}
+
+// Guard 11: the unserved-weather ban (the owner decision of 8 November
+// 2026, from the live incident where a rainy, overcast day was narrated as
+// "sunny"). Weather vocabulary is an interpretive claim about reality, so
+// it is grounded only in a served condition fact: when the section facts
+// carry no `condition`, any weather word rejects with a reason naming the
+// matched word. When `facts.condition` IS present the guard is inert - the
+// model may use weather vocabulary consistent with the served condition.
+// "sun" and "solar" are deliberately NOT in the list: they appear
+// legitimately in solar phrasing ("2.2 kWh of sun", "solar day").
+const WEATHER_WORDS = [
+  "sunny",
+  "cloudy",
+  "rainy",
+  "raining",
+  "overcast",
+  "foggy",
+  "windy",
+  "stormy",
+  "snowy",
+  "clear skies",
+];
+
+export function guardUnservedWeather(text, facts) {
+  const problems = [];
+  if (typeof facts?.condition === "string" && facts.condition !== "") {
+    return { ok: true, problems };
+  }
+  const t = String(text ?? "");
+  for (const word of WEATHER_WORDS) {
+    const pattern = new RegExp(
+      `\\b${word.split(/\s+/).join("\\s+")}\\b`,
+      "i"
+    );
+    const match = pattern.exec(t);
+    if (match !== null) {
+      problems.push(
+        `uses the weather word "${match[0]}" while no condition fact is served; mention weather only when the section facts serve a condition`
+      );
+    }
+  }
+  return { ok: problems.length === 0, problems };
+}
+
+// Guard 12: the present-tense production ban (the owner decision of 8
+// November 2026). All served solar figures are day totals, never
+// instantaneous production, so "is producing" / "are producing" / "is
+// generating" / "are generating" (case-insensitive, word boundary on the
+// verb, so "produced" and "production" do not match) reject with a named
+// reason.
+const PRESENT_TENSE_PRODUCTION_RE = /\b(?:is|are)\s+(producing|generating)\b/gi;
+
+export function guardPresentTenseProduction(text) {
+  const problems = [];
+  const t = String(text ?? "");
+  const seen = new Set();
+  for (const match of t.matchAll(PRESENT_TENSE_PRODUCTION_RE)) {
+    const phrase = match[0];
+    if (seen.has(phrase.toLowerCase())) continue;
+    seen.add(phrase.toLowerCase());
     problems.push(
-      "the facts mark this day as the week's best solar day; frame it as the week's best"
+      `claims present-tense production ("${phrase}"); every served solar figure is a day total, never current output`
     );
   }
   return { ok: problems.length === 0, problems };
