@@ -39,17 +39,30 @@ export function netFigures(data: UsageBreakdown): NetFigures {
   }
 }
 
+// True when the saved figure would display as zero or less: the
+// amount rounded to whole cents is <= 0, so a computed 0.004 still
+// reads as "€0.00" and is honestly a no-savings day. Only a value
+// that displays as €0.01 or more headlines as a figure.
+export function hasNoSavings(savedEur: number | null): boolean {
+  return savedEur !== null && Math.round(savedEur * 100) <= 0;
+}
+
 // The "Saved and earned" headline text: a dash without price data,
-// an honest "No savings today" instead of a negative amount (a
-// battery-charging day without discharge is a pay-first day - the
-// real amount stays visible in the Usage tab), otherwise the plain
-// EUR figure.
-export function savedHeadline(savedEur: number | null): string {
+// an honest "No savings <wording>" instead of a zero-or-negative
+// amount (a battery-charging day without discharge is a pay-first
+// day - the real amount stays visible in the Usage tab), otherwise
+// the plain EUR figure. The wording is period-aware: the hub card
+// uses the default "today", the Usage summary passes the period's
+// word ("this day", "this week", ...).
+export function savedHeadline(
+  savedEur: number | null,
+  wording: string = "today",
+): string {
   if (savedEur === null) {
     return "\u2014";
   }
-  if (savedEur < 0) {
-    return "No savings today";
+  if (hasNoSavings(savedEur)) {
+    return `No savings ${wording}`;
   }
   return `\u20ac${savedEur.toFixed(2)}`;
 }

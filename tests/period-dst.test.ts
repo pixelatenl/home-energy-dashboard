@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { todayString } from "../src/lib/period.ts";
+import { periodWord, todayString } from "../src/lib/period.ts";
 
 // The "today" anchor resolves in Europe/Amsterdam regardless of the
 // process timezone: an instant that is Amsterdam midnight must map to
@@ -36,5 +36,28 @@ describe("todayString: the Amsterdam-anchored today", () => {
       todayString(new Date("2026-03-28T23:00:00Z")),
       "2026-03-29",
     );
+  });
+});
+
+// periodWord: the word a period contributes to relative phrases,
+// with the Amsterdam-local today key passed in by the caller.
+describe("periodWord: the period's wording", () => {
+  const todayKey = "2026-10-20";
+
+  it("says 'today' for the current day", () => {
+    assert.equal(periodWord({ kind: "day", date: todayKey }, todayKey), "today");
+  });
+
+  it("says 'this day' for a browsed non-today day", () => {
+    assert.equal(
+      periodWord({ kind: "day", date: "2026-10-12" }, todayKey),
+      "this day",
+    );
+  });
+
+  it("names the wider periods", () => {
+    assert.equal(periodWord({ kind: "week", date: todayKey }, todayKey), "this week");
+    assert.equal(periodWord({ kind: "month", date: todayKey }, todayKey), "this month");
+    assert.equal(periodWord({ kind: "year", date: todayKey }, todayKey), "this year");
   });
 });

@@ -9,7 +9,7 @@ import { HUB_LINKS } from "@/lib/hubLinks";
 import { todayInAmsterdam } from "@/lib/time";
 import { useUsageBreakdown } from "@/lib/useUsageBreakdown";
 import { STAT_HEADLINE } from "@/lib/statCard";
-import { netFigures, savedHeadline } from "@/lib/usageNet";
+import { hasNoSavings, netFigures, savedHeadline } from "@/lib/usageNet";
 
 function formatKwh(value: number): string {
   return `${value.toFixed(1)} kWh`;
@@ -43,9 +43,10 @@ function SavedEarnedCard() {
   );
   const { data, status } = useUsageBreakdown(anchor);
   const net = data === null ? null : netFigures(data);
-  // The no-savings day: words in the headline slot instead of a
-  // figure (savedHeadline holds the text rule; this drives layout).
-  const noSavings = net !== null && net.savedEur !== null && net.savedEur < 0;
+  // The no-savings day, zero included: words in the headline slot
+  // instead of a figure (savedHeadline holds the text rule; this
+  // drives layout).
+  const noSavings = net !== null && hasNoSavings(net.savedEur);
 
   const loading = status === "loading" && data === null;
 
@@ -74,11 +75,11 @@ function SavedEarnedCard() {
               money-card exception to the neutral headline rule. The
               green is the data-viz palette's own green (the price
               bars' cheap end, the battery's discharge bars) at one
-              tint step lighter for text. The no-savings day reads as
-              words, not a figure: the title's size in a regular
-              muted weight, centered in the space the big figure
-              would have filled, so a pay-first day never headlines
-              as a negative amount. */}
+              tint step lighter for text. The no-savings day, zero
+              included, reads as words, not a figure: the title's
+              size in a regular muted weight, centered in the space
+              the big figure would have filled, so a pay-first day
+              never headlines as a negative or zero amount. */}
             <CardTitle
               className={
                 noSavings

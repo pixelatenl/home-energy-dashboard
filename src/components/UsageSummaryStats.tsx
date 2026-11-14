@@ -7,9 +7,10 @@ import StatCardSkeleton from "@/components/StatCardSkeleton";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import type { UsageBreakdown } from "@/lib/api";
 import type { Mode } from "@/lib/mode";
-import type { Period } from "@/lib/period";
+import { periodWord, type Period } from "@/lib/period";
 import { formatEur, signedEur, signedKwh, STAT_HEADLINE } from "@/lib/statCard";
-import { netFigures } from "@/lib/usageNet";
+import { todayInAmsterdam } from "@/lib/time";
+import { hasNoSavings, netFigures, savedHeadline } from "@/lib/usageNet";
 
 function formatKwh(value: number): string {
   return `${value.toFixed(1)} kWh`;
@@ -68,6 +69,10 @@ function UsageSummaryStats({
 }: UsageSummaryStatsProps) {
   const energyFirst = mode === "energy";
   const net = data === null ? null : netFigures(data);
+  // The no-savings period, zero included: the "Saved and earned"
+  // headline is words, not a figure (savedHeadline holds the text
+  // rule; this drives the muted-text style).
+  const noSavings = net !== null && hasNoSavings(net.savedEur);
   const costUnavailable =
     data !== null && mode === "cost" && data.total.cost_eur === null;
   const noPrices = data !== null && data.import_cost_eur === null;
@@ -201,9 +206,22 @@ function UsageSummaryStats({
                 </CardTitle>
                 {/* Saved is money by definition; the light green accent
                     makes the headline number pop - the same single
-                    money-card exception as the hub's. */}
-                <CardTitle className={`${STAT_HEADLINE} text-green-300`}>
-                  {netEurLabel(net.savedEur)}
+                    money-card exception as the hub's. The no-savings
+                    period, zero included, reads as words in the hub
+                    card's muted-text style, worded for this period -
+                    "today" on the current day, "this day"/"this
+                    week"/... on a browsed period. */}
+                <CardTitle
+                  className={
+                    noSavings
+                      ? "text-lg font-normal text-muted-foreground"
+                      : `${STAT_HEADLINE} text-green-300`
+                  }
+                >
+                  {savedHeadline(
+                    net.savedEur,
+                    periodWord(period, todayInAmsterdam()),
+                  )}
                 </CardTitle>
               </div>
               <div className="flex flex-col gap-1">

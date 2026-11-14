@@ -197,6 +197,24 @@ export function isCurrentPeriod(period: Period, now: Date): boolean {
   return periodStart(period) <= today && today <= periodEnd(period)
 }
 
+// The wording a period contributes to relative phrases like "No
+// savings ...": the current day is "today", any other browsed day is
+// "this day", and the wider periods name themselves. `todayKey` is
+// the Amsterdam-local date string of now, passed in by the caller
+// like every "now".
+export function periodWord(period: Period, todayKey: string): string {
+  switch (period.kind) {
+    case "day":
+      return period.date === todayKey ? "today" : "this day"
+    case "week":
+      return "this week"
+    case "month":
+      return "this month"
+    case "year":
+      return "this year"
+  }
+}
+
 // True when the period can hold data: it ends on or after dataStart.
 export function periodHasData(
   period: Period,

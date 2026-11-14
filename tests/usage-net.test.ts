@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { pricedGridFigures } from "../server/queries.mjs";
-import { netFigures, savedHeadline } from "../src/lib/usageNet.ts";
+import { hasNoSavings, netFigures, savedHeadline } from "../src/lib/usageNet.ts";
 import type { UsageBreakdown } from "../src/lib/api.ts";
 
 // An hour map: bucket start ms -> kWh.
@@ -146,17 +146,53 @@ describe("savedHeadline: the card's headline text", () => {
 
   it("reads 'No savings today' on a negative day", () => {
     assert.equal(savedHeadline(-0.26), "No savings today");
+    assert.equal(savedHeadline(-0.35), "No savings today");
   });
 
   it("reads 'No savings today' on any negative value, however small", () => {
     assert.equal(savedHeadline(-0.001), "No savings today");
   });
 
-  it("formats zero as a plain EUR figure", () => {
-    assert.equal(savedHeadline(0), "\u20ac0.00");
+  it("reads 'No savings today' at exactly zero", () => {
+    assert.equal(savedHeadline(0), "No savings today");
+  });
+
+  it("reads 'No savings today' for a sub-cent positive that displays as zero", () => {
+    assert.equal(savedHeadline(0.004), "No savings today");
+  });
+
+  it("headlines a figure from one cent up (toFixed rounds 0.005 to 0.01)", () => {
+    assert.equal(savedHeadline(0.005), "\u20ac0.01");
+  });
+
+  it("takes the wording for non-today periods", () => {
+    assert.equal(savedHeadline(-0.01, "this week"), "No savings this week");
+    assert.equal(savedHeadline(0, "this day"), "No savings this day");
+    assert.equal(savedHeadline(1.2, "this week"), "\u20ac1.20");
   });
 
   it("formats a positive figure as a plain EUR amount", () => {
     assert.equal(savedHeadline(12.34), "\u20ac12.34");
+  });
+});
+
+describe("hasNoSavings: the zero-inclusive no-savings rule", () => {
+  it("is false without a figure", () => {
+    assert.equal(hasNoSavings(null), false);
+  });
+
+  it("is true for negative and exactly-zero amounts", () => {
+    assert.equal(hasNoSavings(-0.01), true);
+    assert.equal(hasNoSavings(0), true);
+  });
+
+  it("rounds to whole cents: 0.004 counts, 0.005 does not", () => {
+    assert.equal(hasNoSavings(0.004), true);
+    assert.equal(hasNoSavings(0.005), false);
+  });
+
+  it("is false for any amount that displays as one cent or more", () => {
+    assert.equal(hasNoSavings(0.01), false);
+    assert.equal(hasNoSavings(1), false);
   });
 });
