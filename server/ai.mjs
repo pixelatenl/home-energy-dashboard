@@ -11,9 +11,9 @@ import {
   localHourIndex,
   localHourLabel,
 } from "./time.mjs";
-import { guardNonFiniteText } from "./advisory/narrative-guards.mjs";
 import { solarScoreBand } from "./advisory-constants.mjs";
 import { validateWeatherInsight } from "./weather-guards.mjs";
+import { validateBatteryInsight } from "./battery-guards.mjs";
 import { generateAdvisoryCard } from "./advisory/advisory-core.mjs";
 import { MONOLOGUE_STYLE_BRIEF } from "./advisory/advisory-monologue.mjs";
 import {
@@ -60,12 +60,25 @@ export const WEATHER_SYSTEM_PROMPT =
   "is served here. Use the band vocabulary exactly as served, with no " +
   "synonyms or intensifiers. Be concrete, no marketing tone, no emoji.";
 
-const BATTERY_SYSTEM_PROMPT =
+// The battery box is a context box like the weather box: charge state
+// and today's use as plain facts, no advice at all - what to do remains
+// the hub advisory's job. Unlike the weather box, this context serves
+// price facts, so one plain price fact may be stated, exactly as
+// served. Figures are stated exactly as served with their units, never
+// computed or converted.
+export const BATTERY_SYSTEM_PROMPT =
   "You are the assistant of a home energy dashboard in the Netherlands " +
-  "with a home battery and solar panels. Given battery state and flow " +
-  "data, reply in 2 to 3 short sentences: the current charge state, how " +
-  "the battery has been used today, and one practical tip about charging " +
-  "(prefer surplus solar) or timing discharge. Be concrete, no marketing " +
+  "with a home battery and solar panels. Given battery state, flow and " +
+  "price data, reply in 2 to 3 short sentences: the current charge " +
+  "state (SOC percentage and state exactly as served, power in watts " +
+  "as served), how the battery has been used today (from the served " +
+  "kWh figures), and optionally one plain fact about the price " +
+  "situation (the current price or the cheapest window, exactly as " +
+  "served, when present). Describe solar days only with the served band " +
+  "labels (little sun, moderate, good). No advice of any kind: no " +
+  "tips, no recommendations, no charging or discharge instructions, no " +
+  "appliance advice; facts only. State figures exactly as served with " +
+  "their units, never computed or converted. Be concrete, no marketing " +
   "tone, no emoji.";
 
 // The hourly row matching the current hour in Europe/Amsterdam.
@@ -89,8 +102,8 @@ export function topProductionHours(todayHourly, count = 3) {
 
 // The meaning of the solar score, served with the facts so the model
 // never has to guess the scale: 0 to 100 against the theoretical best
-// day of the year.
-const SOLAR_SCORE_MEANING =
+// day of the year. Shared by the weather and battery contexts.
+export const SOLAR_SCORE_MEANING =
   "solar_score is 0 to 100 against the theoretical best day of the " +
   "year: around 90 is a sunny July day, 30 to 40 is a good October " +
   "day, below 20 is the little-sun band.";
@@ -362,9 +375,14 @@ export async function getWeatherContext(daily, todayHourly, options = {}) {
 
 // Compact battery context for the model: the snapshot, the range
 // throughputs and today's hourly flow; the solar forecast and the price
-// context are optional.
+// context are optional. The solar forecast carries the shared band
+// label per day and the score-meaning block, so the model reads the
+// score's meaning from the context instead of judging the raw number;
+// the price block stays served unchanged (prices may be stated as plain
+// facts, exactly as served).
 export function buildBatteryContext(summary, weatherDaily, priceParts) {
   const context = {
+    solar_score_meaning: SOLAR_SCORE_MEANING,
     soc_pct: summary?.battery_soc_pct ?? null,
     state: summary?.battery_state ?? null,
     power_w: summary?.battery_power_w ?? null,
@@ -384,6 +402,7 @@ export function buildBatteryContext(summary, weatherDaily, priceParts) {
     context.solar_forecast = weatherDaily.map((day) => ({
       date: day.date,
       solar_score: day.solar_score,
+      solar_band: solarScoreBand(day.solar_score),
       estimated_kwh: day.estimated_kwh,
     }));
   }
@@ -405,7 +424,7 @@ export async function getBatteryContext(summary, weatherDaily, priceParts, optio
   const cacheKey = hashString(JSON.stringify(context));
   return getInsight("battery", BATTERY_SYSTEM_PROMPT, cacheKey, context, {
     ...options,
-    validate: (text) => guardNonFiniteText(text).ok,
+    validate: (text) => validateBatteryInsight(text, context).ok,
   });
 }
 
