@@ -12,6 +12,8 @@ import {
   localHourLabel,
 } from "./time.mjs";
 import { guardNonFiniteText } from "./advisory/narrative-guards.mjs";
+import { solarScoreBand } from "./advisory-constants.mjs";
+import { validateWeatherInsight } from "./weather-guards.mjs";
 import { generateAdvisoryCard } from "./advisory/advisory-core.mjs";
 import { MONOLOGUE_STYLE_BRIEF } from "./advisory/advisory-monologue.mjs";
 import {
@@ -43,12 +45,20 @@ function summaryMinIntervalMs() {
 // MISTRAL_DAILY_CALL_LIMIT in the environment (the current plan allows 100).
 const DEFAULT_DAILY_LIMIT = 100;
 
-const WEATHER_SYSTEM_PROMPT =
+// The weather box is a context box: it explains the forecast, it never
+// advises. The prompt asks for the served band labels and figures only,
+// never for an evaluative judgment of the days and never for a usage
+// tip, and it never mentions prices or costs (no price data is served).
+export const WEATHER_SYSTEM_PROMPT =
   "You are the assistant of a home energy dashboard in the Netherlands. " +
-  "Given forecast data, reply in 2 to 3 short sentences: how good the " +
-  "coming days are for solar production, when production peaks today, and " +
-  "one practical tip about timing energy use. Be concrete, no marketing " +
-  "tone, no emoji.";
+  "Given forecast data, reply in 2 to 3 short sentences: describe the " +
+  "coming days' solar production using only the served band labels " +
+  "(little sun, moderate, good) and the served figures, and state when " +
+  "production peaks today. You may also state when your own production " +
+  "is highest as a plain fact. Do not advise on running appliances or " +
+  "timing energy use, and do not mention prices or costs: no price data " +
+  "is served here. Use the band vocabulary exactly as served, with no " +
+  "synonyms or intensifiers. Be concrete, no marketing tone, no emoji.";
 
 const BATTERY_SYSTEM_PROMPT =
   "You are the assistant of a home energy dashboard in the Netherlands " +
@@ -64,21 +74,34 @@ function currentHourConditions(todayHourly) {
   return todayHourly.find((hour) => hour.hour.startsWith(prefix)) ?? null;
 }
 
-// The N hours with the highest estimated PV production.
+// The N hours with the highest estimated PV production, served in kWh:
+// the server owns the Wh to kWh conversion, so the model never converts
+// units itself (1220 Wh serves as 1.22 kWh).
 export function topProductionHours(todayHourly, count = 3) {
   return [...todayHourly]
     .sort((a, b) => b.estimated_pv_wh - a.estimated_pv_wh)
     .slice(0, count)
     .map((hour) => ({
       hour: hour.hour,
-      estimated_pv_wh: hour.estimated_pv_wh,
+      estimated_pv_kwh: Math.round(hour.estimated_pv_wh / 10) / 100,
     }));
 }
+
+// The meaning of the solar score, served with the facts so the model
+// never has to guess the scale: 0 to 100 against the theoretical best
+// day of the year.
+const SOLAR_SCORE_MEANING =
+  "solar_score is 0 to 100 against the theoretical best day of the " +
+  "year: around 90 is a sunny July day, 30 to 40 is a good October " +
+  "day, below 20 is the little-sun band.";
 
 // Compact summary of the weather forecast payloads for the model. The
 // hourly result is the { current, hours } object from weatherHourly(); a
 // bare hour array is accepted for backward compatibility. Present
 // conditions prefer the "current" analysis over the hourly series value.
+// Every day carries its server-computed band label (solarScoreBand, the
+// one shared helper), so the model reads the score's meaning from the
+// context instead of judging the raw number.
 export function buildWeatherContext(daily, hourlyResult) {
   const hours = Array.isArray(hourlyResult)
     ? hourlyResult
@@ -87,9 +110,11 @@ export function buildWeatherContext(daily, hourlyResult) {
     ? currentHourConditions(hourlyResult)
     : (hourlyResult?.current ?? currentHourConditions(hours) ?? null);
   return {
+    solar_score_meaning: SOLAR_SCORE_MEANING,
     days: daily.map((day) => ({
       date: day.date,
       solar_score: day.solar_score,
+      solar_band: solarScoreBand(day.solar_score),
       estimated_kwh: day.estimated_kwh,
       temp_min: day.temp_min,
       temp_max: day.temp_max,
@@ -328,16 +353,11 @@ export async function getWeatherContext(daily, todayHourly, options = {}) {
   const cacheKey = hashString(
     `${JSON.stringify(daily)}|${JSON.stringify(todayHourly)}`
   );
-  return getInsight(
-    "weather",
-    WEATHER_SYSTEM_PROMPT,
-    cacheKey,
-    buildWeatherContext(daily, todayHourly),
-    {
-      ...options,
-      validate: (text) => guardNonFiniteText(text).ok,
-    }
-  );
+  const context = buildWeatherContext(daily, todayHourly);
+  return getInsight("weather", WEATHER_SYSTEM_PROMPT, cacheKey, context, {
+    ...options,
+    validate: (text) => validateWeatherInsight(text, context).ok,
+  });
 }
 
 // Compact battery context for the model: the snapshot, the range

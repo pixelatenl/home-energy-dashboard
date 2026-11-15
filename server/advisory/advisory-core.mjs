@@ -33,7 +33,9 @@ import { checkAdvisory } from "../checker.mjs";
 import {
   ACHIEVEMENT_MIN_BATTERY_EARN_EUR,
   ACHIEVEMENT_MIN_SOLAR_SHARE_PCT,
+  GOOD_SOLAR_SCORE,
   GUIDANCE_MIN_SPREAD_EUR,
+  LOW_SOLAR_SCORE,
   PRACTICAL_MIN_ADVANTAGE_EUR,
 } from "../advisory-constants.mjs";
 import {
@@ -49,16 +51,17 @@ import {
 } from "./narrative-guards.mjs";
 
 // Contract section 7 lists these constants; the two spread/practicality
-// values and the two achievement thresholds live in advisory-constants.mjs
-// (the latter ENV-overridable there), so the rest are defined here once
-// with their contract defaults. No ENV reads: the purity contract of
+// values, the two achievement thresholds and the two solar score bands
+// live in advisory-constants.mjs (the achievement thresholds ENV-
+// overridable there), so they are defined there once and re-exported
+// here for this module's consumers; the rest are defined here once with
+// their contract defaults. No ENV reads: the purity contract of
 // this pass forbids environment access.
 export const EVENING_PIVOT_HOUR = 18;
 export const PRACTICAL_MIN_HOURS = 2;
 export const DELAY_MIN_ADVANTAGE_EUR = 0.05;
-export const GOOD_SOLAR_SCORE = 60;
-export const LOW_SOLAR_SCORE = 20;
 export const SAVING_CHIP_MIN_EUR = 1.0;
+export { GOOD_SOLAR_SCORE, LOW_SOLAR_SCORE };
 
 // The deterministic no-opportunity statement (contract section 4): the model
 // never writes it, and it is never phrased as deferral advice.

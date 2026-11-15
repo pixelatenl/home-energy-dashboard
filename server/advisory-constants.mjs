@@ -31,3 +31,23 @@ export const ACHIEVEMENT_MIN_BATTERY_EARN_EUR =
   ACHIEVEMENT_MIN_BATTERY_EARN_EUR_RAW > 0
     ? ACHIEVEMENT_MIN_BATTERY_EARN_EUR_RAW
     : 1.0;
+
+// The solar score bands, defined once here so the advisory core and the
+// weather context box can never disagree about a score. The score itself
+// is 0 to 100 against the theoretical best day of the year (weather.mjs:
+// around 90 is a sunny July day, 30 to 40 a good October day). Plain
+// constants, no ENV override: one meaning for every consumer.
+export const LOW_SOLAR_SCORE = 20;
+export const GOOD_SOLAR_SCORE = 60;
+
+// The band label for a solar score: below LOW_SOLAR_SCORE is "little
+// sun", from LOW_SOLAR_SCORE up to and including GOOD_SOLAR_SCORE is
+// "moderate", above GOOD_SOLAR_SCORE is "good". A non-finite score reads
+// as 0 (weather.mjs never serves NaN), so it lands in the little-sun
+// band rather than escaping every band.
+export function solarScoreBand(score) {
+  const value = Number.isFinite(score) ? score : 0;
+  if (value < LOW_SOLAR_SCORE) return "little sun";
+  if (value <= GOOD_SOLAR_SCORE) return "moderate";
+  return "good";
+}
