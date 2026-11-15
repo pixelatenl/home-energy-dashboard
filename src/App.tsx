@@ -12,6 +12,7 @@ import DebugPage from "@/components/DebugPage"
 import ErrorBoundary from "@/components/ErrorBoundary"
 import HeatPage from "@/components/HeatPage"
 import LivePage from "@/components/LivePage"
+import ProfilePage from "@/components/ProfilePage"
 import SolarPage from "@/components/SolarPage"
 import TodayPage from "@/components/TodayPage"
 import UsagePage from "@/components/UsagePage"
@@ -50,6 +51,7 @@ function App() {
             <Route path="/battery" element={bounded(<BatteryPage />)} />
             <Route path="/appliances" element={<AppliancesRedirect />} />
             <Route path="/heat" element={bounded(<HeatPage />)} />
+            <Route path="/profile" element={bounded(<ProfilePage />)} />
             <Route path="/live" element={bounded(<LivePage />)} />
             <Route path="/debug" element={bounded(<DebugPage />)} />
             <Route
