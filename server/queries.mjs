@@ -387,6 +387,39 @@ export async function getRangeMetrics(startMs, endMs) {
   return metrics;
 }
 
+// GET /api/profile/bill data: the grid import and export counters' kWh
+// per UTC hour bucket in [fromMs, toMs), keyed by counter role as
+// { import: Map(hourStartMs -> kWh), export: Map(...) }, for joining
+// the price table in server/bill.mjs. The buckets align with the price
+// table's hour rows (both UTC hour floors). Hours without a price row
+// still carry their kWh; the money join happens in bill.mjs.
+export async function gridCounterHourlyRows(fromMs, toMs) {
+  const map = await resolveEntityMap();
+  const result = { import: new Map(), export: new Map() };
+  const ids = [map.import, map.export].filter((id) => Number.isFinite(id));
+  if (ids.length === 0) {
+    return result;
+  }
+  const { rows } = await pool.query(
+    `SELECT time_bucket('1 hour', ts) AS bucket, entity_id, sum(delta_kwh) AS kwh
+       FROM energy_delta
+      WHERE entity_id = ANY($1::smallint[])
+        AND ts >= $2::timestamptz AND ts < $3::timestamptz
+      GROUP BY bucket, entity_id`,
+    [ids, new Date(fromMs), new Date(toMs)]
+  );
+  for (const row of rows) {
+    const bucketMs = row.bucket.getTime();
+    const kwh = Number(row.kwh) || 0;
+    if (row.entity_id === map.import) {
+      result.import.set(bucketMs, (result.import.get(bucketMs) ?? 0) + kwh);
+    } else if (row.entity_id === map.export) {
+      result.export.set(bucketMs, (result.export.get(bucketMs) ?? 0) + kwh);
+    }
+  }
+  return result;
+}
+
 // --- Solar forecast accuracy and persistence ---
 
 // Actual PV production so far today, from the same aggregation the summary

@@ -36,6 +36,7 @@ import {
   SOLAR_DATA_START,
 } from "./solar-production.mjs";
 import { BATTERY_DATA_START, getBatteryFlow } from "./battery-flow.mjs";
+import { BILL_DATA_START, getProfileBill, monthDateKeys } from "./bill.mjs";
 import { getLiveSnapshot } from "./live.mjs";
 import {
   applianceHourly,
@@ -849,6 +850,44 @@ app.get(
       text: result.text,
       generated_at: result.generatedAt,
       error: result.error,
+    });
+  })
+);
+
+// GET /api/profile/bill?month=YYYY-MM: the estimated bill for one local
+// calendar month (Europe/Amsterdam), computed from existing data only:
+// import at the all-in served tariff, export credit at the tariff minus
+// energy tax plus the Zonnebonus, gas at the daily gas price times the
+// calorific correction factor, plus the fixed monthly components. The
+// current month returns month-to-date with an in-progress marker, the
+// data-start month a partial-month marker, and months before the data
+// start an honest empty state (components null, never zeros). The
+// assumptions block rides along for the card's expandable section.
+app.get(
+  "/api/profile/bill",
+  asyncHandler(async (req, res) => {
+    const month = req.query.month;
+    if (typeof month !== "string" || monthDateKeys(month) === null) {
+      return res
+        .status(400)
+        .json({ error: "month must be a valid YYYY-MM value" });
+    }
+    const now = new Date();
+    if (month > localDateKey(now).slice(0, 7)) {
+      return res.status(400).json({ error: "month must not be in the future" });
+    }
+    const keys = monthDateKeys(month);
+    const fromMs = localDayStartUtcMs(keys.startKey);
+    const toMs = localDayStartUtcMs(nextDateKey(keys.endKey, 1));
+    const bill = await getProfileBill(month, fromMs, toMs, now);
+    res.json({
+      month,
+      window: {
+        start: localIsoWithOffset(new Date(fromMs)),
+        end: localIsoWithOffset(new Date(toMs)),
+      },
+      dataStart: BILL_DATA_START,
+      ...bill,
     });
   })
 );

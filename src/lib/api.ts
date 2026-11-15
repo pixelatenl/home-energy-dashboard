@@ -1133,3 +1133,70 @@ export function fetchBatteryFlow(
     withParams("/api/battery/flow", { period, date })
   )
 }
+
+// GET /api/profile/bill: the estimated bill for one local calendar
+// month (month=YYYY-MM), computed from existing data only. The current
+// month is month-to-date with an in-progress marker; the data-start
+// month carries a partial-month marker; months before the data start
+// return an honest empty state (components null, never zeros). The
+// assumptions block carries the model's notes and the constants in use
+// for the card's expandable section.
+export interface ProfileBillFixedSide {
+  energy_tax: number
+  supply: number
+  energy_tax_reduction: number
+  grid: number
+  total: number
+}
+
+export interface ProfileBillComponents {
+  import: { kwh: number; cost_eur: number; has_unknown_price: boolean }
+  export: {
+    kwh: number
+    credit_eur: number
+    bonus_eur: number
+    has_unknown_price: boolean
+  }
+  gas: {
+    m3: number
+    billed_m3: number
+    cost_eur: number
+    has_unknown_price: boolean
+  }
+  fixed: {
+    electricity: ProfileBillFixedSide
+    gas: ProfileBillFixedSide
+    total_eur: number
+  }
+  total_eur: number
+}
+
+export interface ProfileBillAssumptions {
+  tariff_composition: string
+  export_credit_hypothesis: string
+  energy_tax_year: number
+  energy_tax_eur_incl_vat: number
+  zonnebonus: number
+  gas_correction_factor: number
+  gas_correction_note: string
+  fixed_costs_basis: string
+  annual_energy_tax_true_up: string
+  excluded: string
+  data_completeness: string
+}
+
+export interface ProfileBillData {
+  month: string
+  window: { start: string; end: string }
+  dataStart: string
+  status: "empty" | "complete" | "in_progress"
+  has_data: boolean
+  in_progress: boolean
+  partial_month: boolean
+  components: ProfileBillComponents | null
+  assumptions: ProfileBillAssumptions
+}
+
+export function fetchProfileBill(month: string): Promise<ProfileBillData> {
+  return getJson<ProfileBillData>(withParams("/api/profile/bill", { month }))
+}
