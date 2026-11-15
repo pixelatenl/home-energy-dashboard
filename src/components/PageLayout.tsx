@@ -47,11 +47,13 @@ function PageLayout({
             </div>
           </div>
           {/* The right cluster: the page's own actions - the hub's
-              insight pill and refresh button. The cluster always
-              renders so the actions keep their place on pages
-              without any. */}
+              data-freshness stamp, the debug page's buttons - with
+              the profile avatar at the far right after them. The
+              cluster always renders so the actions and the avatar
+              keep their place on pages without any. */}
           <div className="flex items-center gap-3">
             {actions != null && actions}
+            <AvatarLink />
           </div>
         </div>
       </header>
@@ -59,15 +61,7 @@ function PageLayout({
       <div className="px-3 pt-4 sm:px-6">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <NavBar />
-          {/* The right cluster: the page's own toolbar plus the
-              profile avatar at the far right, visually separated
-              from the tabs. The cluster wraps as one unit, so the
-              tabs keep their alignment on narrow viewports and the
-              avatar stays visible. */}
-          <div className="flex flex-wrap items-center gap-4">
-            {toolbar != null && toolbar}
-            <AvatarLink />
-          </div>
+          {toolbar != null && toolbar}
         </div>
       </div>
 
