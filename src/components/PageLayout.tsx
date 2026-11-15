@@ -1,5 +1,6 @@
 import type { ReactNode } from "react"
 import { Link } from "react-router-dom"
+import AvatarLink from "@/components/AvatarLink"
 import BrandLogo from "@/components/BrandLogo"
 import NavBar from "@/components/NavBar"
 import { useModeSearch } from "@/lib/mode"
@@ -58,7 +59,15 @@ function PageLayout({
       <div className="px-3 pt-4 sm:px-6">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <NavBar />
-          {toolbar != null && toolbar}
+          {/* The right cluster: the page's own toolbar plus the
+              profile avatar at the far right, visually separated
+              from the tabs. The cluster wraps as one unit, so the
+              tabs keep their alignment on narrow viewports and the
+              avatar stays visible. */}
+          <div className="flex flex-wrap items-center gap-4">
+            {toolbar != null && toolbar}
+            <AvatarLink />
+          </div>
         </div>
       </div>
 

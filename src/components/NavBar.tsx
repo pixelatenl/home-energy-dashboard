@@ -7,7 +7,6 @@ const TABS = [
   { to: "/solar", label: "Solar", end: false },
   { to: "/battery", label: "Battery", end: false },
   { to: "/heat", label: "Heat", end: false },
-  { to: "/profile", label: "Profile", end: false },
 ]
 
 // Primary navigation: a segmented control in the same idiom as the

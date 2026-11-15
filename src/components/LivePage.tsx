@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom"
 import { ArrowLeft } from "lucide-react"
+import AvatarLink from "@/components/AvatarLink"
 import BrandLogo from "@/components/BrandLogo"
 import LiveEnergyFlow from "@/components/LiveEnergyFlow"
 import { useModeSearch } from "@/lib/mode"
@@ -22,6 +23,11 @@ function LivePage() {
                 Power between solar, home, grid and battery
               </p>
             </div>
+          </div>
+          {/* The right cluster keeps the profile avatar reachable on
+              this route too; the page has no tab row of its own. */}
+          <div className="flex items-center gap-3">
+            <AvatarLink />
           </div>
         </div>
       </header>
