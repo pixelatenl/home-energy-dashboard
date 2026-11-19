@@ -61,7 +61,12 @@ const STARS = [
 // z-index). The two gradient layers cross-fade on phase changes; the
 // sun rides its arc by day, low at the horizon at sunrise/sunset and
 // high at midday; clouds drift by day; the moon and twinkling stars
-// appear at night.
+// appear at night. Outside the phase-transition windows nothing
+// repaints: the gradients and the sun only move through opacity and
+// transform transitions, which the compositor runs without paint.
+// The sun's arc is expressed in container units (cqw/cqh) on a
+// transform, so its per-minute position updates never touch layout -
+// the sky container is a size container for exactly that reason.
 function TimeOfDayBackground({
   phase,
   sunProgress,
@@ -70,6 +75,8 @@ function TimeOfDayBackground({
   sunProgress: number | null
 }) {
   // Arc across the widget: near the horizon at the ends, high at noon.
+  // Percentages of the sky container, applied as translate() in cqw/cqh
+  // so the same values position the sun exactly where left/top did.
   const sunLeft = sunProgress !== null ? 8 + 84 * sunProgress : 50
   const sunTop =
     sunProgress !== null
@@ -78,7 +85,10 @@ function TimeOfDayBackground({
   const daySky = phase === "day"
 
   return (
-    <div className="absolute inset-0 overflow-hidden" aria-hidden="true">
+    <div
+      className="absolute inset-0 overflow-hidden [container-type:size]"
+      aria-hidden="true"
+    >
       {(Object.keys(PHASE_GRADIENTS) as TimeOfDayPhase[]).map((key) => (
         <div
           key={key}
@@ -90,13 +100,11 @@ function TimeOfDayBackground({
         />
       ))}
       <div
-        className="absolute rounded-full transition-[left,top,opacity] duration-[2500ms] ease-out"
+        className="absolute left-0 top-0 rounded-full transition-[transform,opacity] duration-[2500ms] ease-out"
         style={{
-          left: `${sunLeft}%`,
-          top: `${sunTop}%`,
+          transform: `translate(${sunLeft}cqw, ${sunTop}cqh) translate(-50%, -50%)`,
           width: SUN_SIZE,
           height: SUN_SIZE,
-          transform: "translate(-50%, -50%)",
           opacity: daySky ? 1 : 0,
           background: "#f9db5a",
           filter: `blur(${SUN_EDGE_BLUR}px)`,

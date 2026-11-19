@@ -3,9 +3,12 @@ import { cn } from "cn"
 
 // Glass surface, the reference recipe: every Card is a nearly
 // clear pane over the dark-earth gradient body - a 0.02 white tint
-// with no border, so the .glass-card blur/saturate and gradient
-// seams (index.css) define the edges while the fill, elevation and
-// radius come from the theme tokens.
+// with no border, so the .glass-card saturate over the pre-blurred
+// body layer (index.css) and the gradient seams define the edges
+// while the fill, elevation and radius come from the theme tokens.
+// contain:paint marks the card self-contained: its descendants are
+// clipped (as overflow-hidden already does) and never repaint outside
+// it, which keeps each card one isolated layer while scrolling.
 function Card({
   className,
   size = "default",
@@ -16,7 +19,7 @@ function Card({
       data-slot="card"
       data-size={size}
       className={cn(
-        "group/card glass-card flex flex-col gap-(--card-spacing) overflow-hidden rounded-lg bg-card py-(--card-spacing) text-sm text-card-foreground shadow-card [--card-spacing:--spacing(4)] has-data-[slot=card-footer]:pb-0 has-[>img:first-child]:pt-0 data-[size=sm]:[--card-spacing:--spacing(3)] data-[size=sm]:has-data-[slot=card-footer]:pb-0",
+        "group/card glass-card [contain:paint] flex flex-col gap-(--card-spacing) overflow-hidden rounded-lg bg-card py-(--card-spacing) text-sm text-card-foreground shadow-card [--card-spacing:--spacing(4)] has-data-[slot=card-footer]:pb-0 has-[>img:first-child]:pt-0 data-[size=sm]:[--card-spacing:--spacing(3)] data-[size=sm]:has-data-[slot=card-footer]:pb-0",
         className
       )}
       {...props}

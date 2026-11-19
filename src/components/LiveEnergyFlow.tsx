@@ -73,6 +73,14 @@ const INACTIVE_LINE = "rgba(255, 255, 255, 0.3)";
 const PULSE_FRACTION = 0.15;
 const PULSE_CYCLE = 1 + PULSE_FRACTION;
 
+// The pulse's advance rate in frames per second. stroke-dashoffset is
+// a paint property, so the pulse repaints whatever rate it runs at;
+// advancing it in steps at ~20 fps (the flow's slowest crossing is
+// 6.9 s, the fastest 0.8 s) is imperceptible at hallway distance
+// and cuts the pulse's paint work to a third. The flow stays visibly
+// animated - it never freezes.
+const PULSE_FPS = 20;
+
 // One flow line: the shared base line with the flow's bright pulse
 // traveling along it when it carries power, a thin translucent white
 // line when it does not. Pulse speed and line weight scale with power;
@@ -122,6 +130,12 @@ function FlowLine({ edge }: { edge: FlowEdge }) {
         className="flow-pulse"
         style={{
           animationDuration: `${(flowDuration(value) * PULSE_CYCLE).toFixed(2)}s`,
+          // Stepped advance at PULSE_FPS instead of linear: the same
+          // path, the same speed, sampled ~20 times per second.
+          animationTimingFunction: `steps(${Math.max(
+            1,
+            Math.round(flowDuration(value) * PULSE_CYCLE * PULSE_FPS),
+          )})`,
         }}
       />
     </g>

@@ -21,10 +21,10 @@ export const GLASS_BLOCK = `flex flex-col gap-1.5 p-3 ${CARD_SURFACE}`;
 // The glass chip register the advisory area's header and day chips
 // share: the pill on top of the glass surfaces.
 export const GLASS_CHIP =
-  "rounded-full bg-white/15 text-chip-foreground backdrop-blur-sm";
+  "rounded-full bg-white/15 text-chip-foreground";
 
 // The provenance chip in the header's right cluster: the
 // "Insight from HH:MM" stamp (or the honest absence), in the
 // area's own glass register so it reads as the card's furniture.
 export const PROVENANCE_CHIP =
-  "flex shrink-0 items-center rounded-full border border-white/20 bg-white/15 px-2.5 py-1 text-xs font-medium text-chip-foreground tabular-nums backdrop-blur-sm";
+  "flex shrink-0 items-center rounded-full border border-white/20 bg-white/15 px-2.5 py-1 text-xs font-medium text-chip-foreground tabular-nums";

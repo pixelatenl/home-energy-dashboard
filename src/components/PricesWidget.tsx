@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type MouseEvent } from "react";
+import { useCallback, useEffect, useMemo, useState, memo, type MouseEvent } from "react";
 import InfoTooltip from "@/components/InfoTooltip";
 import PanelHeader from "@/components/PanelHeader";
 import SkeletonReveal from "@/components/SkeletonReveal";
@@ -400,6 +400,12 @@ function blockLabel(block: CheapestBlock): string {
   return `${start} - ${end}`;
 }
 
+// The chart renders only on data change: its props are the memoized
+// hour arrays and payload slices above, so a parent re-render that
+// brings the same references does not redraw the SVG. (The minute
+// tick still re-renders it, correctly, to move the "Now" marker.)
+const MemoPriceBars = memo(PriceBars);
+
 function PricesWidget() {
   const [summary, setSummary] = useState<Awaited<
     ReturnType<typeof fetchPrices>
@@ -435,8 +441,18 @@ function PricesWidget() {
   // through the early hours of a 25-hour DST day.
   const tomorrow = dateKeyPlus(today, 1);
   const now = amsterdamNow(nowTick);
-  const todayHours = summary ? prepareHours(summary.hours, today) : [];
-  const tomorrowHours = summary ? prepareHours(summary.hours, tomorrow) : [];
+  // The derived chart data memoized on the payload: the bar charts
+  // below re-render only when the prices payload (or the minute tick
+  // that moves the "Now" marker) actually changes, never on an
+  // unrelated parent re-render.
+  const todayHours = useMemo(
+    () => (summary ? prepareHours(summary.hours, today) : []),
+    [summary, today],
+  );
+  const tomorrowHours = useMemo(
+    () => (summary ? prepareHours(summary.hours, tomorrow) : []),
+    [summary, tomorrow],
+  );
   // The current tariff by timestamp containment against the day's
   // real hourly entries: unambiguous during the repeated 02:00 hour
   // of a fall-back day, where two entries share the wall-clock hour.
@@ -445,12 +461,14 @@ function PricesWidget() {
       const start = Date.parse(hour.ts);
       return nowTick >= start && nowTick < start + 3_600_000;
     })?.price ?? null;
-  const peak = todayHours.reduce<PreparedHour | null>((best, hour) => {
-    if (hour.price === null) {
-      return best;
-    }
-    return !best || (best.price ?? -Infinity) < hour.price ? hour : best;
-  }, null);
+  const peak = useMemo(() => {
+    return todayHours.reduce<PreparedHour | null>((best, hour) => {
+      if (hour.price === null) {
+        return best;
+      }
+      return !best || (best.price ?? -Infinity) < hour.price ? hour : best;
+    }, null);
+  }, [todayHours]);
   const block = summary?.cheapest_block ?? null;
   // The day's actual cheapest window, whole-day, from the server: the
   // same single source the advisory card reads, so the two surfaces
@@ -458,15 +476,14 @@ function PricesWidget() {
   const dayBlock = summary?.day_cheapest_block ?? null;
   // Shared price scale across both days so a euro always has the same bar
   // height and color in today's and tomorrow's charts.
-  const allPrices = summary
-    ? [...todayHours, ...tomorrowHours]
-        .map((hour) => hour.price)
-        .filter((price): price is number => price !== null)
-    : [];
-  const sharedScale =
-    allPrices.length > 0
+  const sharedScale = useMemo(() => {
+    const allPrices = [...todayHours, ...tomorrowHours]
+      .map((hour) => hour.price)
+      .filter((price): price is number => price !== null);
+    return allPrices.length > 0
       ? { min: Math.min(...allPrices), max: Math.max(...allPrices) }
       : null;
+  }, [todayHours, tomorrowHours]);
 
   // The skeleton mirrors the panel's composition - header, three
   // stat columns, the two chart blocks with their captions and the
@@ -563,7 +580,7 @@ function PricesWidget() {
               {/* Same muted strip background as the battery and forecast
                 charts. */}
               <div className="rounded-inset bg-muted/30 p-4">
-                <PriceBars
+                <MemoPriceBars
                   hours={todayHours}
                   average={summary.today.average}
                   nowMs={now.date === today ? nowTick : null}
@@ -603,7 +620,7 @@ function PricesWidget() {
                 </div>
                 <div className="mt-2">
                   {summary.tomorrow.available && tomorrowHours.length > 0 ? (
-                    <PriceBars
+                    <MemoPriceBars
                       hours={tomorrowHours}
                       average={summary.tomorrow.average}
                       nowMs={null}

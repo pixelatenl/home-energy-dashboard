@@ -123,7 +123,7 @@ function PeriodNavigator() {
               onClick={() => setKind(value)}
               className={`${segmentBase} ${
                 period.kind === value
-                  ? "bg-white/20 text-chip-foreground shadow-card backdrop-blur-sm"
+                  ? "bg-white/20 text-chip-foreground shadow-card"
                   : "text-muted-foreground hover:text-foreground"
               }`}
             >

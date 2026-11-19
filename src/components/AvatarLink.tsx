@@ -20,7 +20,7 @@ function AvatarLink() {
       className={({ isActive }) =>
         `flex h-12 w-12 items-center justify-center rounded-xl border border-transparent text-sm font-bold transition focus-visible:outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 ${
           isActive
-            ? "bg-white/20 text-chip-foreground shadow-card backdrop-blur-sm"
+            ? "bg-white/20 text-chip-foreground shadow-card"
             : "bg-card text-muted-foreground shadow-card hover:bg-card-hover"
         }`
       }

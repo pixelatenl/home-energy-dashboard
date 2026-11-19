@@ -14,13 +14,13 @@ const AGE_TICK_MS = 30_000;
 // an AI indicator. whitespace-nowrap keeps the pill from wrapping
 // mid-text.
 const CHIP =
-  "flex shrink-0 items-center whitespace-nowrap rounded-full border border-white/20 bg-white/15 px-2.5 py-1 text-xs font-medium text-chip-foreground tabular-nums backdrop-blur-sm";
+  "flex shrink-0 items-center whitespace-nowrap rounded-full border border-white/20 bg-white/15 px-2.5 py-1 text-xs font-medium text-chip-foreground tabular-nums";
 
 // The stale state: the same pill in the app's amber warning register -
 // an amber tint and border (the /30 and /10 opacity language of the
 // solar badge's behind state) with the warning text colors.
 const CHIP_STALE =
-  "flex shrink-0 items-center whitespace-nowrap rounded-full border border-amber-400/30 bg-amber-400/10 px-2.5 py-1 text-xs font-medium tabular-nums backdrop-blur-sm text-amber-300 dark:text-amber-200";
+  "flex shrink-0 items-center whitespace-nowrap rounded-full border border-amber-400/30 bg-amber-400/10 px-2.5 py-1 text-xs font-medium tabular-nums text-amber-300 dark:text-amber-200";
 
 // The hub header's data-freshness chip: "Updated HH:MM" rendered
 // verbatim from the summary snapshot's as_of stamp (the server is the

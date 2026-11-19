@@ -81,6 +81,32 @@
        background. The glass look values pair with the gradient from
        https://css.glass. */
     --background: oklch(0.205 0 0);
+    /* The body gradient as one token, so the canvas background and
+       the pre-blurred backdrop layer below paint the exact same
+       gradient - one definition, two uses. */
+    --body-gradient:
+      radial-gradient(
+        ellipse 65% 55% at 12% 88%,
+        rgb(180 83 9 / 0.42),
+        transparent 65%
+      ),
+      radial-gradient(
+        ellipse 55% 50% at 88% 12%,
+        rgb(20 83 45 / 0.4),
+        transparent 65%
+      ),
+      radial-gradient(
+        ellipse 80% 45% at 55% 105%,
+        rgb(146 64 14 / 0.32),
+        transparent 70%
+      ),
+      radial-gradient(
+        ellipse at bottom,
+        #4a2c14 15%,
+        #241610 45%,
+        #120c08 75%,
+        #060402 100%
+      );
     /* Primary text - card headlines and big figures - at stone-50:
        the warm stone scale harmonizes with the amber/green earth
        palette; cool grays (slate, zinc) would fight it. */
@@ -212,48 +238,51 @@
   body {
     @apply text-foreground;
     min-height: 100vh;
-    background:
-      radial-gradient(
-        ellipse 65% 55% at 12% 88%,
-        rgb(180 83 9 / 0.42),
-        transparent 65%
-      ),
-      radial-gradient(
-        ellipse 55% 50% at 88% 12%,
-        rgb(20 83 45 / 0.4),
-        transparent 65%
-      ),
-      radial-gradient(
-        ellipse 80% 45% at 55% 105%,
-        rgb(146 64 14 / 0.32),
-        transparent 70%
-      ),
-      radial-gradient(
-        ellipse at bottom,
-        #4a2c14 15%,
-        #241610 45%,
-        #120c08 75%,
-        #060402 100%
-      )
-      fixed;
-    }
+    background: var(--body-gradient) fixed;
+  }
+  /* The pre-blurred backdrop layer, the static half of the glass
+     recipe: the same body gradient painted once into a fixed,
+     viewport-sized layer and blurred once at raster time. Every
+     glass card sits on this layer, so a card's blur(20px) over the
+     page background is served from this cached layer instead of
+     being recomputed per scroll frame - the compositor just moves
+     the already-filtered texture. The cards keep only the cheap
+     saturate(1.2) matrix as a live backdrop-filter (see .glass-card),
+     which composes to exactly blur(20px) saturate(1.2) over the raw
+     canvas gradient, i.e. the original per-card filter chain.
+     position:fixed (not background-attachment:fixed) keeps the layer
+     composited on Android Chromium. The dormant .dark theme paints
+     no blur layer, matching its solid night cards. */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background: var(--body-gradient);
+    filter: blur(20px);
+  }
+  .dark body::before {
+    content: none;
+  }
   html {
     @apply font-sans;
     }
 }
 
-/* The frosted glass card surface, the reference recipe: a 20px
-   backdrop blur with a 1.2 saturation boost over the nearly-clear
-   token fill, with two 1px gradient edge seams - bright across the
-   top, one down the left - as the card's only edge definition (the
-   card carries no border). Fill, elevation and radius come from
-   the theme tokens; this layer carries only what tokens cannot
-   express. The dormant .dark theme keeps solid night cards: no
-   blur, no seams. */
+/* The frosted glass card surface, the reference recipe: the card's
+   live backdrop-filter carries only the saturate(1.2) step - the
+   blur(20px) step is served by the static pre-blurred body layer
+   (body::before above), so filter chain and result are identical to
+   the original blur(20px) saturate(1.2) while the expensive spatial
+   kernel is rasterized once instead of per scroll frame. The fill,
+   elevation, radius and the two 1px gradient edge seams below carry
+   the rest of the look. The dormant .dark theme keeps solid night
+   cards: no filter at all. */
 .glass-card {
   position: relative;
-  -webkit-backdrop-filter: blur(20px) saturate(1.2);
-  backdrop-filter: blur(20px) saturate(1.2);
+  -webkit-backdrop-filter: saturate(1.2);
+  backdrop-filter: saturate(1.2);
 }
 
 .glass-card::before {
@@ -309,7 +338,11 @@
    one cycle advances the dash by its full period - the pulse plus a
    gap of one whole line, 1.15 - which the render pass keeps in sync
    with the dash fractions it sets inline. Each line sets its own
-   animation-duration inline, scaled with power. */
+   animation-duration inline, scaled with power, and its own
+   steps() timing inline: the dash advances at a reduced ~20 fps
+   (15-24 fps is imperceptible for these slow dashes at hallway
+   distance) instead of every frame, so the stroke-dashoffset paint
+   runs a third of the time. */
 @keyframes flow-pulse {
   to {
     stroke-dashoffset: -1.15;
@@ -387,6 +420,9 @@
   animation-duration: 4s;
   animation-timing-function: linear;
   animation-iteration-count: infinite;
+  /* One stable promoted layer for the long-lived rotation; the
+     transform animation then runs on the compositor alone. */
+  will-change: transform;
 }
 
 /* Time-of-day background: clouds drift across the widget via transform
@@ -405,10 +441,25 @@
   animation-name: cloud-drift;
   animation-timing-function: linear;
   animation-iteration-count: infinite;
+  /* One stable promoted layer per long-lived drift, same rule as
+     .grid-spin: the transform animation stays on the compositor. */
+  will-change: transform;
 }
 
 /* Live energy flow: soft static drop shadow under the flow lines so
    they separate from the time-of-day sky. */
 .flow-shadow {
   filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.35));
+}
+
+/* Heavy below-the-fold page sections (the Now page's prices/advisor
+   row): skipped entirely while off-screen, so their paint cost never
+   lands during scroll. The `auto` keyword makes the browser remember
+   the section's real rendered size after the first pass, so the
+   scrollbar and layout never shift and nothing pops when the section
+   scrolls into view; the 620px fallback only applies before the
+   first render. */
+.below-fold-section {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 620px;
 }

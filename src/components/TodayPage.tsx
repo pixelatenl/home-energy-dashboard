@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useState, memo } from "react"
 import BatteryStatusWidget from "@/components/BatteryStatusWidget"
 import DataFreshnessLabel from "@/components/DataFreshnessLabel"
 import GasTodayCard from "@/components/GasTodayCard"
@@ -17,6 +17,53 @@ import {
 import { greetingFor } from "@/lib/time"
 import { triggerAiRefresh } from "@/lib/useAiContext"
 import { triggerDataRefresh, useRefetchOnWake } from "@/lib/useDataRefresh"
+
+// The Now page's sections, memoized on their own data: the page's own
+// ticks (the greeting's minute tick, the 5-minute insight refetch)
+// re-render only the header and the advisor area, never the whole
+// widget tree - each widget re-renders when its own data slice
+// changes, which its own hooks already drive.
+const MemoLiveUsageCard = memo(LiveUsageCard)
+const MemoSavedEarnedCard = memo(SavedEarnedCard)
+const MemoStatsHeader = memo(StatsHeader)
+const MemoGasTodayCard = memo(GasTodayCard)
+const MemoTodaySolarCard = memo(TodaySolarCard)
+const MemoBatteryStatusWidget = memo(BatteryStatusWidget)
+const MemoTodayBatteryCard = memo(TodayBatteryCard)
+const MemoPricesWidget = memo(PricesWidget)
+
+// The advisor card's props are the page's insight state, so it gets a
+// content comparison: an identical monologue payload (same sections,
+// same insight metadata) does not re-render the advisory area even
+// though the fetch returns fresh object identities.
+function sameSections(
+  a: SummaryMonologueSection[] | null | undefined,
+  b: SummaryMonologueSection[] | null | undefined,
+): boolean {
+  const listA = Array.isArray(a) ? a : []
+  const listB = Array.isArray(b) ? b : []
+  if (listA.length !== listB.length) return false
+  return listA.every((section, index) => {
+    const other = listB[index]
+    return (
+      section?.label === other?.label &&
+      section?.narrative === other?.narrative &&
+      (section?.fallback_sentences ?? []).join("\u0000") ===
+        (other?.fallback_sentences ?? []).join("\u0000")
+    )
+  })
+}
+
+const MemoMonologueCard = memo(
+  MonologueCard,
+  (prev, next) =>
+    prev.reasoning === next.reasoning &&
+    prev.from === next.from &&
+    prev.refreshDisabled === next.refreshDisabled &&
+    prev.loading === next.loading &&
+    prev.onRefresh === next.onRefresh &&
+    sameSections(prev.sections, next.sections),
+)
 
 // The dashboard hub: the stats grid - four cards per row, every
 // widget at the same height, the Saved and earned card leading and
@@ -74,6 +121,14 @@ function TodayPage() {
   const reloadInsight = useCallback(() => void loadInsight(), [loadInsight])
   useRefetchOnWake(reloadInsight)
 
+  // Stable identity for the memoized advisor card: the refresh
+  // handler changes only when the insight loader does.
+  const handleRefresh = useCallback(() => {
+    void loadInsight(true)
+    triggerAiRefresh()
+    triggerDataRefresh()
+  }, [loadInsight])
+
   useEffect(() => {
     const id = setInterval(() => setNowTick(Date.now()), 60_000)
     return () => clearInterval(id)
@@ -110,13 +165,13 @@ function TodayPage() {
           768px take two per row (four rows), and from 1024px the
           four by two grid returns. */}
       <div className="grid grid-cols-1 gap-4 md:auto-rows-fr md:grid-cols-2 lg:grid-cols-4">
-        <LiveUsageCard />
-        <SavedEarnedCard />
-        <StatsHeader />
-        <GasTodayCard />
-        <TodaySolarCard />
-        <BatteryStatusWidget />
-        <TodayBatteryCard />
+        <MemoLiveUsageCard />
+        <MemoSavedEarnedCard />
+        <MemoStatsHeader />
+        <MemoGasTodayCard />
+        <MemoTodaySolarCard />
+        <MemoBatteryStatusWidget />
+        <MemoTodayBatteryCard />
       </div>
 
       {/* The Your Advisor panel where the live hero used to be, beside the
@@ -127,20 +182,18 @@ function TodayPage() {
           retired). The gap matches the stats cluster's own, so all
           card-to-card whitespace is one rhythm. With the monologue
           field absent the area renders nothing at all and the prices
-          widget stands alone. */}
-      <div className="grid gap-4 lg:grid-cols-2">
-        <PricesWidget />
-        <MonologueCard
+          widget stands alone. The row sits below the fold on the
+          kiosk, so it renders lazily (content-visibility) and never
+          costs paint while scrolled past. */}
+      <div className="below-fold-section grid gap-4 lg:grid-cols-2">
+        <MemoPricesWidget />
+        <MemoMonologueCard
           sections={monologue}
           reasoning={insight?.state === "reasoning"}
           from={insightFrom}
           refreshDisabled={refreshDisabled}
           loading={insightLoading}
-          onRefresh={() => {
-            void loadInsight(true)
-            triggerAiRefresh()
-            triggerDataRefresh()
-          }}
+          onRefresh={handleRefresh}
         />
 
       </div>

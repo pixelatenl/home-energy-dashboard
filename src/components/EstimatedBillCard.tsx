@@ -255,7 +255,7 @@ function EstimatedBillCard() {
                   onClick={() => setChosen(key)}
                   className={`rounded-md px-3 py-1.5 text-sm font-medium transition focus-visible:outline-none ${
                     key === month
-                      ? "bg-white/20 text-chip-foreground shadow-card backdrop-blur-sm"
+                      ? "bg-white/20 text-chip-foreground shadow-card"
                       : "text-muted-foreground hover:text-foreground"
                   }`}
                 >

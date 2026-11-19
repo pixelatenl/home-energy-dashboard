@@ -71,6 +71,29 @@ function MonologueSectionView({
   );
 }
 
+// The pre-blurred underlay behind the advisory panel's glass blocks:
+// the panel's own warm gradient, blurred once at raster time into a
+// static layer. The section blocks (glass-card) sit on it, so their
+// saturate(1.2) backdrop-filter composes over this pre-blurred layer
+// to exactly the blur(20px) saturate(1.2) they used to compute live
+// per scroll frame - same input gradient, same filter chain, but the
+// spatial blur is cached. The underlay rides at -z-10, above the
+// panel's own raw gradient (so the panel's edge fade lands on the
+// raw gradient, as before) and below the in-flow content.
+function AdvisoryPanelUnderlay() {
+  return (
+    <div
+      aria-hidden="true"
+      className="absolute inset-0 -z-10"
+      style={{
+        background:
+          "linear-gradient(to bottom left, #0d0805, #241610, #4a2c14)",
+        filter: "blur(20px)",
+      }}
+    />
+  );
+}
+
 // The advisory area: the warm brown AI surface (the same dark-to-
 // warm-brown ramp every AI box uses, over the app-wide glass pane),
 // stretching the full grid row like the retired card did, with the
@@ -130,9 +153,10 @@ function MonologueCard({
   // Skeleton lines inside it do.
   const skeleton = (
     <div
-      className="glass-card glass-inset h-full min-h-36 rounded-lg bg-gradient-to-bl from-[#0d0805] via-[#241610] to-[#4a2c14] p-4 text-card-foreground shadow-card"
+      className="glass-card glass-inset h-full min-h-36 rounded-lg overflow-hidden bg-gradient-to-bl from-[#0d0805] via-[#241610] to-[#4a2c14] p-4 text-card-foreground shadow-card"
       aria-busy="true"
     >
+      <AdvisoryPanelUnderlay />
       <p className="flex items-center gap-2 font-heading text-lg font-medium text-muted-foreground">
         <Sparkles className="size-6" aria-hidden="true" />
         Your Advisor
@@ -153,8 +177,9 @@ function MonologueCard({
   // sections - the absent-field dashboard is advisory-free, as today.
   const loaded =
     safeSections.length === 0 ? null : (
-      <div className="glass-card glass-inset h-full rounded-lg bg-gradient-to-bl from-[#0d0805] via-[#241610] to-[#4a2c14] p-4 text-card-foreground shadow-card">
-      {/* The header follows the retired advisory card's own pattern:
+      <div className="glass-card glass-inset h-full rounded-lg overflow-hidden bg-gradient-to-bl from-[#0d0805] via-[#241610] to-[#4a2c14] p-4 text-card-foreground shadow-card">
+        <AdvisoryPanelUnderlay />
+        {/* The header follows the retired advisory card's own pattern:
           the panel title with its sparkle, the Reasoning chip pulsing
           while the server rebuilds the insight, the provenance stamp
           and the force-refresh control in the right cluster - the
